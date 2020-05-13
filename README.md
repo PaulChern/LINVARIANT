@@ -1,6 +1,6 @@
 # LINVARIANT
 **LINVARIANT** is a Univeral model constructor. <br />
-**INVARIANT** are such objects though we construct with the help of coordinate systems turn out to be independent of coordinates. <br /> 
+**INVARIANT** are such objects though we construct with the help of coordinate systems turn out to be independent of coordinates. <br />
 **L** is to memorize famous physicist Lev Davidovich Landau (22 January 1908 – 1 April 1968). <br />
 - Utilizing the Group Theory, it mathematically modeling phsycs systems such as Lattice, Electron, Spin and their couping systems.
 - LINVARIANT generates symmetry adapted microscopic or phenomenological models.
@@ -34,9 +34,8 @@
 ## Authors
 * **Peng Chen** - peng.chen.iphy@gmail.com
 * **Sergey Artyukhin** - sergey.artyukhin@iit.it  <br />
-and <br />
+## Contributors
 * **Hongjian Zhao** - solidstatezhao@gmail.com
 * **Laurent Bellaiche** - laurent@uark.edu
 
 See also the list of [contributors](https://github.com/PaulChern/LINVARIANT/contributors) who participated in this project.
-
