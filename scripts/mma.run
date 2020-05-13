@@ -1,0 +1,22 @@
+ 
+#!/bin/sh
+#SBATCH --job-name=mma.case
+#SBATCH -p frontend 
+#SBATCH -N 1
+#SBATCH --ntasks=12
+#SBATCH --mail-type=ALL
+#SBATCH --mail-user=cpiphy2011@gmail.com
+#SBATCH -o Bora.case.%j.%N.out 
+#SBATCH --get-user-env 
+##SBATCH --export=NONE 
+
+mma=`which wolframscript`
+echo "Job starts at `date`"
+echo "Running on hosts: $SLURM_NODELIST"
+echo "Running on $SLURM_NNODES nodes."
+echo "Running on $SLURM_NPROCS processors."
+echo "Current working directory is `pwd`"
+echo "Current running code is ${mma}"
+scontrol show hostname $SLURM_NODELIST > cn.list
+
+Bora-5.3.wls case Lx Ly Lz NT
