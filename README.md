@@ -7,7 +7,7 @@
 - LINVARIANT creates DFT training sets for the model fitting.
 - LINVARIANT has numerical solvers running on the model, such as MC, MD, Exact Diaganolizatin, Minimization, and et. al..
 - For large scale calculations, LINVARIANT exports the symbolic models into FORTRAN/C++ modules together with FORTRAN/C++ solvers, buiding files.
-### Universal model builder (Lattice, Electron, Spin):
+## Features:
 - Displacement and magnetic modes analysis
 - INVARIANT generator (couplings among distortion, strain and magnetic)
 - Modulate modes in supercell, generate initial Domain walls (DWs) structures for Density Functional Theory (DFT) codes
@@ -25,7 +25,7 @@
 - Nudged Elastic Bands (NEB) and Growing String Method (GSM) to explore the phase transition, dynamics, and domain wall structures
 - Mollwide projection
 - Examples: Boracite, Perovskite (To be added: Spinel, Rutile, Pyrochlore)
-### Todo:
+## Todo:
 - implement LLG dynamics
 - implement k dot p model builder
 - interface to exact diagnalization method
