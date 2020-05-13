@@ -32,11 +32,11 @@
 - adding Atomistic Green's Function (AGF) method to study scattering and ultrafast non-equilibrium dynamics
 - including electron phonon coupling (EPC) by fitting phonon dependent Tight-Binding (TB) model from DFT molecular dynamics (MD).
 ## Authors
-* **Peng Chen** - peng.chen.iphy@gmail.com <br />
+* **Peng Chen** - peng.chen.iphy@gmail.com
+* **Sergey Artyukhin** - sergey.artyukhin@iit.it  <br />
 and <br />
 * **Hongjian Zhao** - solidstatezhao@gmail.com
 * **Laurent Bellaiche** - laurent@uark.edu
-* **Sergey Artyukhin** - sergey.artyukhin@iit.it
 
 See also the list of [contributors](https://github.com/PaulChern/LINVARIANT/contributors) who participated in this project.
 
