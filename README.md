@@ -1,4 +1,7 @@
-# L-INVARIANTS
+# LINVARIANT
+**L** is to memorize famous physicist Lev Davidovich Landau (22 January 1908 – 1 April 1968).
+Some of the objects we construct with the help of coordinate systems turn out to be independent of coordinates.
+Such objects are called **INVARIANT**. 
 ### Universal model builder (Lattice, Electron, Spin):
 - Displacement and magnetic modes analysis
 - INVARIANT generator (couplings among distortion, strain and magnetic)
