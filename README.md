@@ -34,5 +34,5 @@
 ## Authors
 * **Peng Chen** - peng.chen.iphy@gmail.com
 
-See also the list of [contributors](https://github.com/your/project/contributors) who participated in this project.
+See also the list of [contributors](https://github.com/PaulChern/LINVARIANT/contributors) who participated in this project.
 
