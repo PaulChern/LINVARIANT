@@ -31,3 +31,8 @@
 - interface to exact diagnalization method
 - adding Atomistic Green's Function (AGF) method to study scattering and ultrafast non-equilibrium dynamics
 - including electron phonon coupling (EPC) by fitting phonon dependent Tight-Binding (TB) model from DFT molecular dynamics (MD).
+## Authors
+* **Peng Chen** - peng.chen.iphy@gmail.com
+
+See also the list of [contributors](https://github.com/your/project/contributors) who participated in this project.
+
