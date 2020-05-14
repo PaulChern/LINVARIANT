@@ -2,6 +2,8 @@ BeginPackage["LINVARIANT`Mc`"]
 
 (*--------- Load, Save and Modify Crystal Structure Libraries ------------*)
 MCStep               ::usage "MCStep[initconfig, T, initdamp, MeshDim]"
+AutocorrelationFunc  ::usage "AutocorrelationFunc[t0, t, data, FieldIndex]"
+
 (*--------- Plot and Manipulate Crystal Structures -------------------- ----------------*)
 
 (*--------- Point and Space Group Information ---------------------------*)
@@ -53,6 +55,13 @@ MCStep[initconfig_, T_, initdamp_, MeshDim_] := Module[{Lx, Ly, Lz, AcceptRatio,
   Return[{damp, FlippedConfig, rdum}]
 ]
 
+AutocorrelationFunc[t0_, t_, data_, FieldIndex_?ListQ] := Module[{datat0, datat, ct, i, j},
+  {i, j} = FieldIndex;
+  datat0 = data[[t0]]\[Transpose][[i ;; j]]\[Transpose];
+  datat = data[[t]]\[Transpose][[i ;; j]]\[Transpose];
+  ct = (Mean[datat0 datat] - Mean[datat0] Mean[datat])/(Mean[datat0^2] - Mean[datat0]^2);
+  Return[ct]
+]
 (*-------------------------- Attributes ------------------------------*)
 
 (*Attributes[]={Protected, ReadProtected}*)
