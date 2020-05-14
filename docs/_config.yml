@@ -22,7 +22,7 @@ title: LINVARIANT
 email: peng.chen.iphy@gmail.com
 description: >- # this means to ignore newlines until "baseurl:"
   a Universal model generator, Landau model, phase field, Tight-Binding model, k dot p model, latttice dynamics, ultrafast, Density Functional theory, Monte Carlo, Molecular dynamics, Finite element method, Minimization, Heisenberg model
-baseurl: "/docs" # the subpath of your site, e.g. /blog
+baseurl: "/docs/" # the subpath of your site, e.g. /blog
 url: "localhost:4000" # the base hostname & protocol for your site, e.g. http://example.com
 twitter_username: PaulChern
 github_username:  PaulChern
