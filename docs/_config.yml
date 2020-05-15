@@ -30,7 +30,7 @@ twitter_username: PaulChern
 github_username:  PaulChern
 
 # Build settings
-theme: jekyll-theme-cayman
+theme: jekyll-theme-minimal
 plugins:
   - jekyll-feed
 
