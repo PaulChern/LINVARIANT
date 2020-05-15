@@ -6,4 +6,4 @@
 - LINVARIANT generates symmetry adapted microscopic or phenomenological models.
 - LINVARIANT creates DFT training sets for the model fitting.
 - LINVARIANT has numerical solvers running on the model, such as MC, MD, Exact diagnalization, Minimization, and et al..
-- For large scale calculations, LINVARIANT exports the symbolic models into FORTRAN/C++ modules together with FORTRAN/C++ solvers, buiding files.
+- For large scale calculations, LINVARIANT exports the symbolic models into FORTRAN/C++ modules together with FORTRAN/C++ solvers, building files.
