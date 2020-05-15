@@ -28,7 +28,8 @@ twitter_username: PaulChern
 github_username:  PaulChern
 
 # Build settings
-theme: jekyll-theme-minimal
+#theme: jekyll-theme-minimal
+theme: minima
 plugins:
   - jekyll-feed
 
