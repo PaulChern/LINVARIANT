@@ -21,7 +21,6 @@
 title: LINVARIANT
 email: peng.chen.iphy@gmail.com
 show_downloads: true
-google_analytics:
 description: >- # this means to ignore newlines until "baseurl:"
 Utilizing the Group Theory, it mathematically modeling physics systems such as Lattice, Electron, Spin and their coupling systems.
 baseurl: "/LINVARIANT" # the subpath of your site, e.g. /blog
