@@ -4,7 +4,6 @@
 
 layout: home
 ---
-# LINVARIANT
 **LINVARIANT** is a Universal model generator, in the field of computational condensed matter physics. <br />
 **INVARIANT** are such objects though we construct with the help of coordinate systems turn out to be independent of coordinates. <br />
 **L** is to memorize famous physicist Lev Davidovich Landau (22 January 1908 – 1 April 1968). <br />
