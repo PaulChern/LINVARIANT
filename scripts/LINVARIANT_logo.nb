@@ -10,10 +10,10 @@
 NotebookFileLineBreakTest
 NotebookFileLineBreakTest
 NotebookDataPosition[       158,          7]
-NotebookDataLength[     27954,        631]
-NotebookOptionsPosition[     26748,        601]
-NotebookOutlinePosition[     27101,        617]
-CellTagsIndexPosition[     27058,        614]
+NotebookDataLength[     28325,        640]
+NotebookOptionsPosition[     27117,        610]
+NotebookOutlinePosition[     27470,        626]
+CellTagsIndexPosition[     27427,        623]
 WindowFrame->Normal*)
 
 (* Beginning of Notebook Content *)
@@ -479,7 +479,8 @@ Cell[BoxData[
   StyleBox[
    DynamicModuleBox[{$CellContext`bw$$ = 0, $CellContext`f$$ = 
     240, $CellContext`gr$$ = 1, $CellContext`k$$ = 6, $CellContext`pr$$ = 
-    0, $CellContext`ra$$ = Pi, $CellContext`st$$ = "L", $CellContext`xy$$ = {
+    0.609468974796437, $CellContext`ra$$ = 
+    4.096636820281079, $CellContext`st$$ = "L", $CellContext`xy$$ = {
      Rational[-1, 12], 
      Rational[-1, 12]}, Typeset`show$$ = True, Typeset`bookmarkList$$ = {}, 
     Typeset`bookmarkMode$$ = "Menu", Typeset`animator$$, Typeset`animvar$$ = 
@@ -558,7 +559,7 @@ Cell[BoxData[
          Left}, {{$CellContext`st$$, "L", "text"}, ControlType -> None, 
          ControlPlacement -> Left}}, "Options" :> {}, "DefaultOptions" :> {}],
      
-     ImageSizeCache->{956., {406., 418.}},
+     ImageSizeCache->{956., {472., 484.}},
      SingleEvaluation->True],
     Deinitialization:>None,
     DynamicModuleValues:>{},
@@ -575,13 +576,21 @@ Cell[BoxData[
    3.79856069356175*^9, 3.798560759297819*^9, 3.798560842912895*^9, 
    3.798560983974424*^9, 3.798561042102456*^9, 3.798561244699415*^9, 
    3.7985613947505913`*^9, 3.798561718969919*^9, 3.798561762232575*^9, 
-   3.798561844088997*^9, 3.798561899430252*^9},
+   3.798561844088997*^9, 3.798561899430252*^9, {3.7985621126162567`*^9, 
+   3.7985621156684017`*^9}},
  CellLabel->"Out[34]=",ExpressionUUID->"468eda6d-1274-47c9-8730-f0ac40c5087f"]
 }, Open  ]],
 
-Cell[BoxData[""], "Input",
- CellChangeTimes->{{3.798560638451*^9, 
-  3.7985606476120358`*^9}},ExpressionUUID->"a87a873e-fb01-4fe5-a61a-\
+Cell[BoxData[{
+ RowBox[{
+  RowBox[{"OriginalRotation", "=", "0.609469"}], ";"}], "\[IndentingNewLine]", 
+ RowBox[{
+  RowBox[{"RotatedPairs", "=", "6"}], ";"}], "\[IndentingNewLine]", 
+ RowBox[{
+  RowBox[{"RotationLimit", "=", "4.09664"}], ";"}]}], "Input",
+ CellChangeTimes->{{3.798560638451*^9, 3.7985606476120358`*^9}, {
+  3.798563239059873*^9, 
+  3.798563306484859*^9}},ExpressionUUID->"a87a873e-fb01-4fe5-a61a-\
 8860f20e5d07"],
 
 Cell[CellGroupData[{
@@ -626,12 +635,12 @@ Cell[4622, 140, 5176, 109, 634, "Output",ExpressionUUID->"6180d97e-7f06-4717-bbd
 }, Open  ]],
 Cell[CellGroupData[{
 Cell[9835, 254, 10689, 220, 423, "Input",ExpressionUUID->"8fcbb5b7-9952-4c8a-9f0e-f2634d691cf3"],
-Cell[20527, 476, 5338, 102, 893, "Output",ExpressionUUID->"468eda6d-1274-47c9-8730-f0ac40c5087f"]
+Cell[20527, 476, 5428, 104, 992, "Output",ExpressionUUID->"468eda6d-1274-47c9-8730-f0ac40c5087f"]
 }, Open  ]],
-Cell[25880, 581, 151, 3, 62, "Input",ExpressionUUID->"a87a873e-fb01-4fe5-a61a-8860f20e5d07"],
+Cell[25970, 583, 430, 10, 153, "Input",ExpressionUUID->"a87a873e-fb01-4fe5-a61a-8860f20e5d07"],
 Cell[CellGroupData[{
-Cell[26056, 588, 349, 4, 62, "Input",ExpressionUUID->"b9940ba7-6f3f-4666-865b-4b64f55e25fa"],
-Cell[26408, 594, 324, 4, 70, "Output",ExpressionUUID->"22f17804-633f-4362-8f7b-79ae231f8bce"]
+Cell[26425, 597, 349, 4, 62, "Input",ExpressionUUID->"b9940ba7-6f3f-4666-865b-4b64f55e25fa"],
+Cell[26777, 603, 324, 4, 70, "Output",ExpressionUUID->"22f17804-633f-4362-8f7b-79ae231f8bce"]
 }, Open  ]]
 }
 ]
