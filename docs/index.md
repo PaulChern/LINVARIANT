@@ -1,3 +1,7 @@
+---
+layout: default
+---
+
 # LINVARIANT
 **LINVARIANT** is a Universal model generator, in the field of computational condensed matter physics. <br />
 **INVARIANT** are such objects though we construct with the help of coordinate systems turn out to be independent of coordinates. <br />
