@@ -22,11 +22,9 @@ title: CV
 
 ### EXPERTISE
 
-<u> DFT </u> Phase Field simulations Landau theory Group Theory
+<u> DFT </u>  <u> Phase Field simulations </u>  <u> Landau theory </u>  <u> Group Theory </u>
 
-Domain Walls Multiferroics Perovskites Topological insulators 2D materials Phonons
-
-
+<u> Domain Walls </u>  <u> Multiferroics </u>  <u> Perovskites </u>  <u> Topological insulators </u>  <u> 2D materials </u>  <u> Phonons </u>
 
 ### RESEARCH
 
