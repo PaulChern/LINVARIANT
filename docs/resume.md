@@ -3,7 +3,7 @@ layout: page
 title: CV
 ---
 
-Peng Chen
+# Peng Chen
 
 Theoretical and Computational Condensed-Matter Physics
 
@@ -19,7 +19,7 @@ B.Sc. in electronic information of science and technology, Xidian University –
 
 
 
-EXPERTISE
+## EXPERTISE
 
 DFT Phase Field simulations Landau theory Group Theory
 
@@ -27,7 +27,7 @@ Domain Walls Multiferroics Perovskites Topological insulators 2D materials Phono
 
 
 
-RESEARCH
+## RESEARCH
 
 Topological defects in real space (DFT+phenomenological models)
 
@@ -56,7 +56,7 @@ Programming
 Atomistic/Landau modeling of materials with complex orders (static and dynamic).
 
 
-INTERESTS
+## INTERESTS
 
 Symmetry and its role in the couplings between structural, spin, orbital, gauge degrees of freedom, and topological defects/boundaries (in real/parameter space)
 Strong spin-orbit coupling physics
@@ -64,7 +64,7 @@ Many body perturbation theory, correlated electrons
 Programming DFT/post-DFT, developing DFT methodology
 
 
-TECHNIQUES
+## TECHNIQUES
 
 Ab initio software
 
@@ -94,22 +94,22 @@ experienced in Mathematica (great for toy models), C++, python, Julia, shell; fa
 
 
 
-PUBLICATIONS
+## PUBLICATIONS
 
-Peng Chen, Louis Ponet, Keji Lai, Roberto Cingolani, and Sergey Artyukhin, Domain wall-localized excitations from GHz to THz, (submitted).
-Peng Chen and Sergey Artyukhin, Negative capacitance in copper-chlorine boracite and anomalous domain wall motion, (in preparation).
-Peng Chen and Sergey Artyukhin, Phonon scattering at domain walls and thermal conductivity, (in preparation).
-Yen-Lin Huang, Lu Zheng, Peng Chen, Xiaoxing Cheng, Tiannan Yang, Xiaoyu Wu, Louis Ponet, Ramamoorthy Ramesh, Long-Qing Chen, Sergey Artyukhin, Ying-Hao Chu, Keji Lai, Giant Microwave Conductivity in a Nominally Silent BiFeO3 Domain Wall, (submitted).
-Christina Stefani, Louis Ponet, Kostya Shapovalov, Peng Chen, Massimiliano Stengel, Sergey Artyukhin, Gustau Catalan, Neus Domingo, Merchanically Soft Domain Walls in Hard Ferroelectrics, (in preparation).
-Peng Chen, Mathieu N. Grisolia, Hong Jian Zhao, Otto E. Gonzalez-Vazquez, Manuel Bibes, Bang-Gui Liu, L. Bellaiche and Jorge Iniguez, Energetics of oxygen-octahedra rotations in perovskite oxides from first principles, Phys. Rev. B 97, 024113 (2019).
-Peng Chen, Xue-Jing Zhang and Bang-Gui Liu, Room Temperature Flexible Two-Dimensional Ferroelectric BiN from First-Principles Prediction, ACS Appl. Nano Mater., 2, 58 (2019).
-San-Dong Guo and Peng Chen, Soft phonon modes driven huge difference on lattice thermal conductivity between topological semimetal WC and WN, J. Chem. Phys. 148, 144706 (2018).
-Peng Chen, Jin-Yu Zou and Bang-Gui Liu, Intrinsic ferromagnetism and quantum anomalous Hall effect in CoBr2 monolaye , Phys. Chem. Chem. Phys., 19, 13432 (2017).
-Peng Chen and Bang-Gui Liu, Giant ferroelectric polarization and electric reversal of strong spontaneous magnetization in multiferroic Bi2FeMoO6, Journal of Magnetism and Magnetic Materials, 441, 497 (2017).
-Xue-Jing Zhang, Peng Chen and Bang-Gui Liu, Strain-controlled Insulator-Metal Transition in YTiO3/SrTiO3 Superlattices: A First-Principles Study, J. Mater. Chem. C, 5, 9898 (2017).
-Shixun Cao, Lei Chen, Weiyao zhao, Kai Xu, Guohua Wang, Yali Yang, Baojuan Kang, Hongjian Zhao, Peng Chen, Alessandro Stroppa, Renkui Zheng, Jincang Zhang, Wei Ren, Jorge Iniguez and L. Bellaiche, Tuning the Weak Ferromagnetic States in Dysprosium Orthoferrite, Scientific Reports 6, 37529 (2016)
-Sai Gong, San-Dong Guo, Peng Chen and Bang-Gui Liu, Oxygen-octahedral distortion and electronic correlation induced semiconductor gaps in ferrimagnetic double perovskite Ca2MReO6 (M=Cr, Fe), RSC Advances, 5, 63165-63174 (2015)
-Tao Zhu, Peng Chen, Qing-Hua Zhang, Ri-Cheng Yu and Bang-Gui Liu, Giant linear anomalous Hall effect in the perpendicular CoFeB thin films, Appl. Phys. Lett. 104, 202404 (2014)
-Sai Gong, Peng Chen and Bang-Gui Liu, Structural, electronic, and magnetic properties of double perovskite Pb2CrMO6 (M=Mo, W and Re) from first-principles investigation, Journal of Magnetism and Magnetic Materials, 349, 74 (2014)
-Qinghua Zhang, Sandong Guo, Binghui Ge, Peng Chen, Yuan Yao, Lijuan Wang, Lin Gu, Yanguo Wang, Xiaofeng Duan, Changqing Jin, Banggui Liu, and Richeng Yu, A New Ferroelectric Phase of YMnO3 Induced by Oxygen-Vacancy Ordering, J. Am. Ceram. Soc., 97, 1264 (2014)
-Si-Da Li, Peng Chen, Bang-Gui Liu, Promising ferromagnetic double perovskite oxides towards high spin polarization at high temperature, AIP Advances 3, 012107 (2013)
+1. Peng Chen, Louis Ponet, Keji Lai, Roberto Cingolani, and Sergey Artyukhin, Domain wall-localized excitations from GHz to THz, (submitted).
+2. Peng Chen and Sergey Artyukhin, Negative capacitance in copper-chlorine boracite and anomalous domain wall motion, (in preparation).
+3. Peng Chen and Sergey Artyukhin, Phonon scattering at domain walls and thermal conductivity, (in preparation).
+4. Yen-Lin Huang, Lu Zheng, Peng Chen, Xiaoxing Cheng, Tiannan Yang, Xiaoyu Wu, Louis Ponet, Ramamoorthy Ramesh, Long-Qing Chen, Sergey Artyukhin, Ying-Hao Chu, Keji Lai, Giant Microwave Conductivity in a Nominally Silent BiFeO3 Domain Wall, (submitted).
+5. Christina Stefani, Louis Ponet, Kostya Shapovalov, Peng Chen, Massimiliano Stengel, Sergey Artyukhin, Gustau Catalan, Neus Domingo, Merchanically Soft Domain Walls in Hard Ferroelectrics, (in preparation).
+6. Peng Chen, Mathieu N. Grisolia, Hong Jian Zhao, Otto E. Gonzalez-Vazquez, Manuel Bibes, Bang-Gui Liu, L. Bellaiche and Jorge Iniguez, Energetics of oxygen-octahedra rotations in perovskite oxides from first principles, Phys. Rev. B 97, 024113 (2019).
+7. Peng Chen, Xue-Jing Zhang and Bang-Gui Liu, Room Temperature Flexible Two-Dimensional Ferroelectric BiN from First-Principles Prediction, ACS Appl. Nano Mater., 2, 58 (2019).
+8. San-Dong Guo and Peng Chen, Soft phonon modes driven huge difference on lattice thermal conductivity between topological semimetal WC and WN, J. Chem. Phys. 148, 144706 (2018).
+9. Peng Chen, Jin-Yu Zou and Bang-Gui Liu, Intrinsic ferromagnetism and quantum anomalous Hall effect in CoBr2 monolaye , Phys. Chem. Chem. Phys., 19, 13432 (2017).
+10. Peng Chen and Bang-Gui Liu, Giant ferroelectric polarization and electric reversal of strong spontaneous magnetization in multiferroic Bi2FeMoO6, Journal of Magnetism and Magnetic Materials, 441, 497 (2017).
+11. Xue-Jing Zhang, Peng Chen and Bang-Gui Liu, Strain-controlled Insulator-Metal Transition in YTiO3/SrTiO3 Superlattices: A First-Principles Study, J. Mater. Chem. C, 5, 9898 (2017).
+12. Shixun Cao, Lei Chen, Weiyao zhao, Kai Xu, Guohua Wang, Yali Yang, Baojuan Kang, Hongjian Zhao, Peng Chen, Alessandro Stroppa, Renkui Zheng, Jincang Zhang, Wei Ren, Jorge Iniguez and L. Bellaiche, Tuning the Weak Ferromagnetic States in Dysprosium Orthoferrite, Scientific Reports 6, 37529 (2016)
+13. Sai Gong, San-Dong Guo, Peng Chen and Bang-Gui Liu, Oxygen-octahedral distortion and electronic correlation induced semiconductor gaps in ferrimagnetic double perovskite Ca2MReO6 (M=Cr, Fe), RSC Advances, 5, 63165-63174 (2015)
+14. Tao Zhu, Peng Chen, Qing-Hua Zhang, Ri-Cheng Yu and Bang-Gui Liu, Giant linear anomalous Hall effect in the perpendicular CoFeB thin films, Appl. Phys. Lett. 104, 202404 (2014)
+15. Sai Gong, Peng Chen and Bang-Gui Liu, Structural, electronic, and magnetic properties of double perovskite Pb2CrMO6 (M=Mo, W and Re) from first-principles investigation, Journal of Magnetism and Magnetic Materials, 349, 74 (2014)
+16. Qinghua Zhang, Sandong Guo, Binghui Ge, Peng Chen, Yuan Yao, Lijuan Wang, Lin Gu, Yanguo Wang, Xiaofeng Duan, Changqing Jin, Banggui Liu, and Richeng Yu, A New Ferroelectric Phase of YMnO3 Induced by Oxygen-Vacancy Ordering, J. Am. Ceram. Soc., 97, 1264 (2014)
+17. Si-Da Li, Peng Chen, Bang-Gui Liu, Promising ferromagnetic double perovskite oxides towards high spin polarization at high temperature, AIP Advances 3, 012107 (2013)
