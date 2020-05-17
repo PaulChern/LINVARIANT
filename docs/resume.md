@@ -22,7 +22,7 @@ title: CV
 
 ### EXPERTISE
 
-DFT Phase Field simulations Landau theory Group Theory
+<u> DFT </u> Phase Field simulations Landau theory Group Theory
 
 Domain Walls Multiferroics Perovskites Topological insulators 2D materials Phonons
 
@@ -66,7 +66,7 @@ Atomistic/Landau modeling of materials with complex orders (static and dynamic).
 
 ### TECHNIQUES
 
-Ab initio software
+##### Ab initio software
 
 * experienced with Wien2k, ABINIT, VASP, QE and various post-processing codes
 
@@ -88,7 +88,7 @@ Ab initio software
 
 * Uppsala Atomistic Spin Dynamics
 
-* Scientific Programming
+##### Scientific Programming
 
 * experienced in Mathematica (great for toy models), C++, python, Julia, shell; familiar with Fortran, openMP and MPI
 
