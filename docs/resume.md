@@ -3,6 +3,7 @@ layout: page
 title: CV
 ---
 
+![GitHub Logo](/assets/res/photo.png)
 # Peng Chen
 
 Theoretical and Computational Condensed-Matter Physics
