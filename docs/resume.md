@@ -6,17 +6,17 @@ title: CV
 ![GitHub Logo](/assets/res/photo.png)
 # Peng Chen
 
-Theoretical and Computational Condensed-Matter Physics
+* Theoretical and Computational Condensed-Matter Physics
 
-Postdoc at University of Arkansas, - Fayetteville, US, 2019-
+* Postdoc at University of Arkansas, - Fayetteville, US, 2019-
 
-Postdoc at Italian Institute of Technology, - Genova, Italy, 2017- 2019
+* Postdoc at Italian Institute of Technology, - Genova, Italy, 2017- 2019
 
-PhD in theoretical physics, Institute of Physics, Chinese Academy of Sciences - Beijing, China, 2017.
+* PhD in theoretical physics, Institute of Physics, Chinese Academy of Sciences - Beijing, China, 2017.
 
-Visit PhD student, Luxembourg Institute of Science and Technology – Luxembourg, 2016
+* Visit PhD student, Luxembourg Institute of Science and Technology – Luxembourg, 2016
 
-B.Sc. in electronic information of science and technology, Xidian University – Xi’an, China, 2011.
+* B.Sc. in electronic information of science and technology, Xidian University – Xi’an, China, 2011.
 
 
 
@@ -59,39 +59,38 @@ Atomistic/Landau modeling of materials with complex orders (static and dynamic).
 
 ### INTERESTS
 
-Symmetry and its role in the couplings between structural, spin, orbital, gauge degrees of freedom, and topological defects/boundaries (in real/parameter space)
-Strong spin-orbit coupling physics
-Many body perturbation theory, correlated electrons
-Programming DFT/post-DFT, developing DFT methodology
+* Symmetry and its role in the couplings between structural, spin, orbital, gauge degrees of freedom, and topological defects/boundaries (in real/parameter space)
+* Strong spin-orbit coupling physics
+* Programming DFT/post-DFT, developing DFT methodology
 
 
 ### TECHNIQUES
 
 Ab initio software
 
-experienced with Wien2k, ABINIT, VASP, QE and various post-processing codes
+* experienced with Wien2k, ABINIT, VASP, QE and various post-processing codes
 
-(WANNIER90, z2pack, PyMatGen, Phonopy, Abipy, VTSTtools)
+* (WANNIER90, z2pack, PyMatGen, Phonopy, Abipy, VTSTtools)
 
-Symmetry analysis
+* Symmetry analysis
 
-experienced with ISOTROPY Software Suite, Bilbao Crystalgraphic Server, and
+* experienced with ISOTROPY Software Suite, Bilbao Crystalgraphic Server, and
 
-GTpack (Mathematica group theory package)
+* GTpack (Mathematica group theory package)
 
-Finite element method (PDEs)
+* Finite element method (PDEs)
 
-Fenics, and Mathematica/C++ implementations
+* Fenics, and Mathematica/C++ implementations
 
-Monte Carlo for lattice dynamics and spins
+* Monte Carlo for lattice dynamics and spins
 
-Fortran/C++/Mathematica implementations
+* Fortran/C++/Mathematica implementations
 
-Uppsala Atomistic Spin Dynamics
+* Uppsala Atomistic Spin Dynamics
 
-Scientific Programming
+* Scientific Programming
 
-experienced in Mathematica (great for toy models), C++, python, Julia, shell; familiar with Fortran, openMP and MPI
+* experienced in Mathematica (great for toy models), C++, python, Julia, shell; familiar with Fortran, openMP and MPI
 
 
 
