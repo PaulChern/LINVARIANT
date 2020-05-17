@@ -20,7 +20,7 @@ B.Sc. in electronic information of science and technology, Xidian University –
 
 
 
-## EXPERTISE
+### EXPERTISE
 
 DFT Phase Field simulations Landau theory Group Theory
 
@@ -28,7 +28,7 @@ Domain Walls Multiferroics Perovskites Topological insulators 2D materials Phono
 
 
 
-## RESEARCH
+### RESEARCH
 
 Topological defects in real space (DFT+phenomenological models)
 
@@ -57,7 +57,7 @@ Programming
 Atomistic/Landau modeling of materials with complex orders (static and dynamic).
 
 
-## INTERESTS
+### INTERESTS
 
 Symmetry and its role in the couplings between structural, spin, orbital, gauge degrees of freedom, and topological defects/boundaries (in real/parameter space)
 Strong spin-orbit coupling physics
@@ -65,7 +65,7 @@ Many body perturbation theory, correlated electrons
 Programming DFT/post-DFT, developing DFT methodology
 
 
-## TECHNIQUES
+### TECHNIQUES
 
 Ab initio software
 
@@ -95,7 +95,7 @@ experienced in Mathematica (great for toy models), C++, python, Julia, shell; fa
 
 
 
-## PUBLICATIONS
+### PUBLICATIONS
 
 1. Peng Chen, Louis Ponet, Keji Lai, Roberto Cingolani, and Sergey Artyukhin, Domain wall-localized excitations from GHz to THz, (submitted).
 2. Peng Chen and Sergey Artyukhin, Negative capacitance in copper-chlorine boracite and anomalous domain wall motion, (in preparation).
