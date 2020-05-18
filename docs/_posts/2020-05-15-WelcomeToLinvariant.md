@@ -6,9 +6,6 @@ categories: Default
 tags: tutorial
 comments: 1
 ---
-You’ll find this post in your `_posts` directory. Go ahead and edit it and re-build the site to see your changes. You can rebuild the site in many different ways, but the most common way is to run `jekyll serve`, which launches a web server and auto-regenerates your site when a file is updated.
-
-To add new posts, simply add a file in the `_posts` directory that follows the convention `YYYY-MM-DD-name-of-post.ext` and includes the necessary front matter. Take a look at the source for this post to get an idea about how it works.
 
 Jekyll also offers powerful support for code snippets:
 
@@ -19,3 +16,43 @@ end
 print_hi('Tom')
 #=> prints 'Hi, Tom' to STDOUT.
 {% endhighlight %}
+
+Python with line numbers:
+{% highlight python linenos %}
+def print_hi(name):
+    print("Hi, {}".format(name))
+
+print_hi('Tom')
+# prints 'Hi, Tom' to STDOUT.
+{% endhighlight %}
+
+C with line numbers:
+{% highlight c linenos %}
+void print_hi(string name) {
+  printf("Hi, %s", name);
+}
+print_hi("Tom");
+/* prints 'Hi, Tom' to STDOUT. */
+{% endhighlight %}
+
+I have some text.
+
+I want some _italics_.
+
+I want some **bold**.
+
+# this is heading 1
+
+## this is heading 2
+
+### this is heading 3
+
+you want a list?
+* first
+* second
+* third
+
+you want an ordered list?
+1. whatever
+1. whatever
+1. whatever
