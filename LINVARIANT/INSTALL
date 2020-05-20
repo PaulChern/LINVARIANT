@@ -1,0 +1,11 @@
+tmp = URLSave["https://github.com/zbjornson/MYaml/archive/master.zip"];
+dest = FileNameJoin[{$UserBaseDirectory, "SystemFiles", "Formats"}];
+Quiet[CreateDirectory[dest]];
+tmpExpanded = CreateDirectory[];
+ExtractArchive[tmp, tmpExpanded];
+CopyDirectory[FileNameJoin[{tmpExpanded, "MYaml-master", "YAML"}], 
+  FileNameJoin[{dest, "YAML"}]];
+DeleteFile[tmp];
+DeleteDirectory[tmpExpanded, DeleteContents -> True];
+Print["Installed YAML importer to " <> dest <> 
+  ". Please restart Mathematica or the kernel."]

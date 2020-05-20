@@ -9,6 +9,11 @@ qmJz                        ::usage "qmJz[j]"
 qmJx                        ::usage "qmJx[j]"
 qmJy                        ::usage "qmJy[j]"
 qmSU                        ::usage "qmSU[j, n, t]"
+AddQNumber                  ::usage "AddOperator[a]"
+ShowQNumberList             ::usage "ShowQNumberList[]"
+CommutatorDefinition        ::usage "CommutatorDefinition"
+AntiCommutatorDefinition    ::usage "AntiCommutatorDefinition"
+getOccNumRepresentation     ::usage "getOccNumRepresentation[siteNum, particleNum]"
 (*--------- Plot and Manipulate Crystal Structures -------------------- ----------------*)
 
 (*--------- Point and Space Group Information ---------------------------*)
@@ -16,7 +21,7 @@ qmSU                        ::usage "qmSU[j, n, t]"
 (*--------------------------------------------------*)
 (*-------------------------- Internal --------------*)
 (*--------------------------------------------------*)
-
+QNumberList = {};
 (*--------------------------- Options ----------------------------*)
 
 (*--------------------------- external Modules -------------------*)
@@ -50,6 +55,22 @@ qmJI[j_?qmJQ] := Module[{}, Return[IdentityMatrix[2 j + 1]]]
 qmSU[j_?qmJQ, n_, t_] := Module[{},
   MatrixExp[-I t (n/Norm[n]).{qmJx[j], qmJy[j], qmJz[j]}/ToExpression["\[HBar]"]]
 ]
+
+AddQNumber[x_] := Module[{},
+  If[ListQ[x], AddQNumber[#] &/@ x,
+  QNumberList = DeleteDuplicates[Append[QNumberList, x]];
+  CommutatorDefinition[x[i__], x[j__]] := x[i] ** x[j] - x[j] ** x[i];
+  AntiCommutatorDefinition[x[i__], x[j__]] := x[i] ** x[j] + x[j] ** x[i];
+  PrintTemporary[Labeled[QNumberList, "activated QNumbers:", Top, LabelStyle -> Bold]];
+  Pause[2];
+  ];
+]
+
+ShowQNumberList[] := Module[{},
+  Print[Labeled[QNumberList, "activated QNumbers:", Top, LabelStyle -> Bold]];
+]
+
+getOccNumRepresentation[siteNum_, particleNum_] := ReverseSort@Join[Permutations[PadRight[#, siteNum]] & /@ IntegerPartitions[particleNum, siteNum]]
 
 (*-------------------------- Attributes ------------------------------*)
 

@@ -12,6 +12,7 @@ FortranUpdateEwaldField      ::usage "FortranUpdateEwaldField[]"
 FortranGetEwaldForces        ::usage "FortranGetEwaldForces[]"
 HeadTailDeltaH               ::usage "HeadTailDeltaH[FunctionName, ReturnVar, FieldDim, nn]"
 HeadTailForces               ::usage "HeadTailForces[FunctionName, ReturnVar, FieldDim, nn]"
+HeadTailHessianOnSite        ::usage "HeadTailHessianOnSite[FunctionName, ReturnVar, FieldDim, nn]"
 HeadTailEOnSite              ::usage "HeadTailEOnSite[FunctionName, ReturnVar, FieldDim, nn]"
 WriteLatticeModelF90         ::usage "WriteLatticeModelF90[F90dir, FuncName, FuncType, InvariantList, MMAVars, MMA2F90Vars]"
 (*--------- Plot and Manipulate Crystal Structures -------------------- ----------------*)
@@ -959,8 +960,9 @@ HeadTailForces[FunctionName_?StringQ, ReturnVar_, nn_, OptionsPattern[{"AllSites
           {Fint[1] <> "do x0 = 1, NGridz"},
           {Fint[1] <> "do y0 = 1, NGridy"},
           {Fint[1] <> "do z0 = 1, NGridx"}}, {}],
-      {{Fint[2]},
-       {Fint[2] <> "euij = StrainFromu(x0, y0, z0, Fields)"},
+      {{Fint[2]}},
+      {Fint[1] <> # <> " = 0.0D0"} & /@ DeleteDuplicates[Join[{res}, reslist]],
+      {{Fint[2] <> "euij = StrainFromu(x0, y0, z0, Fields)"},
        {Fint[2] <> "eij = e0ij + euij"},
        {Fint[2]}},
       HopingCodeBlock[nn, "int" -> If[OptionValue["AllSites"], 2, 1]][[3]],
@@ -976,6 +978,39 @@ HeadTailForces[FunctionName_?StringQ, ReturnVar_, nn_, OptionsPattern[{"AllSites
     {{Fint[1]},
      {"End Function " <> FunctionName}}];
   Return[{head, tail}]]
+
+HeadTailHessianOnSite[FunctionName_?StringQ, ReturnVar_, nn_, OptionsPattern[{}]] :=
+ Module[{Fint, n, head, tail, res, reslist, func},
+  Fint[n_] := StringRepeat["  ", n];
+  {res, reslist} = Which[StringQ[ReturnVar], {ReturnVar, {ReturnVar}}, ListQ[ReturnVar] && Length[ReturnVar] == 2, {First[ReturnVar], ReturnVar[[2]]}, True, Print["ReturnVar either a string or a list with 2 elements"; Abort[]]];
+  func = {{"Function " <> FunctionName <> "(x0, y0, z0, Fields, e0ij) Result(" <> res <> ")"}};
+  head = Join[
+      func,
+      {{Fint[1]},
+       {Fint[1] <> "use Parameters"},
+       {Fint[1] <> "use Inputs"}},
+      {{Fint[1]},
+       {Fint[1] <> "Implicit none"},
+       {Fint[1] <> "Real*8,  Intent(in) :: Fields(FieldDim, NumField, NGridx, NGridy, NGridz)"},
+       {Fint[1] <> "Real*8,  Intent(in) :: e0ij(3,3)"},
+       {Fint[1] <> "Integer, Intent(in) :: x0, y0, z0"},
+       {Fint[1] <> "Real*8              :: eij(3,3), euij(3,3)"}},
+      {Fint[1] <> "Real*8              :: " <> # <> "(OnSiteDim, OnSiteDim)"} & /@ DeleteDuplicates[Join[{res}, reslist]],
+      {{Fint[1]}},
+      HopingCodeBlock[nn][[2]],
+      {{Fint[1]}},
+      {Fint[1] <> # <> " = 0.0D0"} & /@ DeleteDuplicates[Join[{res}, reslist]],
+      {{Fint[1] <> "euij = StrainFromu(x0, y0, z0, Fields)"},
+       {Fint[1] <> "eij = e0ij + euij"},
+       {Fint[1]}},
+      HopingCodeBlock[nn, "int" -> 1][[3]],
+      {{Fint[1]}}];
+  tail = Join[
+    If[ListQ[ReturnVar], {{Fint[1] <> res <> "=" <> StringJoin[Riffle[reslist, "+"]]}}, {}],
+    {{Fint[1]},
+     {"End Function " <> FunctionName}}];
+  Return[{head, tail}]
+]
 
 HeadTailEOnSite[FunctionName_?StringQ, ReturnVar_, nn_, OptionsPattern[{"AllSites" -> True}]] := Module[{Fint, n, head, tail, res, reslist, func},
   Fint[n_] := StringRepeat["  ", n];
@@ -1048,7 +1083,14 @@ WriteLatticeModelF90[F90dir_, FuncName_?StringQ, FuncType_?StringQ, InvariantLis
   MMA = {{ToString@FortranForm[If[OptionValue["AllSites"], ToExpression[InvariantType][ToExpression["x0"], ToExpression["y0"], ToExpression["z0"]], ToExpression[InvariantType]]], Expand[If[ListQ[Invariants], Invariants.(ToExpression[CoeffType][#] & /@ Range[Length@Invariants]), Invariants]]}};
          {#1, Expr2Fortran[#2, MMA2F90Vars]} & @@@ MMA, {inv, InvariantList}], 1];
   body = Flatten[FortranExprBlock[#1, #2, If[OptionValue["AllSites"], 2, 1]] & @@@ Fortran, 1];
-  {head, tail} = HeadTailEOnSite[FuncName, If[Length@InvariantTypeList == 1, First@InvariantTypeList, {FuncType, InvariantTypeList}], 1, "AllSites" -> OptionValue["AllSites"]]
+  {head, tail} = HeadTailEOnSite[FuncName, If[Length@InvariantTypeList == 1, First@InvariantTypeList, {FuncType, InvariantTypeList}], 1, "AllSites" -> OptionValue["AllSites"]],
+  FuncType == "HessianOnSite",
+  Fortran = Flatten[Table[InvariantType = FuncType <> inv[[1]];
+    Invariants = inv[[2]]; CoeffType = "Coeff" <> inv[[1]];
+    MMA = Flatten[Table[{ToString@FortranForm[ToExpression[InvariantType][i, j]], Expand@D[If[ListQ[Invariants], Invariants.(ToExpression[CoeffType][#] & /@ Range[Length@Invariants]), Invariants], MMAVars[[i]], MMAVars[[j]]]}, {i, Length@MMAVars}, {j, Length@MMAVars}], 1];
+   {#1, Expr2Fortran[#2, MMA2F90Vars]} & @@@ MMA, {inv, InvariantList}], 1];
+  body = Flatten[FortranExprBlock[#1, #2, 1] & @@@ Fortran, 1];
+  {head, tail} = HeadTailHessianOnSite[FuncName, If[Length@InvariantTypeList == 1, First@InvariantTypeList, {FuncType, InvariantTypeList}], 1]
 ];
   MMA2FORTRAN[F90dir <> "/" <> FuncName, Join[head, body, tail]];
 ]

@@ -7,7 +7,7 @@ ModesSum                     ::usage "ModesSum[list, Modes]"
 ReadForceConstants           ::usage "ReadForceConstants[file]"
 ImposeTranslationalSymmetry  ::usage "ImposeTranslationalSymmetry[FC]"
 FC2Fi0Bonds                  ::usage "FC2Fi0Bonds[FC, pos, NSC]"
-HessianOnSite                ::usage "HessianOnSite[InvList, vars, CoeffStr]"
+GetHessianOnSite             ::usage "GetHessianOnSite[InvList, vars, CoeffStr]"
 Invariant2Fi0Bonds           ::usage "Invariant2Fi0Bonds[InvList, vars, CoeffStr]"
 GetDynamicMatrix             ::usage "GetDynamicMatrix[Fi0, pos, q]"
 PhononK                      ::usage "PhononK[Fi0, pos, k]"
@@ -198,17 +198,16 @@ GetEwaldMatrix[NGrid_, tol_] := Module[{gcut, ix, iy, iz, NGridx, NGridy, NGridz
   Return[dpij]
 ]
 
-Invariant2Fi0Bonds[InvList_, vars_, CoeffStr_] := Module[{x, i, NeighbourList, varsijk, Fi0, vars0, nn}, 
-  NeighbourList = DeleteDuplicates[Level[#, {1}][[3 ;; 5]] & /@ Variables[If[ListQ[InvList], InvList /. Subscript[ToExpression@"\[Epsilon]", ___] -> 1, InvList /. Subscript[ToExpression@"\[Epsilon]", ___] -> 1 /. ToExpression[CoeffStr][___] -> 1]]];
-  vars0 = vars /. {Subscript[x_, i_] -> Subscript[x, i, 0, 0, 0]};
+Invariant2Fi0Bonds[InvList_, vars0_, CoeffStr_] := Module[{x, i, NeighbourList, varsijk, Fi0, vars, nn}, 
+  NeighbourList = DeleteDuplicates[Level[#, {1}][[3 ;; 5]] & /@ Variables[If[ListQ[InvList], InvList /. Subscript[ToExpression@"\[Epsilon]0", ___] -> 1, InvList /. Subscript[ToExpression@"\[Epsilon]0", ___] -> 1 /. ToExpression[CoeffStr][___] -> 1]]];
+  vars = vars0 /. {Subscript[x_, i_, ___] -> Subscript[x, i]};
   Fi0 = Table[varsijk = vars /. {Subscript[x_, i_] -> (Subscript[x, i, #1, #2, #3] & @@ nn)};
               {nn, Table[D[If[ListQ[InvList], InvList.(ToExpression[CoeffStr][#] & /@ Range[Length@InvList]), InvList], v1, v2], {v1, vars0}, {v2, varsijk}]}, 
               {nn, NeighbourList}];
 Return[Fi0]
 ]
 
-HessianOnSite[InvList_, vars_, CoeffStr_] := Module[{x, i, Hi0i0, vars0},
-  vars0 = vars /. {Subscript[x_, i_] -> Subscript[x, i, 0, 0, 0]};
+GetHessianOnSite[InvList_, vars0_, CoeffStr_] := Module[{x, i, Hi0i0},
   Hi0i0 = Table[D[If[ListQ[InvList], InvList.(ToExpression[CoeffStr][#] & /@ Range[Length@InvList]), InvList], v1, v2], {v1, vars0}, {v2, vars0}];
   Return[Hi0i0]
 ]

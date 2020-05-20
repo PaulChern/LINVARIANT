@@ -1,4 +1,4 @@
-BeginPackage["LINVARIANT`Vasp`", {"LINVARIANT`ISODISTORT`"}]
+BeginPackage["LINVARIANT`Vasp`", {"LINVARIANT`ISODISTORT`", "LINVARIANT`Structure`"}]
 
 (*--------- Load, Save and Modify Crystal Structure Libraries ------------*)
 ImportPOSCAR                 ::usage "ImportPOSCAR[f]"

@@ -4,6 +4,7 @@ BeginPackage["LINVARIANT`GroupTheory`"]
 CifImportSpg              ::usage "CifImportSpg[file]"
 GroupQ                    ::usage "GroupQ[grp]"
 GetGroupK                 ::usage "GetGroupK[grp0, vec0, lattice0]"
+GetKStar                  ::usage "GetKStar[grp0, k]"
 GetSiteSymmetry           ::usage "GetSiteSymmetry[grp0, vec0]"
 CifImportOperators        ::usage "CifImportOperators[file]"
 GetGenerators             ::usage "GetGenerators[grp]"
@@ -26,6 +27,7 @@ GetEleOrder               ::usage "GetEleOrder[mat]"
 GetIrep                   ::usage "GetIrep[grp, ct, p]"
 ModM4                     ::usage "ModM4[m1, m2]"
 GrpMultiply               ::usage "GrpMultiply[lgrp, rgrp]"
+GrpxV                     ::usage "GrpxV[grp, v]"
 SortByOrder               ::usage "SortByOrder[grp]"
 GetElePosition            ::usage "GetElePosition[grp, ele]"
 GetSubGroups              ::usage "GetSubGroups[grp, ord]"
@@ -198,6 +200,13 @@ GetGroupK[grp0_, vec0_] := Module[{grp, go, trvec, eq, sol, add, grpout, c, vec}
   Do[If[add[[i]], grpout = Append[grpout, Keys[grp0][[i]]->Values[grp0][[i]]],None], {i, 1, go}];
 
   Return[grpout]
+]
+
+GetKStar[grp0_, k_] := Module[{grpk, LeftCoset, LeftRep},
+  grpk = GetGroupK[grp0, k];
+  LeftCoset = GetLeftCosets[grp0, grpk];
+  LeftRep = LeftCoset[[;; , 1]];
+  Return[GrpxV[LeftRep, k, "k"->True]]
 ]
 
 GetSiteSymmetry[grp0_, vec0_] := Module[{grp, go, trvec, eq, sol, add, grpout, c, vec},
@@ -511,6 +520,19 @@ GrpMultiply[lgrp_, rgrp_] := Module[{},
      GrpMultiply[xyzStr2M4[lgrp], xyzStr2M4[rgrp]]
   ]
 ]
+
+GrpxV[grp_, v_, OptionsPattern[{"k"->False}]] := Module[{},
+  Which[AssociationQ[grp]&&Length[Dimensions@v]==1, GrpxV[#,v] &/@ Keys[grp],
+        AssociationQ[grp]&&Length[Dimensions@v]==2, GrpxV[#1,#2] &@@@ Tuples[{Keys[grp],v}],
+        StringQ[grp]&&(Length[Dimensions@v]==1), GrpxV[xyzStr2M4[grp],v],
+        StringQ[grp]&&(Length[Dimensions@v]==2), GrpxV[xyzStr2M4[grp],#] &/@ v,
+        (ListQ[grp])&&(!MatrixQ[grp])&&(Length[Dimensions@v]==1), GrpxV[#,v] &/@ grp,
+        (ListQ[grp])&&(!MatrixQ[grp])&&(Length[Dimensions@v]==2), GrpxV[#1,#2] &@@@ Tuples[{grp,v}],
+        MatrixQ[grp]&&(Length[Dimensions@v]==2), GrpxV[grp,#] &/@ v,
+        MatrixQ[grp]&&(Length[Dimensions@v]==1), If[OptionValue["k"], Mod[grp[[1;;3,1;;3]].v,1], Mod[(grp.Append[v, 1])[[1;;3]],1]]
+  ]
+]
+        
 
 GTimes[list_] := Module[{},
   Fold[GrpMultiply, list]
