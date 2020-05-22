@@ -1,6 +1,6 @@
 ---
 layout: post
-title:  "Exact diagonalization: Bose–Hubbard model"
+title:  "Bose–Hubbard model"
 date:   2020-05-22 01:30:13 +0800
 categories: Physics
 tags: tutorial
