@@ -25,7 +25,7 @@ Begin["`Private`"]
 (*--------------------------- Modules ----------------------------*)
 GetTi0Bonds[spg0_, tij_, pos_] := Module[{latt, AllSites, c1, c2, c3, sol, site, AllBonds, ReducedBonds}, 
   {latt, AllSites} = pos;
-  AllBonds = Flatten[Table[{(xyzStr2M4[xyz].Join[AllSites[[#1[[1]], 1]], {1}])[[1 ;; 3]], (xyzStr2M4[xyz].Join[AllSites[[#1[[2]], 1]] + #2, {1}])[[1 ;; 3]], #3}, {xyz, Keys[spg0]}] & @@@ tij, 1];
+  AllBonds = Flatten[Table[{GrpxV[xyz, AllSites[[#1[[1]], 1]]], GrpxV[xyz, AllSites[[#1[[2]], 1]] + #2], #3}, {xyz, Keys[spg0]}] & @@@ tij, 1];
   ReducedBonds = Flatten[Table[sol = Rationalize@Chop@First@Values@Solve[site[[2]] + IdentityMatrix[3].{c1, c2, c3} == site[[1]]];If[AllTrue[sol, IntegerQ], {#1 - sol, #2 - sol, #3}, ## &[]], {site, Tuples[{{#1, #2}, AllSites\[Transpose][[1]]}]}] & @@@ AllBonds, 1];
   ReducedBonds = DeleteDuplicates[If[Rationalize[Chop[#1 - Mod[#1, 1]]] == {0, 0, 0}, {#1, #2, #3}, {#2, #1, #3\[Transpose]}] & @@@ ReducedBonds, Chop[#1[[1]] - #2[[1]]] == {0, 0, 0} && Chop[#1[[2]] - #2[[2]]] == {0, 0, 0} &];
   ReducedBonds = {pos2index[AllSites, {#1, Mod[#2, 1]}], Rationalize[#2 - Mod[#2, 1]], 1, #3} & @@@ ReducedBonds;
@@ -45,13 +45,13 @@ TBHk[Ti0_, pos_, k_] := Module[{latt, sites, i, j, TBBlock, NumPos},
   {latt, sites} = pos;
   NumPos = Length[sites];
   TBBlock = Merge[{#1 -> #4/#3 Exp[I 2 Pi k.(sites[[#1[[2]], 1]] + #2 - sites[[#1[[1]], 1]])]} & @@@ Ti0, Total];
-  ArrayFlatten[TensorTranspose[Table[TBBlock[{i, j}], {i, NumPos}, {j, NumPos}], {3, 4, 1, 2}]]
+  ArrayFlatten[TensorTranspose[Table[If[MemberQ[Keys[TBBlock],{i,j}], TBBlock[{i, j}], 0.0 First@Values[TBBlock]], {i, NumPos}, {j, NumPos}], {3, 4, 1, 2}]]
 ]
 
 TBBandsPlot[Ti0_, pos_, klist_, kintv_, OptionsPattern[{"range" -> All}]] := Module[{pdata, k, TBHij, sol, kpath, xticks, BandsPlot},
   {kpath, xticks} = GetKpath[klist, kintv];
   pdata = Table[TBHij = TBHk[Ti0, pos, k[[2]]];
-                sol = Eigenvalues[TBHij];
+                sol = Chop@Eigenvalues[TBHij];
                 {k[[1]], #} & /@ sol, {k, kpath}];
   BandsPlot = ListPlot[pdata\[Transpose],
                        PlotStyle -> Black,
@@ -70,7 +70,7 @@ TBBandsPlot[Ti0_, pos_, klist_, kintv_, OptionsPattern[{"range" -> All}]] := Mod
 TBBandsSpinCharacterPlot[Ti0_, pos_, klist_, kintv_, si_, OptionsPattern[{"range" -> All}]] := Module[{pdata, k, TBHij, sol, kpath, xticks, SpinOp, TBDim, SpinCharacterPlot, BandsPlot},
   {kpath, xticks} = GetKpath[klist, kintv];
   TBDim = Length[TBHk[Ti0, pos, {0, 0, 0}]];
-  SpinOp = ArrayFlatten[PauliMatrix[#]\[TensorProduct]IdentityMatrix[TBDim/2]] & /@ Range[TBDim/2];
+  SpinOp = ArrayFlatten[PauliMatrix[#]\[TensorProduct]IdentityMatrix[TBDim/2]] & /@ Range[3];
   pdata = Table[TBHij = TBHk[Ti0, pos, k[[2]]];
                 sol = {ToString[Chop@#1] -> Chop[#2\[Conjugate].SpinOp[[3]].#2]} & @@@ (Eigensystem[TBHij]\[Transpose]);
                 {k[[1]], ToExpression[#1], Rescale[Chop[#2], {-1,1}]} & @@@ Normal[Merge[Flatten[sol], Total]], {k, kpath}];
@@ -106,7 +106,7 @@ TBPlotSpinTextureSurface[Ti0_, pos_, E0_, klimit_, kintv_: 0.01, tol_: 0.1, si_,
   {xlimit, ylimit} = klimit;
   srange = OptionValue["srange"];
   TBDim = Length[TBHk[Ti0, pos, {0, 0, 0}]];
-  SpinOp = ArrayFlatten[PauliMatrix[#]\[TensorProduct]IdentityMatrix[TBDim/2]] & /@ Range[TBDim/2];
+  SpinOp = ArrayFlatten[PauliMatrix[#]\[TensorProduct]IdentityMatrix[TBDim/2]] & /@ Range[3];
   spindata = Table[TBHij = TBHk[Ti0, pos, {kx, ky, 0}];
                    sol = {ToString[Chop@#1] -> Chop[#2\[Conjugate].SpinOp[[si]].#2]} & @@@ (Eigensystem[TBHij]\[Transpose]);
                    {ToExpression[#1], kx, ky, Rescale[Chop[#2], {-srange, srange}]} & @@@ Normal[Merge[Flatten[sol], Total]], {kx, -xlimit, xlimit, kintv}, {ky, -ylimit, ylimit, kintv}];

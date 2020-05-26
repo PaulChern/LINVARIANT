@@ -8,6 +8,8 @@ ImposeMode                   ::usage = "ImposeMode[Wyckoff0, IsoMatrix, modeset,
 GetIRvector                  ::usage = "GetIRvector[id, pos]"
 GetBasisField                ::usage = "GetBasisField[id, BasisMatrix, pos]"
 GetOpMatrix                  ::usage = "GetOpMatrix[SymOpFile, pos, IsoMatrix, Modes]"
+GetMatrixRep                 ::usage = "GetMatrixRep[SymOpFile, pos, IsoMatrix, Modes]"
+SymmetryOpBasisField         ::usage = "SymmetryOpBasisField[grp, BasisField]"
 GetIsoVars                   ::usage = "GetIsoVars[IsoDispModes]"
 GetIsoTransformRules         ::usage = "GetIsoDispTransformRules[OpMatrix, IsoDispModes, TranType]"
 GetIsoStrainTransformRules   ::usage = "GetIsoStrainTransformRules[GridSymFile]"
@@ -44,6 +46,8 @@ Epsilon
 Begin["`Private`"]
 
 (*--------------------------- Modules ----------------------------*)
+OrbitCode = Association["orbital" -> 0, "spin" -> 1, "disp" -> 2];
+
 ShowIsoModes[PosVec_] := Module[{StructData},
   StructData = Table[{ElementData[i[[3]], "IconColor"], 
                       Sphere[i[[1]], QuantityMagnitude[ElementData[i[[3]], "AtomicRadius"], "Angstroms"]/2], 
@@ -122,13 +126,12 @@ GetIRvector[id_, IsoMatrix_, pos_] := Module[{IRvector},
   Return[IRvector]
 ]
 
-GetBasisField[id_, BasisMatrix_, pos_, OptionsPattern["spin" -> False]] := Module[{BasisField},
-  BasisField = Which[ListQ[id], GetBasisField[#, BasisMatrix, pos] & /@ id, IntegerQ[id], {pos\[Transpose][[2]], {pos\[Transpose][[1]], # & /@ Partition[BasisMatrix[[;; , id]], 3]}\[Transpose], ConstantArray[If[OptionValue["spin"],1,2], Length[pos]]}\[Transpose]];
+GetBasisField[id_, BasisMatrix_, pos_, OptionsPattern[{"orbit" -> "disp"}]] := Module[{BasisField},
+  BasisField = Which[ListQ[id], GetBasisField[#, BasisMatrix, pos] & /@ id, IntegerQ[id], {pos\[Transpose][[2]], {pos\[Transpose][[1]], # & /@ Partition[Normal[BasisMatrix][[;; , id]], 3]}\[Transpose], ConstantArray[OrbitCode[OptionValue["orbit"]], Length[pos]]}\[Transpose]];
   Return[BasisField]
 ]
 
-GetOpMatrix[grp_, pos_, IsoMatrix_, Modes_, OptionsPattern["spin" -> False]] := Module[{op2, ir1, ir2, mat, OpMatrix, AllIRvectors, AllTransformedIRvectors, IsoDim},
-
+GetOpMatrix[grp_, pos_, IsoMatrix_, Modes_, OptionsPattern[{"spin" -> False}]] := Module[{op2, ir1, ir2, mat, OpMatrix, AllIRvectors, AllTransformedIRvectors, IsoDim},
   IsoDim = Length@Modes;
   OpMatrix = If[IsoDim != 0,
   AllIRvectors = Flatten[GetIRvector[#1, IsoMatrix, pos]\[Transpose][[1]]] & @@@ Modes;
@@ -139,19 +142,42 @@ GetOpMatrix[grp_, pos_, IsoMatrix_, Modes_, OptionsPattern["spin" -> False]] := 
   Return[OpMatrix]
 ]
 
-GetOpMatrixHeavy[grp_, pos_, BasisMatrix_, BasisLabels_, OptionsPattern["spin" -> False]] := Module[{op, op2, ir1, ir2, mat, OpMatrix, AllIRvectors, BasisField, TransformedBasisField, BasisDim},
-  Which[AssociationQ[grp], GetOpMatrix[#, pos, BasisMatrix, BasisLabels] & /@ Keys[grp],
-   ListQ[grp] && ! MatrixQ[grp], GetOpMatrix[#, pos, BasisMatrix, BasisLabels] & /@ grp,
-   MatrixQ[grp], GetOpMatrix[M42xyzStr[grp], pos, BasisMatrix, BasisLabels],
-   StringQ[grp],
+GetMatrixRep[grp_, pos_, BasisMatrix_, BasisLabels_, OptionsPattern[{"orbit" -> "disp"}]] := Module[{op, op2, ir1, ir2, mat, OpMatrix, AllIRvectors, BasisField, TransformedBasisField, BasisDim, g, ig, field},
    BasisDim = Length@BasisLabels;
-   OpMatrix = If[BasisDim != 0,
-     BasisField = GetBasisField[Range[BasisDim], BasisMatrix, pos, "spin" -> OptionValue["spin"]];
-     TransformedBasisField = ParallelTable[SymmetryOpBasisField[grp, field], {field, BasisField}];
-     mat = ParallelTable[Flatten[TransformedBasisField[[i]]\[Transpose][[2]]\[Transpose][[2]]].Flatten[BasisField[[j]]\[Transpose][[2]]\[Transpose][[2]]], {i, Range@BasisDim}, {j, Range@BasisDim}]; 
-     SparseArray[Normalize[#] & /@ mat], Table[{}, {Length@grp}]]; 
-   Return[OpMatrix]]
+   OpMatrix = 
+       If[BasisDim != 0,
+       BasisField = GetBasisField[Range[BasisDim], BasisMatrix, pos, "orbit" -> OptionValue["orbit"]];
+       TransformedBasisField = ParallelTable[SymmetryOpBasisField[g, #] &/@ BasisField, {g, Keys@grp}, DistributedContexts -> {"LINVARIANT`ISODISTORT`Private`"}];
+       ParallelTable[mat = Table[Flatten[TransformedBasisField[[ig]][[i]]\[Transpose][[2]]\[Transpose][[2]]].Flatten[BasisField[[j]]\[Transpose][[2]]\[Transpose][[2]]], {i, Range@BasisDim}, {j, Range@BasisDim}];
+       SparseArray[Normalize[#] & /@ mat], {ig, Length@grp}, DistributedContexts -> {"LINVARIANT`ISODISTORT`Private`"}], 
+       Table[{}, {Length@grp}]];
+  Return[OpMatrix]
 ]
+ 
+SymmetryOpBasisField[grp_, BasisField_, OptionsPattern[{"orbit" -> "disp"}]] := Module[{xyzRotTran, xyzTrans, xyzRot, NewField, posvec, difftable, posmap},
+  Which[
+   AssociationQ[grp],
+   SymmetryOpBasisField[#, BasisField,
+      "orbit" -> OptionValue["orbit"]] & /@ Keys[grp],
+   ListQ[grp] && ! MatrixQ[grp],
+   SymmetryOpBasisField[#, BasisField,
+      "orbit" -> OptionValue["orbit"]] & /@ grp,
+   MatrixQ[grp],
+   SymmetryOpBasisField[M42xyzStr[grp], BasisField,
+    "orbit" -> OptionValue["orbit"]],
+   StringQ[grp] && Length[Dimensions[BasisField]] == 3,
+   SymmetryOpBasisField[grp, #, "orbit" -> OptionValue["orbit"]] & /@ BasisField,
+   StringQ[grp] && Length[Dimensions[BasisField]] == 2,
+   xyzRotTran = ToExpression["{" <> grp <> "}"];
+   xyzTrans = xyzRotTran /. {ToExpression["x"] -> 0, ToExpression["y"] -> 0, ToExpression["z"] -> 0};
+   xyzRot = xyzRotTran - xyzTrans;
+   posvec = {Mod[N[xyzRotTran /. Thread[ToExpression[{"x", "y", "z"}] -> #2[[1]]]], 1], Det[xyz2Rot[xyzRot]]^#3 N[xyzRot /. Thread[ToExpression[{"x", "y", "z"}] -> #2[[2]]]]} & @@@           BasisField;
+   difftable = DistMatrix[BasisField\[Transpose][[2]]\[Transpose][[1]], posvec\[Transpose][[1]]];
+   posmap = Position[difftable, x_ /; TrueQ[Chop[x] == 0]];
+   NewField = {BasisField[[#1]][[1]], posvec[[#2]], BasisField[[#1]][[3]]} & @@@ posmap;
+  Return[NewField]]
+]
+
 
 GetIsoTransformRules[OpMatrix_, IsoModes_, TranType_] := Module[{IsoDim, IsoVars, SpinDispRules, rules, i, var},
   IsoDim = Length@IsoModes;

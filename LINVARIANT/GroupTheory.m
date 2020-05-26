@@ -4,7 +4,7 @@ BeginPackage["LINVARIANT`GroupTheory`"]
 CifImportSpg              ::usage "CifImportSpg[file]"
 GroupQ                    ::usage "GroupQ[grp]"
 GetGroupK                 ::usage "GetGroupK[grp0, vec0, lattice0]"
-GetKStar                  ::usage "GetKStar[grp0, k]"
+GetStarK                  ::usage "GetStarK[grp0, k]"
 GetSiteSymmetry           ::usage "GetSiteSymmetry[grp0, vec0]"
 CifImportOperators        ::usage "CifImportOperators[file]"
 GetGenerators             ::usage "GetGenerators[grp]"
@@ -202,11 +202,11 @@ GetGroupK[grp0_, vec0_] := Module[{grp, go, trvec, eq, sol, add, grpout, c, vec}
   Return[grpout]
 ]
 
-GetKStar[grp0_, k_] := Module[{grpk, LeftCoset, LeftRep},
+GetStarK[grp0_, k_] := Module[{grpk, LeftCoset, LeftRep},
   grpk = GetGroupK[grp0, k];
   LeftCoset = GetLeftCosets[grp0, grpk];
   LeftRep = LeftCoset[[;; , 1]];
-  Return[GrpxV[LeftRep, k, "k"->True]]
+  Return[Mod[GrpxV[LeftRep, k, "k"->True],1]]
 ]
 
 GetSiteSymmetry[grp0_, vec0_] := Module[{grp, go, trvec, eq, sol, add, grpout, c, vec},
@@ -350,12 +350,8 @@ GetElePosition[grp_, ele_] := Module[{ind, type, axis, ang, shift},
   Return[First@First@ind]
 ]
 
-GroupQ[grp_] := Module[{g, grpmat, GrpSub, tb},
-  grpmat = Values[grp];
-  GrpSub = Thread[Values[grp] -> Keys[grp]];
-  g = Length@grp;
-  tb = Union[Flatten[Table[ModM4[grpmat[[i]].grpmat[[j]]], {i, g}, {j, g}] /. GrpSub]];
-  Return[Length[Complement[tb, Keys[grp]]] == 0]
+GroupQ[grp_] := Module[{},
+  Return[Length@Complement[Union[Flatten[GrpMultiply[grp, grp]]], Keys[grp]] == 0]
 ]
 
 GetSubGroups[grp_, ord_: {}] := Module[{GrpSub, g, div, sub, sg, test, j},
@@ -376,11 +372,13 @@ SortByOrder[grp_] := SortBy[grp, (GetEleOrder[#]&)]
 GetInvSubGroups[grp_, ind_:0] := Module[{g, GrpSub, classes, subs, invsub, test},
   GrpSub = Dispatch[Thread[Keys[grp] -> Values[grp]]];
   g = Length[grp];
-  If[ind != 0, If[Divisible[g, ind], Unevaluated[Sequence[]], Print["Index is not compatible!"];Abort[]], Unevaluated[Sequence[]]];
+  If[ind != 0, 
+     If[Divisible[g, ind], Unevaluated[Sequence[]], Print["Index is not compatible!"];Abort[]], 
+     Unevaluated[Sequence[]]];
   classes = Complement[GetClasses[grp], {{"x,y,z"}}];
-  subs = If[ind ==0, Subsets[classes], If[Length[Flatten[#]] == g/ind-1, #, {}] &/@ Subsets[classes]];
+  subs = If[ind ==0, Union[{{"x,y,z"}}, #] &/@ Subsets[classes], If[Length[Flatten[#]] == g/ind-1, Union[{{"x,y,z"}}, #], {}] &/@ Subsets[classes]];
   invsub = {};
-  Do[test = Association[# -> (# /. GrpSub) & /@ Flatten[Union[subs[[i]], {{"x,y,z"}}]]];
+  Do[test = Association[# -> (# /. GrpSub) & /@ Flatten[subs[[i]]]];
      If[GroupQ[test], If[Length[test] > 1 && Length[test] <= g, AppendTo[invsub, test], Null], Null], {i, Length@subs}];
   Return[SortBy[#, (GetEleOrder[#1]&)]&/@invsub]
 ]
@@ -486,6 +484,24 @@ GetAngularMomentumRep[latt_, mat_, l_, Harmonic_: "Tesseral"] := Module[{\[Alpha
 
 GrpMultiply[lgrp_, rgrp_] := Module[{},
   Which[
+   AssociationQ[lgrp] && AssociationQ[rgrp],
+     GrpMultiply[#1, #2] & @@@ Tuples[{Values@lgrp, Values@rgrp}],
+   AssociationQ[lgrp] && MatrixQ[rgrp],
+      GrpMultiply[#, rgrp] &/@ Values@lgrp,
+   AssociationQ[lgrp] && StringQ[rgrp],
+      GrpMultiply[#, xyzStr2M4@rgrp] &/@ Values@lgrp,
+   MatrixQ[lgrp] && AssociationQ[rgrp],
+      GrpMultiply[lgrp, #] &/@ Values@rgrp,
+   StringQ[lgrp] && AssociationQ[rgrp],
+      GrpMultiply[xyzStr2M4@lgrp, #] &/@ Values@rgrp,
+   AssociationQ[lgrp] && Length[Dimensions[rgrp]] == 3,
+      GrpMultiply[#1, #2] & @@@ Tuples[{Values@lgrp, rgrp}],
+   AssociationQ[lgrp] && Length[Dimensions[rgrp]] == 1,
+      GrpMultiply[#1, xyzStr2M4@#2] & @@@ Tuples[{Values@lgrp, rgrp}],
+   Length[Dimensions[lgrp]] == 3 && AssociationQ[rgrp],
+      GrpMultiply[#1, #2] & @@@ Tuples[{lgrp, Values@rgrp}],
+   Length[Dimensions[lgrp]] == 1 && AssociationQ[rgrp],
+       GrpMultiply[xyzStr2M4@#1, #2] & @@@ Tuples[{lgrp, Values@rgrp}],
    Length[Dimensions[lgrp]] == 3 && Length[Dimensions[rgrp]] == 3,
      GrpMultiply[#1, #2] & @@@ Tuples[{lgrp, rgrp}],
    Length[Dimensions[lgrp]] == 3 && MatrixQ[rgrp],
@@ -501,7 +517,7 @@ GrpMultiply[lgrp_, rgrp_] := Module[{},
    Length[Dimensions[lgrp]] == 0 && Length[Dimensions[rgrp]] == 3,
      GrpMultiply[xyzStr2M4[lgrp], #] &/@ rgrp,
    MatrixQ[lgrp] && MatrixQ[rgrp],
-     ModM4[lgrp.rgrp],
+     M42xyzStr[ModM4[lgrp.rgrp]],
    MatrixQ[lgrp] && Length[Dimensions[rgrp]] == 1,
      GrpMultiply[lgrp, xyzStr2M4[#]] &/@ rgrp,
    Length[Dimensions[lgrp]] == 1 && MatrixQ[rgrp],
@@ -529,7 +545,7 @@ GrpxV[grp_, v_, OptionsPattern[{"k"->False}]] := Module[{},
         (ListQ[grp])&&(!MatrixQ[grp])&&(Length[Dimensions@v]==1), GrpxV[#,v] &/@ grp,
         (ListQ[grp])&&(!MatrixQ[grp])&&(Length[Dimensions@v]==2), GrpxV[#1,#2] &@@@ Tuples[{grp,v}],
         MatrixQ[grp]&&(Length[Dimensions@v]==2), GrpxV[grp,#] &/@ v,
-        MatrixQ[grp]&&(Length[Dimensions@v]==1), If[OptionValue["k"], Mod[grp[[1;;3,1;;3]].v,1], Mod[(grp.Append[v, 1])[[1;;3]],1]]
+        MatrixQ[grp]&&(Length[Dimensions@v]==1), If[OptionValue["k"], grp[[1;;3,1;;3]].v, (grp.Append[v, 1])[[1;;3]]]
   ]
 ]
         

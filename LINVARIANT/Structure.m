@@ -6,7 +6,6 @@ exportXYZ                    ::usage = "exportXYZ[filepath_, {comment_, vertices
 cif2mcif                     ::usage = "cif2mcif[id, IsoMatrix, pos0]"
 SymmetryOpOrigin             ::usage = "SymmetryOpOrigin[file, set]"
 SymmetryOpVectorField        ::usage = "SymmetryOpVectorField[file, set]"
-SymmetryOpBasisField         ::usage = "SymmetryOpBasisField[grp, BasisField]"
 GetLatticeVectors            ::usage = "GetLatticeVectors[dat]"
 ImportIsodistortCIF          ::usage = "ImportIsodistortCIF[\*StyleBox[\"filename\",\"TI\"]] opens .cif file and imports relevant data."
 PosMatchTo                   ::usage = "PosMatchTo[spos, dpos, tol]"
@@ -48,6 +47,7 @@ Options[ImportIsodistortCIF]    = {Fractional->False, CorrectLabels->True, Toler
 Begin["`Private`"]
 
 (*--------------------------- Modules ----------------------------*)
+OrbitCode = Association["orbital" -> 0, "spin" -> 1, "disp" -> 2];
 
 pos2index[atoms_, pos_] := If[Length[Dimensions[pos]] > 1, 
                               pos2index[atoms, #] &/@ pos,
@@ -107,24 +107,6 @@ PosMatchTo[spos_, dpos_, tol_, OptionsPattern["shift"->False]] := Module[{diffta
   posmap = Position[difftable, x_ /; TrueQ[x <= tol]];
   newpos = If[OptionValue["shift"], PbcDiff[#]&/@(Table[dpos[[posmap[[i]][[2]]]], {i, Length@spos}] - spos) + spos,Table[dpos[[posmap[[i]][[2]]]], {i, Length@spos}]];
   Return[{posmap, newpos}]
-]
-
-SymmetryOpBasisField[grp_, BasisField_] := Block[{xyzRotTran, xyzTrans, xyzRot, NewField, posvec, difftable, posmap},
-  Which[AssociationQ[grp], SymmetryOpBasisField[#, BasisField] & /@ Keys[grp],
-   ListQ[grp] && ! MatrixQ[grp], SymmetryOpBasisField[#, BasisField] & /@ grp,
-   MatrixQ[grp], SymmetryOpBasisField[M42xyzStr[grp], BasisField],
-   StringQ[grp] && Length[Dimensions[BasisField]] == 3, SymmetryOpBasisField[grp, #] & /@ BasisField,
-   StringQ[grp] && Length[Dimensions[BasisField]] == 2,
-   xyzRotTran = ToExpression["{" <> grp <> "}"];
-   xyzTrans = xyzRotTran /. {ToExpression["x"] -> 0, ToExpression["y"] -> 0, ToExpression["z"] -> 0};
-   xyzRot = xyzRotTran - xyzTrans;
-   posvec = {Mod[N[xyzRotTran /. Thread[ToExpression[{"x", "y", "z"}] -> #2[[1]]]], 1], 
-             Det[xyz2Rot[xyzRot]]^#3 N[xyzRot /. Thread[ToExpression[{"x", "y", "z"}] -> #2[[2]]]]} & @@@ BasisField;
-   difftable = DistMatrix[BasisField\[Transpose][[2]]\[Transpose][[1]], posvec\[Transpose][[1]]];
-   posmap = Position[difftable, x_ /; TrueQ[Chop[x] == 0]];
-   NewField = {BasisField[[#1]][[1]], posvec[[#2]], BasisField[[#1]][[3]]} & @@@ posmap;
-   Return[NewField]
-   ]
 ]
 
 SymmetryOpVectorField[grp_, pos_, vec_, OptionsPattern["spin" -> False]] := Block[{originshift, xyzStrData, xyzRotTranData, xyzTranslation, xyzRotData, field, newpos, newvec, difftable, diff, posmap, i, j, axial}, 
@@ -390,7 +372,7 @@ SimplifyElementSymbol[ele_] := Module[{SimplifyList},
 
 PlotCrystal[latt_, pos_, dim_, OptionsPattern[{"vec" -> {}, "shift"->{0,0,0}, "AtomSize" -> 0.02, "ImageSize" -> 500}]] := Module[{Nx, Ny, Nz, ExtVec, PointList, PosSymbols, PosTypes, PosColorCode, PosColorRange, PosColorList, PosList, vec},
   {Nx, Ny, Nz} = dim;
-  ExtVec = If[OptionValue["vec"] != {}, Table[{vec[[1]], Arrowheads[2*OptionValue["AtomSize"]], Arrow[Tube[{latt.(#1-OptionValue["shift"]), latt.(#1+#2-OptionValue["shift"])}, 2.5*OptionValue["AtomSize"]]]} & @@@ vec[[2]], {vec, OptionValue["vec"]}], {{}}];
+  ExtVec = If[OptionValue["vec"] != {}, Table[{vec[[1]], Arrowheads[1.0*OptionValue["AtomSize"]], Arrow[Tube[{latt.(#1-OptionValue["shift"]), latt.(#1+#2-OptionValue["shift"])}, 2.5*OptionValue["AtomSize"]]]} & @@@ vec[[2]], {vec, OptionValue["vec"]}], {{}}];
   PosSymbols = pos\[Transpose][[2]];
   PosTypes = GroupBy[PosSymbols, StringTake[#, First@First@StringPosition[#, "."] - 1] &];
   PosColorCode = Association[MapIndexed[#1 -> First[#2] &, Keys[PosTypes]]];
