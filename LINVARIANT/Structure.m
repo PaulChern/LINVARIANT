@@ -109,17 +109,18 @@ PosMatchTo[spos_, dpos_, tol_, OptionsPattern["shift"->False]] := Module[{diffta
   Return[{posmap, newpos}]
 ]
 
-SymmetryOpVectorField[grp_, pos_, vec_, OptionsPattern["spin" -> False]] := Block[{originshift, xyzStrData, xyzRotTranData, xyzTranslation, xyzRotData, field, newpos, newvec, difftable, diff, posmap, i, j, axial}, 
+SymmetryOpVectorField[grp_, pos_, vec_, ftype_] := Block[{originshift, xyzStrData, xyzRotTranData, xyzTranslation, xyzRotData, field, newpos, newvec, difftable, diff, posmap, i, j},
   originshift = {0., 0., 0.};
   xyzStrData = Keys[grp];
   xyzRotTranData = Table[ToExpression["{" <> xyzStrData[[i]] <> "}"], {i, Length[xyzStrData]}];
   xyzTranslation = xyzRotTranData  /. {ToExpression["x"] -> 0, ToExpression["y"] -> 0, ToExpression["z"] -> 0} ;
   xyzRotData = xyzRotTranData - xyzTranslation;
 
-  axial = If[OptionValue["spin"], 1, 2];
-  
-  newvec = Table[{Det[xyz2Rot[op]]^axial*N[op /. Thread[ToExpression[{"x", "y", "z"}] -> #1]], #2} & @@@ vec, {op, xyzRotData}];
-  newpos = Table[{N[op /. Thread[ToExpression[{"x", "y", "z"}] -> (pos[[i]][[1]]+originshift)]], i}, {op, xyzRotTranData}, {i, Length@pos}];
+  newvec = Which[ftype=="disp",
+                 Table[{Det[xyz2Rot[op]]^2*(op /. Thread[ToExpression[{"x", "y", "z"}] -> #1]), #2} & @@@ vec, {op, xyzRotData}],
+                 ftype=="spin",
+                 Table[{Det[xyz2Rot[op]]*(op /. Thread[ToExpression[{"x", "y", "z"}] -> #1]), #2} & @@@ vec, {op, xyzRotData}]];
+  newpos = Table[{(op /. Thread[ToExpression[{"x", "y", "z"}] -> (pos[[i]][[1]]+originshift)]), i}, {op, xyzRotTranData}, {i, Length@pos}];
   
   (*difftable = ParallelTable[DistMatrix[#+originshift&/@(pos\[Transpose][[1]]), newpos[[op]]\[Transpose][[1]]], {op, Length@xyzRotTranData}, DistributedContexts -> {"LINVARIANT`Structure`Private`"}];*)
   difftable = Table[DistMatrix[#+originshift&/@(pos\[Transpose][[1]]), newpos[[op]]\[Transpose][[1]]], {op, Length@xyzRotTranData}];
@@ -370,22 +371,23 @@ SimplifyElementSymbol[ele_] := Module[{SimplifyList},
   Return[SimplifyList]
 ]
 
-PlotCrystal[latt_, pos_, dim_, OptionsPattern[{"vec" -> {}, "shift"->{0,0,0}, "AtomSize" -> 0.02, "ImageSize" -> 500}]] := Module[{Nx, Ny, Nz, ExtVec, PointList, PosSymbols, PosTypes, PosColorCode, PosColorRange, PosColorList, PosList, vec},
+PlotCrystal[latt_, pos_, dim_, OptionsPattern[{"vec" -> {}, "shift"->{0,0,0}, "AtomSize" -> 0.02, "ImageSize" -> 500}]] := Module[{xlimit, ylimit, zlimit, Nx, Ny, Nz, ExtVec, PointList, PosSymbols, PosTypes, PosColorCode, PosColorRange, PosColorList, PosList, vec},
   {Nx, Ny, Nz} = dim;
+  {xlimit, ylimit, zlimit} = If[Divisible[#, 2], {-#/2 + 1, #/2}, {-Floor[#/2], Floor[#/2]}] &/@ dim;
   ExtVec = If[OptionValue["vec"] != {}, Table[{vec[[1]], Arrowheads[1.0*OptionValue["AtomSize"]], Arrow[Tube[{latt.(#1-OptionValue["shift"]), latt.(#1+#2-OptionValue["shift"])}, 2.5*OptionValue["AtomSize"]]]} & @@@ vec[[2]], {vec, OptionValue["vec"]}], {{}}];
   PosSymbols = pos\[Transpose][[2]];
   PosTypes = GroupBy[PosSymbols, StringTake[#, First@First@StringPosition[#, "."] - 1] &];
   PosColorCode = Association[MapIndexed[#1 -> First[#2] &, Keys[PosTypes]]];
   PosColorRange = MinMax[Values[PosColorCode]];
   PosColorList = ColorData["Rainbow"][Rescale[PosColorCode[StringTake[#, First@First@StringPosition[#, "."] - 1]], {1, 2}]] & /@ PosSymbols;
-  PointList = {PointSize[OptionValue["AtomSize"]], Point[Flatten[Table[latt.({ix, iy, iz} + #1 - OptionValue["shift"]), {ix, -Nx, Nx}, {iy, -Ny, Ny}, {iz, -Nz, Nz}], 2]]} & @@@ pos;
+  PointList = {PointSize[OptionValue["AtomSize"]], Point[Flatten[Table[latt.({ix, iy, iz} + #1 - OptionValue["shift"]), {ix, xlimit[[1]], xlimit[[2]]}, {iy, ylimit[[1]], ylimit[[2]]}, {iz, zlimit[[1]], zlimit[[2]]}], 2]]} & @@@ pos;
   PosList = {PosColorList, PointList}\[Transpose];
   Print[Graphics3D[Join[ExtVec,
-                        {{Gray, PointSize[Medium],Point[Flatten[Table[latt.{ix, iy, iz}, {ix, -Nx, Nx}, {iy, -Ny, Ny}, {iz, -Nz, Nz}], 2]]}},
+                        {{Gray, PointSize[Medium],Point[Flatten[Table[latt.{ix, iy, iz}, {ix, xlimit[[1]], xlimit[[2]]}, {iy, ylimit[[1]], ylimit[[2]]}, {iz, zlimit[[1]], zlimit[[2]]}], 2]]}},
                         PosList,
                         {{Blue, Thickness[0.005], Line[If[Count[#2 - #1, 0] >= 1, {latt.Join[#1, {0}], latt.Join[#2, {0}]}, ## &[]] & @@@ Subsets[Permutations[{0, 0, 0, 1, 1, 1}, {2}], {2}]]}}, 
                         {{Blue, Arrowheads[0.03], Arrow[Tube[{latt.{0, 0, 0}, 1.15 latt.# + latt.{0, 0, 0}}, 0.005]]} & /@ (IdentityMatrix[3][[1 ;; 2]])},
-                        {{Black, FontSize -> 10, Table[Text[StringJoin[Riffle[ToString[#] & /@ {ix, iy}, ","]], latt.{ix, iy, iz} + latt.{0.2, 0.2, 0.0}], {ix, -Nx, Nx}, {iy, -Ny, Ny}, {iz, -Nz, Nz}]}}],
+                        {{Black, FontSize -> 10, Table[Text[StringJoin[Riffle[ToString[#] & /@ {ix, iy}, ","]], latt.{ix, iy, iz} + latt.{0.2, 0.2, 0.0}], {ix, xlimit[[1]], xlimit[[2]]}, {iy, ylimit[[1]], ylimit[[2]]}, {iz, zlimit[[1]], zlimit[[2]]}]}}],
                    ImageSize -> OptionValue["ImageSize"],
                    ViewPoint -> {0, 0, 100}]];
 ]
