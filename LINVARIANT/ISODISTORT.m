@@ -3,6 +3,7 @@ BeginPackage["LINVARIANT`ISODISTORT`",{"LINVARIANT`Structure`","LINVARIANT`Group
 (*--------- Load, Save and Modify Crystal Structure Libraries ------------*)
 ShowIsoModes                 ::usage = "ShowIsoModes[PosVec]"
 GetIsoBasis                  ::usage = "GetIsoBasis[grp0, Wyckoff0]"
+GetSymAdaptedBasis           ::usage = "GetSymAdaptedBasis[grp0, pos, kpoint, ftype, ct0]"
 ISODISTORT                   ::usage = "ISODISTORT[R0, pos0, pos, IsoMatrix, label]"
 ImposeMode                   ::usage = "ImposeMode[Wyckoff0, IsoMatrix, modeset, s]"
 GetIRvector                  ::usage = "GetIRvector[id, pos]"
@@ -161,8 +162,8 @@ GetOpMatrix[grp_, pos_, IsoMatrix_, Modes_, ftype_] := Module[{latt, sites, op2,
   {latt, sites} = pos;
   IsoDim = Length@Modes;
   OpMatrix = If[IsoDim != 0,
-  AllIRvectors = Flatten[GetIRvector[#1, IsoMatrix, pos]\[Transpose][[1]]] & @@@ Modes;
-  AllTransformedIRvectors = Transpose[ParallelTable[SymmetryOpVectorField[grp, pos, GetIRvector[id, IsoMatrix, pos], ftype], {id, IsoDim}, DistributedContexts -> {"LINVARIANT`ISODISTORT`Private`"}]];
+  AllIRvectors = Flatten[GetIRvector[#1, IsoMatrix, sites]\[Transpose][[1]]] & @@@ Modes;
+  AllTransformedIRvectors = Transpose[ParallelTable[SymmetryOpVectorField[grp, sites, GetIRvector[id, IsoMatrix, sites], ftype], {id, IsoDim}, DistributedContexts -> {"LINVARIANT`ISODISTORT`Private`"}]];
   (*  ParallelTable[mat=Table[Flatten[op2[[ir1]]\[Transpose][[1]]].AllIRvectors[[ir2]], {ir1, Range@IsoDim}, {ir2, Range@IsoDim}]; SparseArray[Normalize[#]&/@mat], {op2, AllTransformedIRvectors}, DistributedContexts -> {"LINVARIANT`ISODISTORT`Private`"}],*)
   ParallelTable[mat=Table[Flatten[op2[[ir1]]\[Transpose][[1]]].AllIRvectors[[ir2]], {ir1, Range@IsoDim}, {ir2, Range@IsoDim}]; SparseArray[mat], {op2, AllTransformedIRvectors}, DistributedContexts -> {"LINVARIANT`ISODISTORT`Private`"}],
   Table[{{}}, {Length@grp}]
@@ -314,19 +315,42 @@ ImposeIsoStrainVariedDspMode[Wyckoff0_, IsoMatrix_, modeset_, LV_] := Module[{mo
 ShowInvariantTable[TableData_, param_, OptionsPattern["FontSize" -> 12]] := Module[{m, n},
   Print[Rotate[Grid[Table[Style[Rotate[# // Expand, -270 Degree], Black, Bold, OptionValue["FontSize"]] & /@ (Flatten[Table[{Flatten[{"param", param[[n]]}], Prepend[TableData[[n]], n]}, {n, Length@TableData}], 1][[m]]), {m, 2 Length@TableData}], Alignment -> Left, Frame -> All], 270 Degree]]]
 
-GetIsoBasis[grp0_, Wyckoff0_, kpoint_: {{0, 0, 0}, "\[CapitalGamma]"}, ct0_: {}, OptionsPattern[{"spin" -> False}]] := Module[{w, p, imode, WyckoffSites, ZeroModeMatrix, SymmetryAdaptedBasis, Sites, IsoDispModes, IsoDispModeMatrix, OpDispMatrix, ct, ProjMat, g, basis, grpk, m, n, lp},
+GetIsoBasis[grp0_, pos_, ftype_, kpoint_: {{0, 0, 0}, "\[CapitalGamma]"}, ct0_: {}] := Module[{w, p, imode, latt, Wyckoff0, WyckoffSites, ZeroModeMatrix, SymmetryAdaptedBasis, Sites, IsoDispModes, IsoDispModeMatrix, OpDispMatrix, ct, ProjMat, g, basis, grpk, m, n, lp},
   grpk = GetGroupK[grp0, kpoint[[1]]];
   ct = If[Length[ct0] == 0, GetCharacters[grpk, "kpoint" -> kpoint[[2]]], ct0];
   g = Length[grpk];
+  {latt, Wyckoff0} = pos;
   WyckoffSites = GetWyckoffImages[grp0, {#}] & /@ Wyckoff0;
   SymmetryAdaptedBasis = Table[
     Sites = Map[{#[[1]], #[[2]]} &, WyckoffSites[[w]]];
     IsoDispModes = MapIndexed[{First[#2], #1, 1, 0} &, Flatten[Table[Subscript[#[[2]], xyz], {xyz, 3}] & /@ Sites]];
     IsoDispModeMatrix = IdentityMatrix[3 Length[Sites]];
-    OpDispMatrix = GetOpMatrix[grpk, Sites, IsoDispModeMatrix, IsoDispModes, "spin" -> OptionValue["spin"]];
+    OpDispMatrix = GetOpMatrix[grpk, {latt, Sites}, IsoDispModeMatrix, IsoDispModes, ftype];
     ProjMat = Table[lp = ct[[2]][[p]][[1]]; Sum[{m, n} = First@Position[ct[[1]], Keys[grpk][[i]]]; lp/g Conjugate[ct[[2]][[p, m]]] Rationalize@Normal[OpDispMatrix[[i]]], {i, g}], {p, Length[ct[[2]]]}];
     basis = Table[Complement[Orthogonalize[ProjMat[[p]].# & /@ (IsoDispModeMatrix\[Transpose])], {Table[0, {i, 3 Length[Sites]}]}], {p, Length[ct[[2]]]}];
     If[#2 == {}, Unevaluated[Sequence[]], {Table[Sites[[1]][[2]] <> " " <> #1 <> "-" <> ToString[Length@#2] <> "(" <> ToString[imode] <> ")", {imode, Length@#2}], #2}] & @@@ Thread[ct[[3]] -> basis], {w, Length@WyckoffSites}];
+  IsoDispModes = MapIndexed[{First[#2], #1, 1, 0.} &, Flatten[Flatten[SymmetryAdaptedBasis, 1]\[Transpose][[1]]]];
+  IsoDispModeMatrix = # & /@ Transpose[Fold[ArrayFlatten[{{#1, 0}, {0, #2}}] &, Flatten[#, 1] & /@ (#\[Transpose][[2]] & /@ SymmetryAdaptedBasis)]];
+  Return[{IsoDispModes, IsoDispModeMatrix}]
+]
+
+GetSymAdaptedBasis[grp0_, pos_, kpoint_: {{0, 0, 0}, "\[CapitalGamma]"}, ftype_, ct0_: {}] := Module[{w, p, imode, WyckoffSites, ZeroModeMatrix, SymmetryAdaptedBasis, Latt, Wyckoff0, Sites, IsoDispModes, IsoDispModeMatrix, OpDispMatrix, ireps, classes, ct, ProjMat, g, basis, grpk, m, n, lp},
+  grpk = GetGroupK[grp0, kpoint[[1]]];
+  classes = GetClasses[grpk];
+  ct = If[Length[ct0] == 0, ireps = GetSpgIreps[grp0, kpoint[[1]]]; GetSpgCT[grp0, kpoint, ireps, "print" -> False], ct0];
+  g = Length[grpk];
+  {Latt, Wyckoff0} = pos;
+  WyckoffSites = GetWyckoffImages[grp0, {#}] & /@ Wyckoff0;
+  SymmetryAdaptedBasis = Table[
+    Sites = Map[{#[[1]], #[[2]]} &, WyckoffSites[[w]]];
+    IsoDispModes = MapIndexed[{First[#2], #1, 1, 0} &, Flatten[Table[Subscript[#[[2]], xyz], {xyz, 3}] & /@ Sites]];
+    IsoDispModeMatrix = IdentityMatrix[3 Length[Sites]];
+    OpDispMatrix = GetMatrixRep[grpk, {Latt, Sites}, IsoDispModeMatrix, IsoDispModes, ftype];
+    ProjMat = Table[lp = ct[[p]][[1]]; 
+                    Sum[{m, n} = First@Position[classes, Keys[grpk][[i]]]; 
+                    lp/g Conjugate[ct[[p, m]]] Rationalize@Normal[OpDispMatrix[[i]]], {i, g}], {p, Length[ct]}];
+    basis = Table[Complement[Orthogonalize[ProjMat[[p]].# & /@ IsoDispModeMatrix], {Table[0, {i, 3 Length[Sites]}]}], {p, Length[ct]}];
+    If[#2 == {}, ## &[], {Table[Sites[[1]][[2]] <> " " <> kpoint[[2]] <> ToString[#1] <> "-" <> ToString[Length@#2] <> "(" <> ToString[imode] <> ")", {imode, Length@#2}], #2}] & @@@ Thread[Range[Length[ct]] -> basis], {w, Length@WyckoffSites}];
   IsoDispModes = MapIndexed[{First[#2], #1, 1, 0.} &, Flatten[Flatten[SymmetryAdaptedBasis, 1]\[Transpose][[1]]]];
   IsoDispModeMatrix = # & /@ Transpose[Fold[ArrayFlatten[{{#1, 0}, {0, #2}}] &, Flatten[#, 1] & /@ (#\[Transpose][[2]] & /@ SymmetryAdaptedBasis)]];
   Return[{IsoDispModes, IsoDispModeMatrix}]
