@@ -49,6 +49,8 @@ GetUnitaryTransMatrix     ::usage "GetUnitaryTransMatrix[Amat, Bmat, Cmat, n]"
 GetSpgCT                  ::usage "GetSpgCT[spg0, kvec, irreps]"
 DecomposeIreps            ::usage "DecomposeIreps[grp, ct, character]"
 GetCGCoefficients         ::usage "GetCGCoefficients[grp, ireps, p1p2]"
+GetCGjmjm2jm              ::usage "GetCGjmjm2jm[jm1, jm2]"
+GetSuperCellGrp           ::usage "GetSuperCellGrp[t]"
 
 (*--------- Plot and Manipulate Crystal Structures -------------------- ----------------*)
 
@@ -296,7 +298,7 @@ GetEulerRodrigues[n_, \[Theta]_, \[Epsilon]_:1] := Module[{K, R, nx, ny, nz},
 Mat2EulerAngles[latt_, mat_] := Module[{\[Epsilon], axis, \[Phi], R, K, nx, ny, nz, \[Alpha], \[Beta], \[Gamma]},
   {axis, \[Phi], \[Epsilon]} = Mat2EulerVector[mat];
   If[\[Phi] == 0., Return[{{0, 0, 0}, \[Epsilon]}]];
-  {nx, ny, nz} = Normalize[latt.axis];
+  {nx, ny, nz} = Normalize[latt\[Transpose].axis];
   K = {{0, -nz, ny}, {nz, 0, -nx}, {-ny, nx, 0}};
   (*R = Expand[(\[Epsilon] IdentityMatrix[3] + Sin[\[Phi]] K + \[Epsilon] (1 - \[Epsilon] Cos[\[Phi]]) K.K)];*)
   R = Expand[(IdentityMatrix[3] + Sin[\[Phi]] K + (1 - Cos[\[Phi]]) K.K)];
@@ -782,6 +784,26 @@ GetCGCoefficients[grp_, ireps_, pp_] := Module[{i, j, k, t, p, classes, ct, clpo
   Return[CGList]
 ]
 
+GetCGjmjm2jm[jm1_, jm2_] := Module[{j, m, c1, c2, c3, c4, c5, t1, t2, zmin, zmax, CGSum, CGmat},
+  {j1, m1} = jm1;
+  {j2, m2} = jm2;
+  CGmat=Table[Table[
+            If[m != m1+m2,
+               0,
+               c1=j1+j2-j;
+               c2=j1-m1;
+               c3=j2+m2;
+               c4=j2-j-m1;
+               c5=j1-j+m2;
+               zmin=Max[{0,c4,c5}];
+               zmax=Min[c1,c2,c3];
+               CGSum=Sum[(-1)^z/(z! (c1-z)! (c2-z)! (c3-z)! (z-c4)! (z-c5)!), {z,zmin,zmax}];
+               t1 = (2 j + 1) (j1+j2-j)! (j2+j-j1)! (j+j1-j2)!;
+               t2 = (j1+m1)! (j1-m1)! (j2+m2)! (j2-m2)! (j+m)! (j-m)!;
+               Sqrt[t1 t2/(j1+j2+j+1)!] CGSum], {m, Range[-j,j]}], {j, Range[Abs[j1-j2], j1+j2]}];
+  Return[CGmat]
+]
+
 DecomposeIreps[grp_, ct_, character_, OptionsPattern[{"print"->True}]] := Module[{i, p, g, classes, np},
   classes = GetClasses[grp];
   lc = Length[classes];
@@ -793,6 +815,9 @@ DecomposeIreps[grp_, ct_, character_, OptionsPattern[{"print"->True}]] := Module
   Return[np]
 ]
 
+GetSuperCellGrp[t_] := Module[{},
+  SortGrp[StringRiffle[Map[ToString[#, StandardForm] &, {ToExpression["x"], ToExpression["y"],  ToExpression["z"]} + #], ","] & /@ t]
+]
 (*-------------------------- Attributes ------------------------------*)
 
 (*Attributes[]={Protected, ReadProtected}*)

@@ -158,29 +158,49 @@ GetBasisField[id_, BasisMatrix_, BasisLabels_, pos_, ftype_] := Module[{BasisLab
   Return[BasisField]
 ]
 
-GetOpMatrix[grp_, pos_, IsoMatrix_, Modes_, ftype_] := Module[{latt, sites, op2, ir1, ir2, mat, OpMatrix, AllIRvectors, AllTransformedIRvectors, IsoDim, i},
+GetOpMatrix[grp_, pos_, IsoMatrix_, Modes_, ftype_] := Module[{latt, sites, op2, ir1, ir2, mat, OpMatrix, AllIRvectors, AllTransformedIRvectors, NormFactor, IsoDim, i, vec},
   {latt, sites} = pos;
   IsoDim = Length@Modes;
-  OpMatrix = If[IsoDim != 0,
-  AllIRvectors = Flatten[GetIRvector[#1, IsoMatrix, sites]\[Transpose][[1]]] & @@@ Modes;
-  AllTransformedIRvectors = Transpose[ParallelTable[SymmetryOpVectorField[grp, sites, GetIRvector[id, IsoMatrix, sites], ftype], {id, IsoDim}, DistributedContexts -> {"LINVARIANT`ISODISTORT`Private`"}]];
-  (*  ParallelTable[mat=Table[Flatten[op2[[ir1]]\[Transpose][[1]]].AllIRvectors[[ir2]], {ir1, Range@IsoDim}, {ir2, Range@IsoDim}]; SparseArray[Normalize[#]&/@mat], {op2, AllTransformedIRvectors}, DistributedContexts -> {"LINVARIANT`ISODISTORT`Private`"}],*)
-  ParallelTable[mat=Table[Flatten[op2[[ir1]]\[Transpose][[1]]].AllIRvectors[[ir2]], {ir1, Range@IsoDim}, {ir2, Range@IsoDim}]; SparseArray[mat], {op2, AllTransformedIRvectors}, DistributedContexts -> {"LINVARIANT`ISODISTORT`Private`"}],
-  Table[{{}}, {Length@grp}]
-  ];
-  Return[OpMatrix]
+
+  Which[AssociationQ[grp],
+        If[IsoDim != 0,
+        {NormFactor, AllIRvectors} = Table[
+                    vec=GetIRvector[i, IsoMatrix, sites]\[Transpose][[1]];
+                    {1/Norm[Flatten[vec]], vec}, {i, IsoDim}]\[Transpose];
+        AllTransformedIRvectors = Transpose[ParallelTable[SymmetryOpVectorField[grp, sites, GetIRvector[id, IsoMatrix, sites], ftype], {id, IsoDim}, DistributedContexts -> {"LINVARIANT`ISODISTORT`Private`"}]];
+        ParallelTable[
+          mat=Table[Rationalize[NormFactor[[ir1]]*NormFactor[[ir2]]*Flatten[op2[[ir1]]\[Transpose][[1]]].Flatten[AllIRvectors[[ir2]]]], {ir1, Range@IsoDim}, {ir2, Range@IsoDim}]; 
+          SparseArray[mat], {op2, AllTransformedIRvectors}, DistributedContexts -> {"LINVARIANT`ISODISTORT`Private`"}], Table[{{}}, {Length@grp}]],
+        ListQ[grp],
+        OpMatrix = GetOpMatrix[#, pos, IsoMatrix, Modes, ftype] &/@ grp;
+        If[IsoDim != 0,
+           Fold[Dot, #] &/@ Tuples[OpMatrix],
+           Table[{{}}, Fold[Times, Length[#] &/@ OpMatrix]]]
+  ]
 ]
 
-GetMatrixRep[grp_, pos_, BasisMatrix_, BasisLabels_, ftype_] := Module[{op, op2, ir1, ir2, mat, OpMatrix, AllIRvectors, BasisField, TransformedBasisField, BasisDim, g, ig, field},
-   BasisDim = Length@BasisMatrix;
-   OpMatrix = 
-       If[BasisDim != 0,
-       BasisField = GetBasisField[Range[BasisDim], BasisMatrix, BasisLabels, pos, ftype];
-       TransformedBasisField = ParallelTable[SymmetryOpBasisField[g, pos, #, ftype] &/@ BasisField, {g, Keys@grp}, DistributedContexts -> {"LINVARIANT`ISODISTORT`Private`"}];
-       ParallelTable[mat = Table[Flatten[TransformedBasisField[[ig]][[i]]\[Transpose][[2]]\[Transpose][[2]]].Flatten[BasisField[[j]]\[Transpose][[2]]\[Transpose][[2]]], {i, Range@BasisDim}, {j, Range@BasisDim}];
-       SparseArray[(*Normalize[#] & /@ mat*)mat], {ig, Length@grp}, DistributedContexts -> {"LINVARIANT`ISODISTORT`Private`"}], 
-       Table[{}, {Length@grp}]];
-  Return[OpMatrix]
+GetMatrixRep[grp_, pos_, BasisMatrix_, BasisLabels_, ftype_] := Module[{i, op, op2, ir1, ir2, mat, OpMatrix, AllIRvectors, BasisField, TransformedBasisField, BasisDim, g, ig, field, NormFactor, latt, sites, basis},
+  {latt, sites} = pos;
+  BasisDim = Length@BasisMatrix;
+
+  Which[AssociationQ[grp],
+        If[BasisDim != 0,
+        {NormFactor, BasisField} = If[ftype != "orbital",
+        Table[basis=GetBasisField[i, BasisMatrix, BasisLabels, pos, ftype];
+           {1/Norm[Flatten[basis\[Transpose][[2]]\[Transpose][[2]]]], basis}, {i,BasisDim}]\[Transpose],
+        (* ftype == orbital *)
+        Table[basis=GetBasisField[i, BasisMatrix, BasisLabels, pos, ftype];
+           {1/Norm[Flatten[basis\[Transpose][[2]]\[Transpose][[2]]]], basis}, {i,BasisDim}]\[Transpose]];
+        TransformedBasisField = ParallelTable[SymmetryOpBasisField[g, pos, #, ftype] &/@ BasisField, {g, Keys@grp}, DistributedContexts -> {"LINVARIANT`ISODISTORT`Private`"}];
+        ParallelTable[mat = Table[Rationalize[NormFactor[[i]]*NormFactor[[j]]*Flatten[TransformedBasisField[[ig]][[i]]\[Transpose][[2]]\[Transpose][[2]]].Flatten[BasisField[[j]]\[Transpose][[2]]\[Transpose][[2]]]], {i, Range@BasisDim}, {j, Range@BasisDim}];
+        SparseArray[mat], {ig, Length@grp}, DistributedContexts -> {"LINVARIANT`ISODISTORT`Private`"}], 
+        Table[{}, {Length@grp}]],
+        ListQ[grp],
+        OpMatrix = GetMatrixRep[#, pos, BasisMatrix, BasisLabels, ftype] &/@ grp;
+        If[BasisDim != 0,
+           Fold[Dot, #] &/@ Tuples[OpMatrix],
+           Table[{{}}, Fold[Times, Length[#] &/@ OpMatrix]]]
+  ]
 ]
  
 SymmetryOpBasisField[grp_, pos_, BasisField_, ftype_] := Module[{latt, sites, site, i, xyzRotTran, xyzTrans, xyzRot, NewField, NewFieldup, NewFielddn, posvec, difftable, posmap, updn, updnbasis, upbasis, dnbasis},
@@ -249,8 +269,11 @@ GetIsoTransformRules[OpMatrix_, TranType_] := Module[{IsoDim, IsoVars, VarRules,
 ]
 
 GetIsoStrainTransformRules[spg0_] := Module[{StrainRules},
-  StrainRules = GetEpsilonijRule[spg0];
-  Return[StrainRules]
+  Which[AssociationQ[spg0],
+        GetEpsilonijRule[spg0],
+        ListQ[spg0],
+        GetEpsilonijRule[Flatten[GTimes[spg0]]]
+  ]
 ]
 
 GetTransformationRules[spg0_, OpDispMatrix_, OpSpinMatrix_, OpOrbitalMatrix_] := Module[{},
@@ -259,7 +282,8 @@ GetTransformationRules[spg0_, OpDispMatrix_, OpSpinMatrix_, OpOrbitalMatrix_] :=
     GetIsoStrainTransformRules[spg0]}\[Transpose])
 ]
 
-GetInvariants[seeds_, order_, OpDispMatrix_, OpSpinMatrix_, OpOrbitalMatrix_, spg0_, OptionsPattern[{"MustInclude"->{}}]] := Module[{fixlist, monomials, invariant, TransformRules, n, i, j, ss, factor, out, factorLCM, factorGCD},
+GetInvariants[seeds_, order_, OpMatrix_, spg0_, OptionsPattern[{"MustInclude"->{}}]] := Module[{fixlist, monomials, invariant, TransformRules, n, i, j, ss, factor, out, factorLCM, factorGCD, OpDispMatrix, OpSpinMatrix, OpOrbitalMatrix},
+  {OpDispMatrix, OpSpinMatrix, OpOrbitalMatrix} = OpMatrix;
   out = Table[
   monomials = If[
     OptionValue["MustInclude"]=={}, 
@@ -369,7 +393,7 @@ FieldCode2var[code_, varstr_, OptionsPattern[{"rec"->False}]] := Module[{x1, x2,
 
 GetSiteCluster[spg0_, PosVec_, ftype_?StringQ, OptionsPattern[{"IsoTranRules"->{}}]] := Block[{xyzStrData, xyzRotTranData, xyzTranslation, xyzRotData, field, newpos, newvec, difftable, diff, posmap, i, j, det},
   det = If[ftype=="spin",1,2];
-  xyzStrData = xyzStrData = Keys[spg0];
+  xyzStrData = Which[AssociationQ[spg0], Keys[spg0], ListQ[spg0], spg0];
   xyzRotTranData = Table[ToExpression["{" <> xyzStrData[[i]] <> "}"], {i, Length[xyzStrData]}];
   xyzTranslation = xyzRotTranData /. {ToExpression["x"] -> 0, ToExpression["y"] -> 0, ToExpression["z"] -> 0};
   xyzRotData = xyzRotTranData - xyzTranslation;
