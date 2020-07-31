@@ -11,13 +11,14 @@ GetBasisField                ::usage = "GetBasisField[id, BasisMatrix, pos]"
 GetOpMatrix                  ::usage = "GetOpMatrix[SymOpFile, pos, IsoMatrix, Modes]"
 GetMatrixRep                 ::usage = "GetMatrixRep[SymOpFile, pos, IsoMatrix, Modes]"
 SymmetryOpBasisField         ::usage = "SymmetryOpBasisField[grp, BasisField]"
+DGrpTransform                ::usage = "DGrpTransform[monomials, rules]"
 GetIsoVars                   ::usage = "GetIsoVars[IsoDispModes]"
 GetIsoTransformRules         ::usage = "GetIsoDispTransformRules[OpMatrix, IsoDispModes, TranType]"
 GetIsoStrainTransformRules   ::usage = "GetIsoStrainTransformRules[GridSymFile]"
 Epsilon2Field                ::usage = "Epsilon2Field[strain]"
 Field2Epsilon                ::usage = "Field2Epsilon[field]"
 GetEpsilonijRule             ::usage = "GetEpsilonijRule[symfile]"
-GetTransformationRules       ::usage = "GetTransformationRules[spg0, OpDispModes, OpDispMatrix, SpinModes, OpSpinMatrix]"
+GetTransformationRules       ::usage = "GetTransformationRules[spg0, OpMatrix]"
 GetInvariants                ::usage = "GetInvariants[seeds, order, AllModes, OpMatrix, GridSymFile]"
 NumberCommonDivisor          ::usage = "NumberCommonDivisor[NumList]"
 GetConstantFactor            ::usage = "GetConstantFactor[expr]"
@@ -202,7 +203,16 @@ GetMatrixRep[grp_, pos_, BasisMatrix_, BasisLabels_, ftype_] := Module[{i, op, o
            Table[{{}}, Fold[Times, Length[#] &/@ OpMatrix]]]
   ]
 ]
- 
+
+DGrpTransform[monomials_, rules_] := Module[{P, PT, i, EDim, SpinReverse, OrbitalReverse},
+  EDim = Length@Cases[Keys[rules[[1]]], Subscript[ToExpression["eIso"], __]];
+  SpinReverse = {Subscript[ToExpression["mIso"], i_] -> -1*Subscript[ToExpression["mIso"], i]};
+  OrbitalReverse = {Subscript[ToExpression["eIso"], i_/;i<=EDim/2] -> Subscript[ToExpression["eIso"], i+EDim/2], Subscript[ToExpression["eIso"], i_/;i>EDim/2] -> Subscript[ToExpression["eIso"], i-EDim/2]};
+  P = monomials /. # & /@ rules;
+  PT = P /. Join[SpinReverse, OrbitalReverse];
+  Return[P+PT]
+]
+
 SymmetryOpBasisField[grp_, pos_, BasisField_, ftype_] := Module[{latt, sites, site, i, xyzRotTran, xyzTrans, xyzRot, NewField, NewFieldup, NewFielddn, posvec, difftable, posmap, updn, updnbasis, upbasis, dnbasis},
   Which[
    AssociationQ[grp],
@@ -221,7 +231,7 @@ SymmetryOpBasisField[grp_, pos_, BasisField_, ftype_] := Module[{latt, sites, si
    If[ftype!="orbital",
      Which[
        ftype=="disp",
-       posvec={Mod[N[xyzRotTran /. Thread[ToExpression[{"x", "y", "z"}] -> #2[[1]]]], 1], Det[xyz2Rot[xyzRot]]^2 N[xyzRot /. Thread[ToExpression[{"x", "y", "z"}] -> #2[[2]]]]} & @@@ BasisField,
+       posvec={Mod[N[xyzRotTran /. Thread[ToExpression[{"x", "y", "z"}] -> #2[[1]]]], 1], N[xyzRot /. Thread[ToExpression[{"x", "y", "z"}] -> #2[[2]]]]} & @@@ BasisField,
        ftype=="spin",
        posvec={Mod[N[xyzRotTran /. Thread[ToExpression[{"x", "y", "z"}] -> #2[[1]]]], 1], Det[xyz2Rot[xyzRot]] N[xyzRot /. Thread[ToExpression[{"x", "y", "z"}] -> #2[[2]]]]} & @@@ BasisField
        ];
@@ -276,7 +286,8 @@ GetIsoStrainTransformRules[spg0_] := Module[{StrainRules},
   ]
 ]
 
-GetTransformationRules[spg0_, OpDispMatrix_, OpSpinMatrix_, OpOrbitalMatrix_] := Module[{},
+GetTransformationRules[spg0_, OpMatrix_] := Module[{OpDispMatrix, OpSpinMatrix, OpOrbitalMatrix},
+  {OpDispMatrix, OpSpinMatrix, OpOrbitalMatrix} = OpMatrix;
   Join[#1, #2, #3, #4] & @@@ ({GetIsoTransformRules[OpDispMatrix, "disp"], 
     GetIsoTransformRules[OpSpinMatrix, "spin"], GetIsoTransformRules[OpOrbitalMatrix, "orbital"],
     GetIsoStrainTransformRules[spg0]}\[Transpose])
@@ -290,14 +301,14 @@ GetInvariants[seeds_, order_, OpMatrix_, spg0_, OptionsPattern[{"MustInclude"->{
     MonomialList[Total[seeds]^n],
     fixlist = Flatten[Table[MonomialList[Total[#1]^i], {i, #2}] &@@@ OptionValue["MustInclude"]];
     Flatten[Table[# ss & /@ MonomialList[Total[seeds]^n], {ss, fixlist}]]];
-  TransformRules = GetTransformationRules[spg0, OpDispMatrix, OpSpinMatrix, OpOrbitalMatrix];
-  invariant = Rationalize[DeleteDuplicates[DeleteCases[Union[Expand[Total[(monomials /. # & /@ TransformRules)]]], i_/;i==0], (#1 -#2 == 0 || #1 + #2 == 0) &]];
+  TransformRules = GetTransformationRules[spg0, OpMatrix];
+  invariant = Rationalize[DeleteDuplicates[DeleteCases[Union[Expand[Total[DGrpTransform[monomials, TransformRules]]]], i_/;i==0], (#1 -#2 == 0 || #1 + #2 == 0) &]];
   SimplifyCommonFactor[invariant], {n, order}];
-  Return[DeleteDuplicates[#, (#1 -#2 == 0 || #1 + #2 == 0) &] &/@ out]
+  Return[DeleteDuplicates[#, (#1 - #2 == 0 || #1 + #2 == 0 || Expand[#1 + I #2] == 0 || Expand[#1 - I #2] == 0) &] &/@ out]
 ]
 
 NumberCommonDivisor[NumList_] := Module[{TempList, DenominatorLCM},
- TempList = Which[Head[#] === Integer, #, Head[#] === Times, First@Level[#, {1}], Head[#] === Power, 1, Head[#] === Rational, #] &/@ NumList;
+ TempList = Which[Head[#] === Integer, #, Head[#] === Times, First@Level[#, {1}], Head[#] === Power, 1, Head[#] === Rational, #, Head[#] === Complex, Re[#]] &/@ NumList;
  DenominatorLCM = If[MemberQ[TempList, _Rational], LCM @@ (Denominator[#] & /@ Extract[TempList, Position[TempList, _Rational]]), 1];
  Return[{DenominatorLCM, GCD @@ (TempList DenominatorLCM)}]
 ]
@@ -340,7 +351,7 @@ ShowInvariantTable[TableData_, param_, OptionsPattern["FontSize" -> 12]] := Modu
   Print[Rotate[Grid[Table[Style[Rotate[# // Expand, -270 Degree], Black, Bold, OptionValue["FontSize"]] & /@ (Flatten[Table[{Flatten[{"param", param[[n]]}], Prepend[TableData[[n]], n]}, {n, Length@TableData}], 1][[m]]), {m, 2 Length@TableData}], Alignment -> Left, Frame -> All], 270 Degree]]]
 
 GetIsoBasis[grp0_, pos_, ftype_, kpoint_: {{0, 0, 0}, "\[CapitalGamma]"}, ct0_: {}] := Module[{w, p, imode, latt, Wyckoff0, WyckoffSites, ZeroModeMatrix, SymmetryAdaptedBasis, Sites, IsoDispModes, IsoDispModeMatrix, OpDispMatrix, ct, ProjMat, g, basis, grpk, m, n, lp},
-  grpk = GetGroupK[grp0, kpoint[[1]]];
+  grpk = GetGrpK[grp0, kpoint[[1]]];
   ct = If[Length[ct0] == 0, GetCharacters[grpk, "kpoint" -> kpoint[[2]]], ct0];
   g = Length[grpk];
   {latt, Wyckoff0} = pos;
@@ -358,26 +369,27 @@ GetIsoBasis[grp0_, pos_, ftype_, kpoint_: {{0, 0, 0}, "\[CapitalGamma]"}, ct0_: 
   Return[{IsoDispModes, IsoDispModeMatrix}]
 ]
 
-GetSymAdaptedBasis[grp0_, pos_, kpoint_: {{0, 0, 0}, "\[CapitalGamma]"}, ftype_, ct0_: {}] := Module[{w, p, imode, WyckoffSites, ZeroModeMatrix, SymmetryAdaptedBasis, Latt, Wyckoff0, Sites, IsoDispModes, IsoDispModeMatrix, OpDispMatrix, ireps, classes, ct, ProjMat, g, basis, grpk, m, n, lp},
-  grpk = GetGroupK[grp0, kpoint[[1]]];
+GetSymAdaptedBasis[grp0_, pos_, kpoint_: {{0, 0, 0}, "\[CapitalGamma]"}, ftype_] := Module[{i, l, c1, c2, w, p, imode, WyckoffSites, ZeroModeMatrix, SymmetryAdaptedBasis, Latt, Wyckoff0, Sites, IsoDispModes, IsoDispModeMatrix, OpDispMatrix, ireps, classes, ProjMat, g, basis, irepbasis, ireplabel, grpk, m, n, lp, BasisMatrix, BasisModes},
+  grpk = GetGrpK[grp0, kpoint[[1]]];
   classes = GetClasses[grpk];
-  ct = If[Length[ct0] == 0, ireps = GetSpgIreps[grp0, kpoint[[1]]]; GetSpgCT[grp0, kpoint, ireps, "print" -> False], ct0];
+  ireps = GetSpgIreps[grpk, kpoint[[1]]];
   g = Length[grpk];
   {Latt, Wyckoff0} = pos;
   WyckoffSites = GetWyckoffImages[grp0, {#}] & /@ Wyckoff0;
-  SymmetryAdaptedBasis = Table[
-    Sites = Map[{#[[1]], #[[2]]} &, WyckoffSites[[w]]];
-    IsoDispModes = MapIndexed[{First[#2], #1, 1, 0} &, Flatten[Table[Subscript[#[[2]], xyz], {xyz, 3}] & /@ Sites]];
-    IsoDispModeMatrix = IdentityMatrix[3 Length[Sites]];
-    OpDispMatrix = GetMatrixRep[grpk, {Latt, Sites}, IsoDispModeMatrix, IsoDispModes, ftype];
-    ProjMat = Table[lp = ct[[p]][[1]]; 
-                    Sum[{m, n} = First@Position[classes, Keys[grpk][[i]]]; 
-                    lp/g Conjugate[ct[[p, m]]] Rationalize@Normal[OpDispMatrix[[i]]], {i, g}], {p, Length[ct]}];
-    basis = Table[Complement[Orthogonalize[ProjMat[[p]].# & /@ IsoDispModeMatrix], {Table[0, {i, 3 Length[Sites]}]}], {p, Length[ct]}];
-    If[#2 == {}, ## &[], {Table[Sites[[1]][[2]] <> " " <> kpoint[[2]] <> ToString[#1] <> "-" <> ToString[Length@#2] <> "(" <> ToString[imode] <> ")", {imode, Length@#2}], #2}] & @@@ Thread[Range[Length[ct]] -> basis], {w, Length@WyckoffSites}];
-  IsoDispModes = MapIndexed[{First[#2], #1, 1, 0.} &, Flatten[Flatten[SymmetryAdaptedBasis, 1]\[Transpose][[1]]]];
-  IsoDispModeMatrix = # & /@ Transpose[Fold[ArrayFlatten[{{#1, 0}, {0, #2}}] &, Flatten[#, 1] & /@ (#\[Transpose][[2]] & /@ SymmetryAdaptedBasis)]];
-  Return[{IsoDispModes, IsoDispModeMatrix}]
+  basis = Table[Sites = Map[{#[[1]], #[[2]]} &, WyckoffSites[[w]]];
+                IsoDispModes = MapIndexed[{First[#2], #1, 1, 0} &, Flatten[Table[Subscript[#[[2]], xyz], {xyz, 3}] & /@ Sites]];
+                IsoDispModeMatrix = IdentityMatrix[3 Length[Sites]];
+                OpDispMatrix = GetMatrixRep[grpk, {Latt, Sites}, IsoDispModeMatrix, IsoDispModes, ftype];
+                irepbasis = ProjectOnBasis[grpk, ireps, OpDispMatrix, #] & /@ IsoDispModeMatrix;
+                irepbasis = Flatten[({#1, Sites[[1, 2]] <> " " <> kpoint[[2]] <> "-" <> #2} & @@@ #) & /@ irepbasis, 1];
+                DeleteDuplicates[DeleteCases[irepbasis, {Table[0, {i, 3 Length[Sites]}], __}], #1[[1]] == #2[[1]] || #1[[1]] == -#2[[1]]&], 
+                {w, Length@WyckoffSites}];
+  ireplabel = Flatten[#\[Transpose][[2]] & /@ basis];
+  SymmetryAdaptedBasis = Fold[ArrayFlatten[{{#1, 0}, {0, #2}}] &, #\[Transpose][[1]] & /@ basis];
+  BasisMatrix = Table[{c1, c2} = NumberCommonDivisor[SymmetryAdaptedBasis[[i]]]; 
+                      c1/c2 SymmetryAdaptedBasis[[i]], {i, Length@SymmetryAdaptedBasis}]\[Transpose];
+  BasisModes = Table[{i, ireplabel[[i]], 1/Norm[Flatten[Latt\[Transpose].# & /@ Partition[BasisMatrix[[;; , i]], 3]]], 0}, {i, Length[BasisMatrix]}];
+  Return[{BasisModes, BasisMatrix}]
 ]
 
 FieldCode2var[code_, varstr_, OptionsPattern[{"rec"->False}]] := Module[{x1, x2, x3},

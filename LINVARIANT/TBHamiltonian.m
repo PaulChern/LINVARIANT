@@ -8,6 +8,7 @@ TBBandsPlot                  ::usage "TBBandsPlot[Ti0, klist, kintv, OptionsPatt
 TBBandsSpinCharacterPlot     ::usage "TBBandsSpinCharacterPlot[Ti0, klist, kintv, si]"
 TBPlotSpinTextureSurface     ::usage "TBGetSpinTextureSurface[Ti0, latt, E0, klimit, kintv, tol, si]"
 BondsToTi0                   ::usage "BondsToTi0[Bonds, ExtBonds, Atoms]"
+Hso                          ::usage "Hso[l]"
 (*--------- Plot and Manipulate Crystal Structures -------------------- ----------------*)
 
 (*--------- Point and Space Group Information ---------------------------*)
@@ -25,7 +26,7 @@ Begin["`Private`"]
 (*--------------------------- Modules ----------------------------*)
 GetTi0Bonds[spg0_, tij_, pos_] := Module[{latt, AllSites, c1, c2, c3, sol, site, AllBonds, ReducedBonds}, 
   {latt, AllSites} = pos;
-  AllBonds = Flatten[Table[{GrpxV[xyz, AllSites[[#1[[1]], 1]]], GrpxV[xyz, AllSites[[#1[[2]], 1]] + #2], #3}, {xyz, Keys[spg0]}] & @@@ tij, 1];
+  AllBonds = Flatten[Table[{GrpV[xyz, AllSites[[#1[[1]], 1]]], GrpV[xyz, AllSites[[#1[[2]], 1]] + #2], #3}, {xyz, Keys[spg0]}] & @@@ tij, 1];
   ReducedBonds = Flatten[Table[sol = Rationalize@Chop@First@Values@Solve[site[[2]] + IdentityMatrix[3].{c1, c2, c3} == site[[1]]];If[AllTrue[sol, IntegerQ], {#1 - sol, #2 - sol, #3}, ## &[]], {site, Tuples[{{#1, #2}, AllSites\[Transpose][[1]]}]}] & @@@ AllBonds, 1];
   ReducedBonds = DeleteDuplicates[If[Rationalize[Chop[#1 - Mod[#1, 1]]] == {0, 0, 0}, {#1, #2, #3}, {#2, #1, #3\[Transpose]}] & @@@ ReducedBonds, Chop[#1[[1]] - #2[[1]]] == {0, 0, 0} && Chop[#1[[2]] - #2[[2]]] == {0, 0, 0} &];
   ReducedBonds = {pos2index[AllSites, {#1, Mod[#2, 1]}], Rationalize[#2 - Mod[#2, 1]], 1, #3} & @@@ ReducedBonds;
@@ -119,6 +120,22 @@ BondsToTi0[Bonds_, ExtBonds_, Atoms_] := Module[{NumAtom, Ti0},
   NumAtom = Length[Atoms\[Transpose][[1]]];
   Ti0 = {Rationalize[#2 - Mod[#2, 1]], 1, ArrayFlatten[#3\[TensorProduct]Normal[SparseArray[{pos2index[Atoms, #1], pos2index[Atoms, #2]} -> 1, {NumAtom, NumAtom}]]]} & @@@ Join[Bonds, ExtBonds];
   Return[Ti0]
+]
+
+Hso[l_] := Module[{\[Mu], \[Tau], \[Theta], m, m1, m2, h11, h22, h12, h21},
+  \[Tau][m_] := If[m >= 0, 1, 0];
+  \[Theta][m_] := (1-KroneckerDelta[m,0])*(\[Tau][m]+I \[Tau][-m])/Sqrt[2]+KroneckerDelta[m,0]/2;
+  \[Mu][m1_,m2_] := Conjugate[\[Theta][m1]]*\[Theta][m2](1+\[Tau][-Abs[m1*m2]]);
+  h11 = Table[I*m2*KroneckerDelta[m1,-m2]/2, {m1,-l,l}, {m2,-l,l}];
+  h22 = -h11;
+  h12 = Table[\[Mu][m1,m2](KroneckerDelta[Abs[m1],Abs[m2]+1]
+                           -(-1)^(\[Tau][m1]+\[Tau][m2])*KroneckerDelta[Abs[m1],Abs[m2]-1])*
+                           Sqrt[(l+m1^2-Abs[m1*m2])(l+m2^2-Abs[m1*m2])]/2, {m1,-l,l}, {m2,-l,l}];
+  h21 = Table[\[Mu][m1,m2](KroneckerDelta[Abs[m1],Abs[m2]-1]
+                           -(-1)^(\[Tau][m1]+\[Tau][m2])*KroneckerDelta[Abs[m1],Abs[m2]+1])*
+                           Sqrt[(l+m1^2-Abs[m1*m2])(l+m2^2-Abs[m1*m2])]/2, {m1,-l,l}, {m2,-l,l}];
+ hso = ArrayFlatten[{{h11, h12}, {h21, h22}}];
+ Return[hso]
 ]
 
 (*-------------------------- Attributes ------------------------------*)
