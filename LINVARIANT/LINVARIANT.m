@@ -15,6 +15,8 @@
 
 BeginPackage["LINVARIANT`",
 	        {"LINVARIANT`GroupTheory`",
+             "LINVARIANT`SphericalHarmonics`",
+             "LINVARIANT`MultipoleExpansion`",
              "LINVARIANT`MathematicaPlus`",
              "LINVARIANT`QM`",
              "LINVARIANT`ISODISTORT`",

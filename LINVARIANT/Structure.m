@@ -2,6 +2,7 @@ BeginPackage["LINVARIANT`Structure`", {"LINVARIANT`GroupTheory`"}]
 
 (*--------- Load, Save and Modify Crystal Structure Libraries ------------*)
 GetWyckoffImages             ::usage = "GetWyckoffImages[grp, pos]"
+ModCell                      ::usage = "ModCell[xyz, cell]"
 exportXYZ                    ::usage = "exportXYZ[filepath_, {comment_, vertices_, atomcoordinates_}]"
 cif2mcif                     ::usage = "cif2mcif[id, IsoMatrix, pos0]"
 SymmetryOpOrigin             ::usage = "SymmetryOpOrigin[file, set]"
@@ -51,14 +52,16 @@ OrbitCode = Association["orbital" -> 0, "spin" -> 1, "disp" -> 2];
 
 pos2index[atoms_, pos_] := If[Length[Dimensions[pos]] > 1, 
                               pos2index[atoms, #] &/@ pos,
-                              First@First@Position[Rationalize[Chop[Flatten[DistMatrix[atoms\[Transpose][[1]], {pos}]]]], 0]]
+                              First@First@Position[Rationalize[Chop[Flatten[DistMatrix[atoms\[Transpose][[1]], {pos}, {1,1,1}]]]], 0]]
+ModCell[xyz_, cell_] := Module[{},
+  Mod[#1, #2] &@@@ ({xyz, cell}\[Transpose])
+]
 
-
-GetWyckoffImages[spg_, pos_] := Module[{xyzStrData, xyzExpData, WyckoffImages0, WyckoffImages1},
-  xyzStrData = Keys[spg];
-  xyzExpData = Table[ToExpression["{" <> xyzStrData[[i]] <> "}"], {i, Length[xyzStrData]}];
-  WyckoffImages0 = Table[Sort[Union[{Mod[#, 1], pos[[i, 2]]} & /@ (xyzExpData /. Thread[ToExpression[{"x", "y", "z"}] -> pos[[i, 1]]]), SameTest -> (Norm[Chop[#1[[1]] - #2[[1]]]] == 0. &)], Total[#1[[1]]] > Total[#2[[1]]] &], {i, Length[pos]}];
-  WyckoffImages1 = Flatten[Table[MapIndexed[{#1[[1]], SimplifyElementSymbol[#1[[2]]] <> ToString[i] <> "." <> ToString[First@#2]} &, WyckoffImages0[[i]]], {i, Length[pos]}], 1];
+GetWyckoffImages[grp0_, pos_, cell_:{1,1,1}] := Module[{i, j, k, grpt, grp, xyzStrData, xyzExpData, WyckoffImages0, WyckoffImages1},
+  grpt = GetSuperCellGrp[Flatten[Table[{i, j, k} - {1, 1, 1}, {i, cell[[1]]}, {j, cell[[2]]}, {k, cell[[3]]}], 2]];
+  grp = Flatten@GTimes[{grpt, grp0}];
+  WyckoffImages0 = Table[Union[{ModCell[#[[1]].pos[[i,1]]+#[[2]], cell], pos[[i,2]]} &/@ xyzStr2TRot@grp, SameTest -> (Norm[Chop[#1[[1]] - #2[[1]]]] == 0. &)], {i, Length[pos]}];
+  WyckoffImages1 = Table[MapIndexed[{#1[[1]], SimplifyElementSymbol[#1[[2]]] <> ToString[i] <> "." <> ToString[First@#2]} &, WyckoffImages0[[i]]], {i, Length[pos]}];
   Return[WyckoffImages1]
 ]
   
@@ -94,16 +97,26 @@ SymmetryOpOrigin[file_, set_] := Module[{xyzStrData, xyzExpData, newsets, op, po
   Return[newsets]
 ]
 
-DistMatrixOld = Compile[{{pos1, _Real, 2}, {pos2, _Real, 2}}, Module[{i, j},
+(*DistMatrixOld = Compile[{{pos1, _Real, 2}, {pos2, _Real, 2}}, Module[{i, j},
    Return[Table[Norm[Mod[Round[pos1[[i]] - pos2[[j]], 10^-8], 1]], {i, Length@pos1}, {j, Length@pos2}]]
 ]]
 
 DistMatrix = Compile[{{pos1, _Real, 2}, {pos2, _Real, 2}}, Module[{i, j},
    Return[Table[Norm[Round[Which[# > 0.5, # - 1, # <= -0.5, # + 1, True, #] & /@ (pos1[[i]] - pos2[[j]]), 10^-8]^2], {i, Length@pos1}, {j, Length@pos2}]]
+]]*)
+
+DistMatrix = Compile[{{pos1, _Real, 2}, {pos2, _Real, 2}, {cell, _Integer, 1}}, Module[{i, j, n, diff},
+  Return[Table[diff = (pos1[[i]] - pos2[[j]]);
+               Norm[Round[Table[Which[diff[[n]] > cell[[n]]/2, diff[[n]] - cell[[n]], diff[[n]] < -cell[[n]]/2, diff[[n]] + cell[[n]], True, diff[[n]]], {n, 3}], 10^-8]^2], {i, Length@pos1}, {j, Length@pos2}]]
 ]]
 
+(*DistMatrix[pos1_, pos2_, cell_:{1, 1, 1}] := Module[{i, j},
+  Return[Table[Norm[Round[PbcDiff[pos1[[i]] - pos2[[j]], cell], 10^-8]], {i, Length@pos1}, {j, Length@pos2}]]
+]
+*)
+
 PosMatchTo[spos_, dpos_, tol_, OptionsPattern["shift"->False]] := Module[{difftable, posmap, i, newpos},
-  difftable = DistMatrix[spos, dpos];
+  difftable = DistMatrix[spos, dpos, {1,1,1}];
   posmap = Position[difftable, x_ /; TrueQ[x <= tol]];
   newpos = If[OptionValue["shift"], PbcDiff[#]&/@(Table[dpos[[posmap[[i]][[2]]]], {i, Length@spos}] - spos) + spos,Table[dpos[[posmap[[i]][[2]]]], {i, Length@spos}]];
   Return[{posmap, newpos}]
@@ -123,7 +136,7 @@ SymmetryOpVectorField[grp_, pos_, vec_, ftype_] := Block[{originshift, xyzStrDat
   newpos = Table[{(op /. Thread[ToExpression[{"x", "y", "z"}] -> (pos[[i]][[1]]+originshift)]), i}, {op, xyzRotTranData}, {i, Length@pos}];
   
   (*difftable = ParallelTable[DistMatrix[#+originshift&/@(pos\[Transpose][[1]]), newpos[[op]]\[Transpose][[1]]], {op, Length@xyzRotTranData}, DistributedContexts -> {"LINVARIANT`Structure`Private`"}];*)
-  difftable = Table[DistMatrix[#+originshift&/@(pos\[Transpose][[1]]), newpos[[op]]\[Transpose][[1]]], {op, Length@xyzRotTranData}];
+  difftable = Table[DistMatrix[#+originshift&/@(pos\[Transpose][[1]]), newpos[[op]]\[Transpose][[1]], {1,1,1}], {op, Length@xyzRotTranData}];
   posmap = Table[Position[difftable[[op]], x_ /; TrueQ[x == 0]], {op, Length@xyzRotTranData}];
   field = Table[Table[{newvec[[i]][[posmap[[i]][[j]][[2]]]][[1]], pos\[Transpose][[2]][[j]]}, {j, Length@pos}], {i, Length@posmap}];
   Return[field]
@@ -145,7 +158,7 @@ SymmetryOpVectorFieldCif[file_, pos_, vec_, OptionsPattern["spin" -> False]] := 
   newpos = Table[{N[op /. Thread[ToExpression[{"x", "y", "z"}] -> (pos[[i]][[1]]+originshift)]], i}, {op, xyzRotTranData}, {i, Length@pos}];
 
   (*difftable = ParallelTable[DistMatrix[#+originshift&/@(pos\[Transpose][[1]]), newpos[[op]]\[Transpose][[1]]], {op, Length@xyzRotTranData}, DistributedContexts ->   {"LINVARIANT`Structure`Private`"}];*)
-  difftable = Table[DistMatrix[#+originshift&/@(pos\[Transpose][[1]]), newpos[[op]]\[Transpose][[1]]], {op, Length@xyzRotTranData}];
+  difftable = Table[DistMatrix[#+originshift&/@(pos\[Transpose][[1]]), newpos[[op]]\[Transpose][[1]], {1,1,1}], {op, Length@xyzRotTranData}];
   posmap = Table[Position[difftable[[op]], x_ /; TrueQ[x == 0]], {op, Length@xyzRotTranData}];
   field = Table[Table[{newvec[[i]][[posmap[[i]][[j]][[2]]]][[1]], pos\[Transpose][[2]][[j]]}, {j, Length@pos}], {i, Length@posmap}];
   Return[field]
@@ -298,9 +311,9 @@ GridNeighbors[r0_, MeshDim_] := Module[{r00, list, FirstNeighborList, SecondNeig
   Return[Neighbours]
 ]
 
-PbcDiff[diff_, latt_:1.0] := Module[{halflattice}, 
-  halflattice = latt/2;
-  Which[-halflattice <= # < halflattice, #, # >= halflattice, # - latt, # < -halflattice, # + latt] & /@ diff
+PbcDiff[diff_, cell_:{1, 1, 1}] := Module[{halflattice}, 
+  halflattice = cell/2;
+  Which[-#2 <= #1 < #2, #1, #1 >= #2, #1 - 2 #2, #1 < -#2, #1 + 2 #2] &@@@ ({diff, halflattice}\[Transpose])
 ]
 
 MakeSuperCell[Crys_, mode_, k_, {Nx_, Ny_, Nz_}] := Module[{R, pos, ix, iy, iz, spos, sR},

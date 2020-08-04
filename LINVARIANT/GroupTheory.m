@@ -1,4 +1,4 @@
-BeginPackage["LINVARIANT`GroupTheory`"]
+BeginPackage["LINVARIANT`GroupTheory`", {"LINVARIANT`SphericalHarmonics`"}]
 
 (*--------- Load, Save and Modify Crystal Structure Libraries ------------*)
 CifImportSpg               ::usage "CifImportSpg[file]"
@@ -20,10 +20,6 @@ M42xyzStrEle               ::usage "M42xyzStrEle[m4]"
 GetClasses                 ::usage "GetClasses[GrpMat]"
 GetPGCharacters            ::usage "GetPGCharacters[GrpMat]"
 ExpandSimplify             ::usage "ExpandSimplify[in]"
-Mat2EulerVector            ::usage "Mat2EulerVector[mat]"
-GetEulerVector             ::usage "GetEulerVector[ele]"
-EulerVector2Mat            ::usage "EulerVector2Mat[axis, ang, \[Epsilon]]"
-Mat2EulerAngles            ::usage "Mat2EulerAngles[latt, mat]"
 GetEleLabel                ::usage "GetEleLabel[StrMat]"
 GetRegRep                  ::usage "GetRegularRepresentation[grp]"
 GetEleOrder                ::usage "GetEleOrder[mat]"
@@ -38,15 +34,13 @@ GetElePosition             ::usage "GetElePosition[grp, ele]"
 GetSubGrp                  ::usage "GetSubGrp[grp, ord]"
 GetInvSubGrp               ::usage "GTInvSubGrp[grp]"
 GetLeftCosetRepr           ::usage "GetLeftCosetRepr[grp0, invsubgrp]"
-SolidSphericalHarmonicY    ::usage "SolidSphericalHarmonicY[l, m, x1, x2, x3, coord]"
-SolidTesseralHarmonicY     ::usage "SolidTesseralHarmonicY[l, m, x1, x2, x3, coord]"
 GetAngularMomentumRep      ::usage "GetAngularMomentumRep[latt, mat, l, Harmonic]"
 GetAngularMomentumChars    ::usage "GetAngularMomentumChars[grp, j]"
-GetEulerRodrigues          ::usage "GetEulerRodrigues[n, \[Theta], \[Epsilon]]"
 GInverse                   ::usage "GInverse[ele]"
 GTimes                     ::usage "GTimes[list]"
 GPower                     ::usage "GPower[key, n]"
 GetLeftCosets              ::usage "GetLeftCosets[grp0, invsub]"
+GetGrpKIreps               ::usage "GetGrpKIreps[spg, kvec]"
 GetSpgIreps                ::usage "GetSpgIreps[spg, kvec]"
 GetProjOperator            ::usage "GetProjOperator[grp, ireps]"
 ProjectOnOperator          ::usage "ProjectOnOperator[grp, ireps, O, vars]"
@@ -57,11 +51,8 @@ GetSpgCT                   ::usage "GetSpgCT[spg0, kvec, irreps]"
 DecomposeIreps             ::usage "DecomposeIreps[grp, ct, character]"
 GetCGCoefficients          ::usage "GetCGCoefficients[grp, ireps, p1p2]"
 GetCGjmjm2jm               ::usage "GetCGjmjm2jm[jm1, jm2]"
-ThreeYIntegral             ::usage "ThreeYIntegral[jm1, jm2, jm3]"
-GetMultipoleExpansionCoeff ::usage "GetMultipoleExpansionCoeff[latt, grp, fieldseed, Jcut, Harmonic]"
-GetCrystalFieldHam         ::usage "GetCrystalFieldHam[Coeff, l]"
 GetSuperCellGrp            ::usage "GetSuperCellGrp[t]"
-
+GetEulerVector             ::usage "GetEulerVector[ele]"
 (*--------- Plot and Manipulate Crystal Structures -------------------- ----------------*)
 
 (*--------- Point and Space Group Information ---------------------------*)
@@ -258,74 +249,6 @@ GetSiteSymmetry[grp0_, vec0_] := Module[{grp, go, trvec, eq, sol, add, grpout, c
   Return[grpout]
 ]
 
-EulerVector2Mat[latt_, axis_, ang_, \[Epsilon]_] := Module[{i, j, k, n, R},
-  n = Normalize[latt.axis];
-  R = Sum[Table[Cos[ang] KroneckerDelta[i, j] + (\[Epsilon] - Cos[ang]) n[[i]] n[[j]] - Sin[ang] LeviCivitaTensor[3][[i, j, k]] n[[k]], {i, 3}, {j, 3}], {k, 3}];
-  Return[Rationalize[Inverse[latt].R.latt]]
-]
-
-Mat2EulerVector[mat_] := Module[{\[Phi], axes, es, s, \[Epsilon]},
-  \[Epsilon] = Rationalize@Det[mat];
-
-  \[Phi] = ArcCos[1/2 (Tr[\[Epsilon] mat] - 1)];
-  If[\[Phi] == 0., Return[{{0, 0, 0}, 0, \[Epsilon]}]];
-  s = -Sign@N[Chop[Im[Det[Eigensystem[\[Epsilon] mat][[2]]]]]];
-  \[Phi] = If[s==0., \[Phi], s \[Phi]];
-  es = Eigensystem[Rationalize[\[Epsilon] mat]];
-  axes = es[[2]][[First@First@Position[es[[1]], 1]]];
-
-Return[{axes, Rationalize[\[Phi]/Pi]*Pi, \[Epsilon]}]
-]
-
-GetEulerVector[ele_] := Module[{},
-  Which[AssociationQ[ele],
-        GetEulerVector[#] &/@ Keys[ele],
-        Length@Dimensions[ele] == 1,
-        GetEulerVector[#] &/@ ele,
-        Length@Dimensions[ele] == 2,
-        Mat2EulerVector[ele[[1;;3,1;;3]]],
-        Length@Dimensions[ele] == 3,
-        GetEulerVector[#] &/@ ele,
-        StringQ[ele],
-        GetEulerVector[xyzStr2M4[ele]]
-       ]
-]
-
-GetEulerRodrigues[n_, \[Theta]_, \[Epsilon]_:1] := Module[{K, R, nx, ny, nz},
-
-  If[MatrixQ[n], K = n, 
-    {nx, ny, nz} = n;
-    K = {{0, -nz, ny}, {nz, 0, -nx}, {-ny, nx, 0}}
-    ];
-
-  If[\[Theta] == 0., 
-    R = IdentityMatrix[3],
-    R = Expand[(IdentityMatrix[3] + Sin[\[Theta]] K + (1 - Cos[\[Theta]]) K.K)]
-    ];
-  Return[\[Epsilon] IdentityMatrix[3].R]
-]
-
-Mat2EulerAngles[latt_, mat_] := Module[{\[Epsilon], axis, \[Phi], R, K, nx, ny, nz, \[Alpha], \[Beta], \[Gamma]},
-  {axis, \[Phi], \[Epsilon]} = Mat2EulerVector[mat];
-  If[\[Phi] == 0., Return[{{0, 0, 0}, \[Epsilon]}]];
-  {nx, ny, nz} = Normalize[latt\[Transpose].axis];
-  K = {{0, -nz, ny}, {nz, 0, -nx}, {-ny, nx, 0}};
-  (*R = Expand[(\[Epsilon] IdentityMatrix[3] + Sin[\[Phi]] K + \[Epsilon] (1 - \[Epsilon] Cos[\[Phi]]) K.K)];*)
-  R = Expand[(IdentityMatrix[3] + Sin[\[Phi]] K + (1 - Cos[\[Phi]]) K.K)];
-  {\[Alpha], \[Beta], \[Gamma]} = EulerAngles[R];
-  (*\[Beta] = ArcCos[R[[3, 3]]];
-  Which[
-    \[Beta] == 0.,
-      \[Alpha] = 0; \[Gamma] = \[Phi],
-    \[Beta] == Pi,
-      \[Alpha] = 0; \[Gamma] = Pi - \[Phi],
-    True,
-       \[Alpha] = ArcTan[nz nx Sin[\[Phi]/2] + ny Cos[\[Phi]/2], nz ny Sin[\[Phi]/2] - nx Cos[\[Phi]/2]];
-       \[Gamma] = ArcTan[-nz nx Sin[\[Phi]/2] + ny Cos[\[Phi]/2], nz ny Sin[\[Phi]/2] + nx Cos[\[Phi]/2]];
-      ];*)
-  Return[{{\[Alpha], \[Beta], \[Gamma]}, \[Epsilon]}]
-]
-
 GetEleLabel[StrMat_] := Module[{det, mat, axes, phi, T, CS, label},
   Which[ListQ[StrMat]&&(!MatrixQ[StrMat]),
         GetEleLabel[#] &/@ StrMat,
@@ -413,11 +336,14 @@ GetSubGrp[grp_, ord_: {}] := Module[{GrpSub, g, div, sub, sg, test, j},
   Return[Flatten@sg]
 ]
 
-xyzStr2Grp[keys_] := Module[{xyz},
+xyzStr2Grp[keys_, OptionsPattern[{"fast"->False}]] := Module[{xyz},
   xyz = Prepend[DeleteCases[keys, "x,y,z"], "x,y,z"];
-  If[GrpQ[xyz],
+  If[OptionValue["fast"],
+     Return[Association[Thread[xyz->xyzStr2M4[xyz]]]],
+     If[GrpQ[xyz],
      Return[Association[Thread[xyz->xyzStr2M4[xyz]]]],
      Print["keys don't form a group!"];Abort[]]
+  ]
 ]
 
 SortByOrder[grp_] := SortBy[grp, (GetEleOrder[#]&)]
@@ -527,28 +453,6 @@ GetLeftCosetRepr[grp0_, invsubgrp_] := Module[{ind, g, comp, qel, reordgroup, Tm
   Return[qel];
 ] 
 
-SolidSphericalHarmonicY[l_?IntegerQ, m_?IntegerQ, xyz_, coord_: "Cartesian"] := Module[{rr, \[Theta]\[Theta], \[Phi]\[Phi], xx, yy, zz, x1, x2, x3},
-  {x1, x2, x3} = xyz;
-  Which[coord == "Cartesian", 
-                 FullSimplify@Evaluate[TransformedField["Spherical" -> "Cartesian", rr^l SphericalHarmonicY[l, m, \[Theta]\[Theta], \[Phi]\[Phi]], {rr, \[Theta]\[Theta], \[Phi]\[Phi]} -> {xx, yy, zz}]] /. {xx -> x1, yy -> x2, zz -> x3},
-        coord == "Polar", 
-                 FullSimplify@Evaluate[rr^l SphericalHarmonicY[l, m, \[Theta]\[Theta], \[Phi]\[Phi]]] /. {rr -> x1, \[Theta]\[Theta] -> x2, \[Phi]\[Phi] -> x3}, 
-        True, 
-        Print["Wrong coordinate"]]
-]
-
-SolidTesseralHarmonicY[l_?IntegerQ, m_?IntegerQ, xyz_, coord_: "Cartesian"] := Module[{x1, x2, x3}, 
-  {x1, x2, x3} = xyz;
-  Simplify@Which[
-                 m > 0, 
-                 Sqrt[2]/2 (-1)^m (SolidSphericalHarmonicY[l, m, xyz, coord] + (-1)^m SolidSphericalHarmonicY[l, -m, xyz, coord]), 
-                 m < 0, 
-                 Sqrt[2]/(2 I ) (-1)^m (SolidSphericalHarmonicY[l, Abs[m], xyz, coord] - (-1)^m SolidSphericalHarmonicY[l, -Abs[m], xyz, coord]), 
-                 m == 0, 
-                 SolidSphericalHarmonicY[l, 0, xyz, coord]
-                ]
-]
-
 Dl2El[m_, mm_] := Which[m > 0, (-1)^m 1/Sqrt[2] (KroneckerDelta[m, mm] + KroneckerDelta[-m, mm]), m == 0, KroneckerDelta[m, mm], m < 0, (-1)^m 1/(I Sqrt[2]) (KroneckerDelta[m, -mm] - KroneckerDelta[m, mm])]
 
 GetAngularMomentumRep[latt_, grp_, j_, Harmonic_: "Tesseral"] := Module[{mat, \[Alpha], \[Beta], \[Gamma], \[Epsilon], m1, m2, Dlmn, T},
@@ -571,7 +475,7 @@ GetAngularMomentumRep[latt_, grp_, j_, Harmonic_: "Tesseral"] := Module[{mat, \[
               Harmonic == "Spherical",
               Dlmn
               ];
-        Return[Chop@Rationalize@Dlmn]
+        Return[Rationalize@Chop@Dlmn]
     ]
 ]
 
@@ -677,19 +581,19 @@ GrpO[grp_, O_, vars_] := Module[{sub, xyz},
         ]
 ]
 
-GetProjOperator[grp_, ireps_] := Module[{g, proj},
-  g = Length[grp];
+GetProjOperator[ireps_] := Module[{g, proj},
+  g = Length[ireps[[1]]];
   proj = Length[#[[1]]]/g # &/@ ireps;
   Return[proj]
 ]
 
 ProjectOnOperator[grp_, ireps_, O_, vars_] := Module[{i, l, proj},
-  proj = GetProjOperator[grp, ireps];
+  proj = GetProjOperator[ireps];
   Flatten[Table[Table[{Simplify[(Conjugate[#[[l, l]]] & /@ proj[[i]]).GrpO[grp, O, vars]], ToString[Subscript["\[Phi]"^ToString[i], l], StandardForm]}, {l, Length@proj[[i, 1]]}], {i, Length@proj}], 1]
 ]
 
-ProjectOnBasis[grp_, ireps_, OpMat_, basis_] := Module[{i, l, proj},
-  proj = GetProjOperator[grp, ireps];
+ProjectOnBasis[ireps_, OpMat_, basis_] := Module[{i, l, proj},
+  proj = GetProjOperator[ireps];
   Flatten[Table[Table[{Simplify[(Conjugate[#[[l, l]]] & /@ proj[[i]]).(#.basis &/@ OpMat)], ToString[Subscript["\[Phi]"^ToString[i], l], StandardForm]}, {l, Length@proj[[i, 1]]}], {i, Length@proj}],1]
 ]
 
@@ -714,7 +618,23 @@ GetLeftCosets[grp0_, invsub_] := Module[{i, j, grp},
   Return[grp]
 ]
 
-GetSpgIreps[spg_, kvec_] := Module[{i, j, k, n, gk, grpk, gH, grpH, perm, irepsn, ireps, pos, \[CapitalGamma]k, lcosets, q, qHq, orbits, lorbit, OrbitIreps, charsfinal, classes},
+GetSpgIreps[spg_, kvec_] := Module[{grpk, orbits, ireps, irepk, gk, Tk, Tj, TTT, T, R, tran, p, pos, GammaK},
+  grpk = GetGrpK[spg, kvec];
+  irepk = GetGrpKIreps[spg, kvec];
+  gk = Length[grpk];
+  orbits = GetLeftCosets[spg, GetGrpK[spg, kvec]]\[Transpose][[1]];
+  Print["orbits: ", orbits];
+  Print["k star: ", GetStarK[spg, kvec]];
+  tran = {ToExpression["\!\(\*SubscriptBox[\(t\), \(1\)]\)"], ToExpression["\!\(\*SubscriptBox[\(t\),  \(2\)]\)"], ToExpression["\!\(\*SubscriptBox[\(t\), \(3\)]\)"]};
+  ireps = Table[ArrayFlatten@Table[TTT = GTimes[{Tk, T, GInverse@Tj}];
+                R = First@xyzStr2TRot[Tk];
+                pos = Position[Keys[grpk], ModM4@TTT];
+                GammaK = If[T == "x,y,z", Exp[-I 2 Pi R.kvec.tran], 1];
+                If[pos == {}, 0, GammaK irepk[[p, First@First@pos]]], {Tk, orbits}, {Tj, orbits}], {p, Length@irepk}, {T, Keys[spg]}];
+  Return[ireps]
+]
+
+GetGrpKIreps[spg_, kvec_] := Module[{i, j, k, n, gk, grpk, gH, grpH, perm, irepsn, ireps, pos, \[CapitalGamma]k, lcosets, q, qHq, orbits, lorbit, OrbitIreps, charsfinal, classes},
   grpk = GetGrpK[spg, kvec];
   gk = Length[grpk];
   If[Length[grpk] == 1,
@@ -726,7 +646,7 @@ GetSpgIreps[spg_, kvec_] := Module[{i, j, k, n, gk, grpk, gH, grpH, perm, irepsn
   grpH = If[grpH == {} && n == 2, n = 3; GetInvSubGrp[grpk, n, "all"->False][[1]], grpH[[1]]];
   gH = Length[grpH];
   
-  irepsn = GetSpgIreps[grpH, kvec];
+  irepsn = GetGrpKIreps[grpH, kvec];
   lcosets = GetLeftCosets[grpk, grpH];
   q = Which[n==2, {lcosets[[1,1]], lcosets[[2,1]]}, n==3, {lcosets[[1,1]], lcosets[[2,1]], ModM4@GPower[lcosets[[2,1]], 2]}];  
   perm = FindPermutation[ModM4@Flatten[GTimes[{q, grpH}]], Keys[grpk]];
@@ -830,7 +750,7 @@ GetUnitaryTransMatrix[Hmat_, qhqmat_, Unmat_, n_] := Module[{mdim, uu, U, inf1, 
   Return[uu /. Flatten[sol]]
 ]        
 
-GetSpgCT[spg0_, k_, ireps_, OptionsPattern[{"print" -> True}]] := Module[{i, l, pos, spgk, lp, characters, head1, head2, classes, kvec, klabel},
+GetSpgCT[spg0_, k_, ireps_, OptionsPattern[{"print" -> True}]] := Module[{i, l, pos, spgk, lp, characters, head1, head2, classes, kvec, klabel, tran},
   {kvec, klabel} = k;
   spgk = GetGrpK[spg0, kvec];
   lp = Length[ireps];
@@ -839,7 +759,8 @@ GetSpgCT[spg0_, k_, ireps_, OptionsPattern[{"print" -> True}]] := Module[{i, l, 
                      Simplify@Tr@ireps[[l, pos]], {l, lp}, {i, lp}];
   head1 = Superscript[klabel, ToString[#]] & /@ Range[lp];
   head2 = ToString[Length[#]]<>GetEleLabel[#[[1]]] &/@ classes;
-  If[OptionValue["print"], Print[TableForm[characters, TableHeadings -> {head1, head2}, TableAlignments -> Right]]];
+  tran = Thread[{ToExpression["\!\(\*SubscriptBox[\(t\), \(1\)]\)"], ToExpression["\!\(\*SubscriptBox[\(t\),  \(2\)]\)"], ToExpression["\!\(\*SubscriptBox[\(t\), \(3\)]\)"]}->{0,0,0}];
+  If[OptionValue["print"], Print[TableForm[characters/.tran, TableHeadings -> {head1, head2}, TableAlignments -> Right]]];
   Return[characters]
 ]
 
@@ -887,32 +808,6 @@ GetCGjmjm2jm[jm1_, jm2_] := Module[{j, m, j1, j2, m1, m2, c1, c2, c3, c4, c5, t1
   Return[CGmat]
 ]
 
-ThreeYIntegral[jm1_, jm2_, jm3_] := Module[{j1, j2, j3, m1, m2, m3},
-  {j1, m1} = jm1;
-  {j2, m2} = jm2;
-  {j3, m3} = jm3;
-  Quiet[Sqrt[(2 j1 + 1)*(2 j2 + 1)*(2 j3 + 1)/(4 \[Pi])] ThreeJSymbol[{j1, 0}, {j2, 0}, {j3,0}] ThreeJSymbol[{j1, m1}, {j2, m2}, {j3, m3}]]
-]
-
-GetMultipoleExpansionCoeff[latt_, grp_, fieldseed_, Jcut_, Harmonic_:"Tesseral"] := Module[{i, field, g, J, m, eqns, sol, coeff, Alm, vars},
-  field = Union@Flatten[Table[{latt\[Transpose].First[#].fieldseed[[i,1]], fieldseed[[i,2]]} &/@ xyzStr2TRot[Keys[grp]], {i, Length[fieldseed]}], 1];
-  Alm[J_, m_] := 1/(2 J +1) Total[#2 SolidTesseralHarmonicY[J, m, #1]/Norm[#1]^(J+1) &@@@ field];
-  g = Length[grp];
-  coeff = Table[
-    vars = Table[Subscript[A, J, m], {m, -J, J}];
-    eqns = Join[Thread[vars == Chop[Simplify[1/g Total[#.vars & /@ GetAngularMomentumRep[latt, grp, J, "Tesseral"]]]]], {Total[vars^2] != 0}];
-    sol = FindInstance[eqns, vars];
-    If[sol == {}, sol = {Thread[vars -> 0]}];
-    If[(#/.First[sol]) == 0, 0, (#/.First[sol]) Alm[#[[2]],#[[3]]]] &/@ vars, {J, 1, Jcut}];
-  Return[Chop@Join[{{Alm[0,0]}}, coeff]]
-]
-
-GetCrystalFieldHam[Coeff_, l_] := Module[{ham, jcut, m1, m2, j, m},
-  jcut = Length[Coeff]-1;
-  ham = Total@Flatten[Table[Table[Table[(-1)^m1 ToExpression["r"]^j Coeff[[j+m+1]] ThreeYIntegral[{l, -m1}, {j, m}, {l, m2}], {m1, -l, l}, {m2, -l, l}], {m, -j, j}], {j, 0, jcut}]];
-  Return[ham]
-]
-
 DecomposeIreps[grp_, ct_, character_, OptionsPattern[{"print"->True}]] := Module[{i, p, g, classes, np},
   classes = GetClasses[grp];
   lc = Length[classes];
@@ -924,9 +819,26 @@ DecomposeIreps[grp_, ct_, character_, OptionsPattern[{"print"->True}]] := Module
   Return[np]
 ]
 
-GetSuperCellGrp[t_] := Module[{},
-  SortGrp[StringRiffle[Map[ToString[#, StandardForm] &, {ToExpression["x"], ToExpression["y"],  ToExpression["z"]} + #], ","] & /@ t]
+GetSuperCellGrp[t_] := Module[{xyz, grp},
+  xyz = ToString@StringRiffle[Map[ToString[#, StandardForm] &, {ToExpression["x"], ToExpression["y"],  ToExpression["z"]} + #], ","] & /@ t;
+  grp = xyzStr2Grp[M42xyzStr[xyzStr2M4[#]] & /@ xyz];
+  Return[grp]
 ]
+
+GetEulerVector[ele_] := Module[{},
+  Which[AssociationQ[ele],
+        GetEulerVector[#] &/@ Keys[ele],
+        Length@Dimensions[ele] == 1,
+        GetEulerVector[#] &/@ ele,
+        Length@Dimensions[ele] == 2,
+        Mat2EulerVector[ele[[1;;3,1;;3]]],
+        Length@Dimensions[ele] == 3,
+        GetEulerVector[#] &/@ ele,
+        StringQ[ele],
+        GetEulerVector[xyzStr2M4[ele]]
+       ]
+]
+
 (*-------------------------- Attributes ------------------------------*)
 
 (*Attributes[]={Protected, ReadProtected}*)
