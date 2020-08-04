@@ -24,10 +24,13 @@
 - X ray diffraction simulation
 - Nudged Elastic Bands (NEB) and Growing String Method (GSM) to explore the phase transition, dynamics, and domain wall structures
 - Mollwide projection
+- Point group and space group irreducible representations
+- Multipole expansion
 - Examples: Boracite, Perovskite (To be added: Spinel, Rutile, Pyrochlore)
 ## Todo:
 - implement LLG dynamics
 - implement k dot p model builder
+- implement superspace group irreducible representations
 - interface to exact diagonalization method
 - adding Atomistic Green's Function (AGF) method to study scattering and ultrafast non-equilibrium dynamics
 - including electron phonon coupling (EPC) by fitting phonon dependent Tight-Binding (TB) model from DFT molecular dynamics (MD).
