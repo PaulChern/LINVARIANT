@@ -48,8 +48,6 @@ Options[ImportIsodistortCIF]    = {Fractional->False, CorrectLabels->True, Toler
 Begin["`Private`"]
 
 (*--------------------------- Modules ----------------------------*)
-OrbitCode = Association["orbital" -> 0, "spin" -> 1, "disp" -> 2];
-
 pos2index[atoms_, pos_] := If[Length[Dimensions[pos]] > 1, 
                               pos2index[atoms, #] &/@ pos,
                               First@First@Position[Rationalize[Chop[Flatten[DistMatrix[atoms\[Transpose][[1]], {pos}, {1,1,1}]]]], 0]]
@@ -238,7 +236,7 @@ ImportIsodistortCIF[file_,OptionsPattern[]] := Module[{CifData, CifFlags, xyzNam
 	LatticeScales = Table[ToExpression[FromCharacterCode[96+i]] -> Simplify@Norm[LatticeVectors[[i]]] ,{i,Length[LatticeVectors]}];
 	LatticeVectors = Table[ToExpression[FromCharacterCode[96+i]]* Simplify@Normalize[LatticeVectors[[i]]] ,{i,Length[LatticeVectors]}];
     If[Position[CifFlags,"_atom_site_fract_x" | "_atom_site_fract_y" |"_atom_site_fract_z"] != {},
-       Wyckoff = Transpose[{Transpose[({"_atom_site_fract_x","_atom_site_fract_y", "_atom_site_fract_z"} /. CifData)],"_atom_site_label" /. CifData}];,
+       Wyckoff = {ToExpression[#1], #2} &@@@ Transpose[{Transpose[({"_atom_site_fract_x","_atom_site_fract_y", "_atom_site_fract_z"} /. CifData)],"_atom_site_label" /. CifData}];,
        If[Position[CifFlags,"_atom_site_Cartn_x" | "_atom_site_Cartn_y" |"_atom_site_Cartn_z"] != {},
           Print["cartesian coords found, not implemented"];Abort[], 
           Print["no atom_side_fract"];Abort[]

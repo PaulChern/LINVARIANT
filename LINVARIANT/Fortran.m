@@ -29,6 +29,7 @@ TimesFactor2Real         ::usage = "TimesFactor2Real[expr]"
 StrainFromuF90           ::usage = "StrainFromu90[epsilon]"
 LINVARIANTModule         ::usage = "LINVARIANTModule[FunctionList]"
 Expr2Fortran             ::usage = "Expr2Fortran[expr, FortranVarSub]"
+FortranVarStr            ::usage = "FortranVarStr[var, arg]"
 
 FWriteArray::usage = "FWriteArray[channel, descriptor, matrix]
 writes the two-dimensional array matrix to the specified output channel
@@ -720,6 +721,10 @@ LINVARIANTModule[DeltaFunctionList_?ListQ, OtherFunctionList_:{}, OptionsPattern
 
 Expr2Fortran[expr_, FortranVarSub_] := Module[{},
   TimesFactor2Real[#] & /@ If[MatchQ[expr, Plus[_, __]], Level[expr, {1}], Level[expr, {0}]] /. FortranVarSub
+]
+
+FortranVarStr[var_, arg_] := Module[{},
+  ToString@FortranForm@ToExpression[var <> "[" <> StringRiffle[arg, ","] <> "]"]
 ]
 
 End[ ]         (* end the private context *)

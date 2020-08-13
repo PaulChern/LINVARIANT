@@ -3,6 +3,7 @@ BeginPackage["LINVARIANT`MathematicaPlus`"]
 (*--------- Load, Save and Modify Crystal Structure Libraries ------------*)
 NOrderResponse       ::usage "NOrderResponse[eqn, var, n]"
 GetVariationVar      ::usage "GetVariationVar[var]"
+Complex2Exp          ::usage "Complex2Exp[exp]"
 (*--------- Plot and Manipulate Crystal Structures -------------------- ----------------*)
 
 (*--------- Point and Space Group Information ---------------------------*)
@@ -18,6 +19,9 @@ GetVariationVar      ::usage "GetVariationVar[var]"
 Begin["`Private`"]
 
 (*--------------------------- Modules ----------------------------*)
+Complex2Exp[exp_] := Module[{},
+  Expand[exp /. z_?NumericQ :> Abs[z] Exp[I Arg[z]]]
+]
 GetVariationVar[var_] := Module[{\[Delta]var, varnew},
   \[Delta]var = ToString[#] & /@ Level[var, 1];
   varnew = "\!\(\*SubscriptBox[\(" <> "\[Delta]" <> \[Delta]var[[1]] <> "\),\(" <> StringJoin[Riffle[\[Delta]var[[2 ;;]], ","]] <> "\)]\)";

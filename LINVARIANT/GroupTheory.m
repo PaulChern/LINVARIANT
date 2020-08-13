@@ -1,4 +1,4 @@
-BeginPackage["LINVARIANT`GroupTheory`", {"LINVARIANT`SphericalHarmonics`"}]
+BeginPackage["LINVARIANT`GroupTheory`", {"LINVARIANT`SphericalHarmonics`", "LINVARIANT`MathematicaPlus`"}]
 
 (*--------- Load, Save and Modify Crystal Structure Libraries ------------*)
 CifImportSpg               ::usage "CifImportSpg[file]"
@@ -9,6 +9,7 @@ GetSiteSymmetry            ::usage "GetSiteSymmetry[grp0, vec0]"
 CifImportOperators         ::usage "CifImportOperators[file]"
 GetGenerators              ::usage "GetGenerators[grp]"
 Generators2Grp             ::usage "Generators2Grp[gen]"
+DoubleGroupQ               ::usage "DoubleGroupQ[grp]"
 xyzStr2Grp                 ::usage "xyzStr2Grp[keys]"
 xyzStr2Expression          ::usage "xyzStr2Expression[xyzStrData]"
 xyz2Rot                    ::usage "xyz2Rot[expr]"
@@ -47,7 +48,7 @@ ProjectOnOperator          ::usage "ProjectOnOperator[grp, ireps, O, vars]"
 ProjectOnBasis             ::usage "ProjectOnBasis[grp, ireps, OpMat, basis]"
 GetOrbitInducedIreps       ::usage "GetOrbitInducedIreps[kvec, grp, grpH, q, OrbitIreps, perm]"
 GetUnitaryTransMatrix      ::usage "GetUnitaryTransMatrix[Amat, Bmat, Cmat, n]"
-GetSpgCT                   ::usage "GetSpgCT[spg0, kvec, irreps]"
+PrintIreps                 ::usage "PrintIreps[classes, kvec, irreps, character, reality]"
 DecomposeIreps             ::usage "DecomposeIreps[grp, ct, character]"
 GetCGCoefficients          ::usage "GetCGCoefficients[grp, ireps, p1p2]"
 GetCGjmjm2jm               ::usage "GetCGjmjm2jm[jm1, jm2]"
@@ -161,19 +162,24 @@ CifImportOperators[file_] := Module[{CifData, CifFlags, xyzName, xyzStrData},
 
 xyzStr2Expression[xyzStrData_] := Module[{xyzRotTranData, xyzTranslation, xyzRotData},
   xyzRotTranData = ToExpression["{" <> xyzStrData <> "}"]; 
-  xyzTranslation = xyzRotTranData /. {ToExpression["x"] -> 0, ToExpression["y"] -> 0, ToExpression["z"] -> 0}; 
+  xyzTranslation = If[DoubleGroupQ[xyzStrData],
+                      xyzRotTranData /. {ToExpression["X"]->0, ToExpression["Y"]->0, ToExpression["Z"]->0},
+                      xyzRotTranData /. {ToExpression["x"]->0, ToExpression["y"]->0, ToExpression["z"]->0}
+  ];
   xyzRotData = xyzRotTranData - xyzTranslation;
   Return[{xyzRotData, xyzTranslation}]
 ]
 
-xyzStr2M4Ele[xyzStrData_] := Module[{RT, rot, tran},
-  {rot, tran} = xyzStr2Expression[xyzStrData];
-  RT = Join[Join[xyz2Rot[rot]\[Transpose], {tran}]\[Transpose], {{0, 0, 0, 1}}];
-  Return[Rationalize[RT]]
-]
-
-xyzStr2M4[xyzStrData_] := Module[{},
-  Which[StringQ[xyzStrData], xyzStr2M4Ele[xyzStrData], ListQ[xyzStrData], xyzStr2M4[#] &/@ xyzStrData, True, Print["Wrong Input type!"];Abort[]]
+xyzStr2M4[xyzStrData_] := Module[{RT, rot, tran},
+  Which[ListQ[xyzStrData], 
+        xyzStr2M4[#] &/@ xyzStrData, 
+        StringQ[xyzStrData], 
+        {rot, tran} = xyzStr2Expression[xyzStrData];
+        RT = Join[Join[xyz2Rot[rot]\[Transpose], {tran}]\[Transpose], {{0, 0, 0, 1}}];
+        Rationalize[RT],
+        True, 
+        Print["Wrong Input type!"];Abort[]
+  ]
 ]
 
 xyzStr2TRotEle[xyzStrData_] := Module[{rot, tran},
@@ -204,8 +210,17 @@ M42xyzStr[m4_] := Module[{},
   If[MatrixQ[m4], M42xyzStrEle[m4], M42xyzStr[#] &/@ m4]
 ]
 
-xyz2Rot[expr_] := Module[{m},
-  m = Coefficient[#, {ToExpression["x"], ToExpression["y"], ToExpression["z"]}] &/@ expr;
+DoubleGroupQ[grp_] := Module[{},
+  Which[AssociationQ[grp], DoubleGroupQ[Keys[grp]],
+        ListQ[grp], AnyTrue[grp, StringContainsQ[#, RegularExpression["[XYZ]"]] &],
+        StringQ[grp], StringContainsQ[grp, RegularExpression["[XYZ]"]]
+  ]
+]
+
+xyz2Rot[expr_] := Module[{m, m1, m2},
+  m1 = Coefficient[#, {ToExpression["x"], ToExpression["y"], ToExpression["z"]}] &/@ expr;
+  m2 = Coefficient[#, {ToExpression["X"], ToExpression["Y"], ToExpression["Z"]}] &/@ expr;
+  m = If[m1==ConstantArray[0, {3,3}], m2, m1];
   If[Abs[Det[m]] != 1, Print["xyz2Rot gives wrong determinant "<>ToString[Det[m]]]; Abort[], Unevaluate[Sequence[]]];
   Return[m]
 ]
@@ -618,11 +633,17 @@ GetLeftCosets[grp0_, invsub_] := Module[{i, j, grp},
   Return[grp]
 ]
 
-GetSpgIreps[spg_, kvec_] := Module[{grpk, orbits, ireps, irepk, gk, Tk, Tj, TTT, T, R, tran, p, pos, GammaK},
+GetSpgIreps[spg_, k_, OptionsPattern[{"print"->True}]] := Module[{grpk, classes, kvec, characters, reality, klabel, orbits, ireps, irepk, gk, Tk, Tj, TTT, T, R, tran, l, lp, lc, p, pos, GammaK},
+  {kvec, klabel} = k;
+  classes = GetClasses[spg];
   grpk = GetGrpK[spg, kvec];
   irepk = GetGrpKIreps[spg, kvec];
+  lp = Length[irepk];
   gk = Length[grpk];
-  orbits = GetLeftCosets[spg, GetGrpK[spg, kvec]]\[Transpose][[1]];
+  lc = Length[classes];
+  reality = Table[1/gk Sum[pos=First@First@Position[Keys[grpk], ModM4@GPower[T, 2]];
+                           Simplify[Tr@irepk[[l, pos]]], {T, Keys[grpk]}], {l, lp}];
+  orbits = GetLeftCosets[spg, grpk]\[Transpose][[1]];
   Print["orbits: ", orbits];
   Print["k star: ", GetStarK[spg, kvec]];
   tran = {ToExpression["\!\(\*SubscriptBox[\(t\), \(1\)]\)"], ToExpression["\!\(\*SubscriptBox[\(t\),  \(2\)]\)"], ToExpression["\!\(\*SubscriptBox[\(t\), \(3\)]\)"]};
@@ -631,7 +652,10 @@ GetSpgIreps[spg_, kvec_] := Module[{grpk, orbits, ireps, irepk, gk, Tk, Tj, TTT,
                 pos = Position[Keys[grpk], ModM4@TTT];
                 GammaK = If[T == "x,y,z", Exp[-I 2 Pi R.kvec.tran], 1];
                 If[pos == {}, 0, GammaK irepk[[p, First@First@pos]]], {Tk, orbits}, {Tj, orbits}], {p, Length@irepk}, {T, Keys[spg]}];
-  Return[ireps]
+  characters = Table[pos=First@First@Position[Keys[spg], classes[[i,1]]];
+                     Simplify@Tr@ireps[[l, pos]], {l, lp}, {i, lc}];
+  If[OptionValue["print"], PrintIreps[classes, k, ireps, characters, reality]];
+  Return[{ireps, characters}]
 ]
 
 GetGrpKIreps[spg_, kvec_] := Module[{i, j, k, n, gk, grpk, gH, grpH, perm, irepsn, ireps, pos, \[CapitalGamma]k, lcosets, q, qHq, orbits, lorbit, OrbitIreps, charsfinal, classes},
@@ -642,8 +666,8 @@ GetGrpKIreps[spg_, kvec_] := Module[{i, j, k, n, gk, grpk, gH, grpH, perm, ireps
      Return[ireps]];
   
   n = If[Divisible[Length[grpk], 2], 2, 3];
-  grpH = GetInvSubGrp[grpk, n, "all"->False];
-  grpH = If[grpH == {} && n == 2, n = 3; GetInvSubGrp[grpk, n, "all"->False][[1]], grpH[[1]]];
+  grpH = GetInvSubGrp[grpk, n, "all"->True];
+  grpH = If[grpH == {} && n == 2, n = 3; GetInvSubGrp[grpk, n, "all"->True][[-1]], grpH[[-1]]];
   gH = Length[grpH];
   
   irepsn = GetGrpKIreps[grpH, kvec];
@@ -750,18 +774,17 @@ GetUnitaryTransMatrix[Hmat_, qhqmat_, Unmat_, n_] := Module[{mdim, uu, U, inf1, 
   Return[uu /. Flatten[sol]]
 ]        
 
-GetSpgCT[spg0_, k_, ireps_, OptionsPattern[{"print" -> True}]] := Module[{i, l, pos, spgk, lp, characters, head1, head2, classes, kvec, klabel, tran},
-  {kvec, klabel} = k;
-  spgk = GetGrpK[spg0, kvec];
-  lp = Length[ireps];
-  classes = GetClasses[spgk];
-  characters = Table[pos=First@First@Position[Keys[spgk], classes[[i,1]]];
-                     Simplify@Tr@ireps[[l, pos]], {l, lp}, {i, lp}];
-  head1 = Superscript[klabel, ToString[#]] & /@ Range[lp];
-  head2 = ToString[Length[#]]<>GetEleLabel[#[[1]]] &/@ classes;
+PrintIreps[classes_, k_, ireps_, characters_, reality_] := Module[{i, l, pos, lc, lp, head1, head2, kvec, klabel, tran},
   tran = Thread[{ToExpression["\!\(\*SubscriptBox[\(t\), \(1\)]\)"], ToExpression["\!\(\*SubscriptBox[\(t\),  \(2\)]\)"], ToExpression["\!\(\*SubscriptBox[\(t\), \(3\)]\)"]}->{0,0,0}];
-  If[OptionValue["print"], Print[TableForm[characters/.tran, TableHeadings -> {head1, head2}, TableAlignments -> Right]]];
-  Return[characters]
+  {kvec, klabel} = k;
+  lc = Length[classes];
+  lp = Length[ireps];
+  head1 = ToString[Superscript[klabel, ToString[#]], StandardForm] <> " (" <> ToString[reality[[#]]] <> ")" & /@ Range[lp];
+  head2 = ToString[Length[#]]<>GetEleLabel[#[[1]]] &/@ classes;
+  head3 = ToString[GetEleLabel[#]<>"\[NewLine]"<>#, StandardForm] &/@ Flatten[classes];
+  Print[TableForm[characters\[Transpose]/.tran, TableHeadings -> {head2, head1}, TableAlignments -> Right]];
+  Print["---------------------------------------------------------------------------"];
+  Print[TableForm[Map[MatrixForm, #] &/@ (ireps\[Transpose]/.tran), TableHeadings -> {head3, head1}, TableAlignments -> Left]];
 ]
 
 GetCGCoefficients[grp_, ireps_, pp_] := Module[{i, j, k, t, p, classes, ct, clpos, lc, g, character, plist, rep, dim, Es, npq, A, CG, CGList, DirectProductRep},
@@ -820,7 +843,7 @@ DecomposeIreps[grp_, ct_, character_, OptionsPattern[{"print"->True}]] := Module
 ]
 
 GetSuperCellGrp[t_] := Module[{xyz, grp},
-  xyz = ToString@StringRiffle[Map[ToString[#, StandardForm] &, {ToExpression["x"], ToExpression["y"],  ToExpression["z"]} + #], ","] & /@ t;
+  xyz = "x+" <> ToString[#1, StandardForm] <> "," <> "y+" <> ToString[#2, StandardForm] <> "," <> "z+" <> ToString[#3, StandardForm] & @@@ t;
   grp = xyzStr2Grp[M42xyzStr[xyzStr2M4[#]] & /@ xyz];
   Return[grp]
 ]

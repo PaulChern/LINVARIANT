@@ -467,8 +467,6 @@ FortranEwaldMatrix[] := Module[{Fint, n, Fout},
   {Fint[4] <> "!Energy = Sum_ij{ Q_ij u_i u_j}, "},
   {Fint[4] <> "!Field_k= Partial Energy/Partial u_k = 2*Sum_i{Q_ik u_i} "},
   {Fint[4] <> "!"},
-  {Fint[4] <> "!(*But why is it that dpij is divided by two before using it? *)"},
-  {Fint[4] <> "!"},
   {Fint[4]},
   {Fint[4] <> "c = 8.0d0*pi/celvol"},
   {Fint[4] <> "residue = eta**3*(4.0d0/(3.0d0*sqrt(pi)))"},
@@ -1058,38 +1056,65 @@ HeadTailEOnSite[FunctionName_?StringQ, ReturnVar_, nn_, OptionsPattern[{"AllSite
   Return[{head, tail}]
 ]
 
-WriteLatticeModelF90[F90dir_, FuncName_?StringQ, FuncType_?StringQ, InvariantList_?ListQ, MMAVars_, MMA2F90Vars_, OptionsPattern[{"AllSites" -> True, "TylorOrder" -> 6}]] := Module[{InvariantType, Invariants, CoeffType, InvariantTypeList, ifield, i, inv, MMA, Fortran, f90, body, head, tail, CaseExprTable},
-  InvariantTypeList = FuncType <> # & /@ (InvariantList\[Transpose][[1]]);
+WriteLatticeModelF90[F90dir_, FuncName_?StringQ, FuncType_?StringQ, InvariantList_?ListQ, MMAVars_, MMA2F90Vars_, OptionsPattern[{"AllSites" -> True, "TylorOrder" -> 6}]] := Module[{FortranVar, FortranArrayVar, Invariants, ham, CoeffType, FortranVarList, ifield, i, inv, MMA, Fortran, f90, body, head, tail, CaseExprTable},
+
+  FortranVarList = FuncType <> # & /@ First[Transpose[InvariantList]];
   Which[
+  (* Forces *)
     FuncType == "Forces",
-    Fortran = Flatten[Table[InvariantType = FuncType <> inv[[1]];
-    Invariants = inv[[2]]; CoeffType = "Coeff" <> inv[[1]];
-    MMA =Flatten[Table[Table[{ToString@FortranForm[If[OptionValue["AllSites"],ToExpression[InvariantType][i, ifield, ToExpression["x0"], ToExpression["y0"], ToExpression["z0"]],ToExpression[InvariantType][i, ifield]]], -D[Expand[If[ListQ[Invariants], Invariants.(ToExpression[CoeffType][#] & /@ Range[Length@Invariants]), Invariants]], MMAVars[[ifield, i]]]}, {i, Length@MMAVars[[ifield]]}], {ifield, Length@MMAVars}], 1];
-    {#1, Expr2Fortran[#2, MMA2F90Vars]} & @@@ MMA, {inv, InvariantList}], 1];
+    Fortran = Flatten[
+                Table[FortranVar = FuncType <> inv[[1]];
+                      Invariants = inv[[2]]; 
+                      CoeffType = "Coeff" <> inv[[1]];
+                      MMA =Flatten[Table[Table[
+                        FortranArrayVar = If[OptionValue["AllSites"],
+                                             FortranVarStr[FortranVar, {ToString[i], ToString[ifield], "x0", "y0", "z0"}], 
+                                             FortranVarStr[FortranVar, {ToString[i], ToString[ifield]}]];
+                        ham = Expand@If[ListQ[Invariants], 
+                                        Invariants.(ToExpression[CoeffType][#] & /@ Range[Length@Invariants]),
+                                        Invariants];
+                        {FortranArrayVar, -D[Expand[ham], MMAVars[[ifield, i]]]}, {i, Length@MMAVars[[ifield]]}], {ifield, Length@MMAVars}], 1];
+                      {#1, Expr2Fortran[#2, MMA2F90Vars]} & @@@ MMA, {inv, InvariantList}], 1];
     body = Flatten[FortranExprBlock[#1, #2, If[OptionValue["AllSites"], 2, 1]] & @@@ Fortran, 1];
-    {head, tail} = HeadTailForces[FuncName, If[Length@InvariantTypeList == 1, First@InvariantTypeList, {FuncType, InvariantTypeList}], 1, "AllSites" -> OptionValue["AllSites"]],
+    {head, tail} = HeadTailForces[FuncName, If[Length@FortranVarList == 1, First@FortranVarList, {FuncType, FortranVarList}], 1, "AllSites" -> OptionValue["AllSites"]],
+  (* DeltaH *)
     FuncType == "DeltaH",
-    Fortran = Table[InvariantType = FuncType <> inv[[1]];
-      Invariants = inv[[2]]; CoeffType = "Coeff" <> inv[[1]];
-      MMA = Table[NOrderResponse[Expand[If[ListQ[Invariants], Invariants.(ToExpression[CoeffType][#] & /@ Range[Length@Invariants]), Invariants]], MMAVars[[ifield]], OptionValue["TylorOrder"]], {ifield, Length@MMAVars}];
-      Expr2Fortran[#, MMA2F90Vars] &/@ MMA, {inv, InvariantList}];
-  CaseExprTable = (Table[FortranExprBlock[#1, #2[[i]], 2], {i, Length@#2}] & @@@ ({InvariantTypeList, Fortran}\[Transpose]))\[Transpose];
-  body = FortranCaseBlock["idelta", {ToString[#] & /@ Range[Length[First@Fortran]], Table[Join[Flatten[CaseExprTable[[i]], 1], {{"    " <> FuncType <> "=" <> StringJoin[Riffle[InvariantTypeList, "+"]]}, {"  "}}], {i, Length@CaseExprTable}]}\[Transpose], GetCaseDefaults[{{"write(*,*) \"mode out of range!\""}, {"call abort"}}, 1], 1];
-  {head, tail} = HeadTailDeltaH[FuncName, {FuncType, InvariantTypeList}, 1], 
-  FuncType == "EOnSite",
-  Fortran = Flatten[Table[InvariantType = FuncType <> inv[[1]];
-  Invariants = inv[[2]]; CoeffType = "Coeff" <> inv[[1]];
-  MMA = {{ToString@FortranForm[If[OptionValue["AllSites"], ToExpression[InvariantType][ToExpression["x0"], ToExpression["y0"], ToExpression["z0"]], ToExpression[InvariantType]]], Expand[If[ListQ[Invariants], Invariants.(ToExpression[CoeffType][#] & /@ Range[Length@Invariants]), Invariants]]}};
-         {#1, Expr2Fortran[#2, MMA2F90Vars]} & @@@ MMA, {inv, InvariantList}], 1];
-  body = Flatten[FortranExprBlock[#1, #2, If[OptionValue["AllSites"], 2, 1]] & @@@ Fortran, 1];
-  {head, tail} = HeadTailEOnSite[FuncName, If[Length@InvariantTypeList == 1, First@InvariantTypeList, {FuncType, InvariantTypeList}], 1, "AllSites" -> OptionValue["AllSites"]],
-  FuncType == "HessianOnSite",
-  Fortran = Flatten[Table[InvariantType = FuncType <> inv[[1]];
-    Invariants = inv[[2]]; CoeffType = "Coeff" <> inv[[1]];
-    MMA = Flatten[Table[{ToString@FortranForm[ToExpression[InvariantType][i, j]], Expand@D[If[ListQ[Invariants], Invariants.(ToExpression[CoeffType][#] & /@ Range[Length@Invariants]), Invariants], MMAVars[[i]], MMAVars[[j]]]}, {i, Length@MMAVars}, {j, Length@MMAVars}], 1];
-   {#1, Expr2Fortran[#2, MMA2F90Vars]} & @@@ MMA, {inv, InvariantList}], 1];
-  body = Flatten[FortranExprBlock[#1, #2, 1] & @@@ Fortran, 1];
-  {head, tail} = HeadTailHessianOnSite[FuncName, If[Length@InvariantTypeList == 1, First@InvariantTypeList, {FuncType, InvariantTypeList}], 1]
+    Fortran = Table[FortranVar = FuncType <> inv[[1]];
+                    Invariants = inv[[2]]; 
+                    CoeffType = "Coeff" <> inv[[1]];
+                    MMA = Table[
+                      ham = Expand@If[ListQ[Invariants], Invariants.(ToExpression[CoeffType][#] & /@ Range[Length@Invariants]), Invariants]; 
+                      NOrderResponse[ham, MMAVars[[ifield]], OptionValue["TylorOrder"]], {ifield, Length@MMAVars}];
+                    Expr2Fortran[#, MMA2F90Vars] &/@ MMA, {inv, InvariantList}];
+    CaseExprTable = Transpose[Table[FortranExprBlock[#1, #2[[i]], 2], {i, Length@#2}] & @@@ Transpose[{FortranVarList, Fortran}]];
+    body = FortranCaseBlock["idelta", {ToString[#] & /@ Range[Length[First@Fortran]], Table[Join[Flatten[CaseExprTable[[i]], 1], {{"    " <> FuncType <> "=" <> StringJoin[Riffle[FortranVarList, "+"]]}, {"  "}}], {i, Length@CaseExprTable}]}\[Transpose], GetCaseDefaults[{{"write(*,*) \"mode out of range!\""}, {"call abort"}}, 1], 1];
+    {head, tail} = HeadTailDeltaH[FuncName, {FuncType, FortranVarList}, 1], 
+  (* EOnSite *)
+    FuncType == "EOnSite",
+    Fortran = Flatten[
+                Table[FortranVar = FuncType <> inv[[1]];
+                      Invariants = inv[[2]]; 
+                      CoeffType = "Coeff" <> inv[[1]];
+                      FortranArrayVar = If[OptionValue["AllSites"], FortranVarStr[FortranVar, {"x0", "y0", "z0"}], FortranVar];
+                      ham = Expand[If[ListQ[Invariants], Invariants.(ToExpression[CoeffType][#] & /@ Range[Length@Invariants]), Invariants]];
+                      MMA = {{FortranArrayVar, ham}};
+                      {#1, Expr2Fortran[#2, MMA2F90Vars]} & @@@ MMA, {inv, InvariantList}], 1];
+    body = Flatten[FortranExprBlock[#1, #2, If[OptionValue["AllSites"], 2, 1]] & @@@ Fortran, 1];
+    {head, tail} = HeadTailEOnSite[FuncName, If[Length@FortranVarList == 1, First@FortranVarList, {FuncType, FortranVarList}], 1, "AllSites" -> OptionValue["AllSites"]],
+  (* HessianOnSite *)
+    FuncType == "HessianOnSite",
+    Fortran = Flatten[Table[FortranVar = FuncType <> inv[[1]];
+    Invariants = inv[[2]]; 
+    CoeffType = "Coeff" <> inv[[1]];
+    MMA = Flatten[Table[FortranArrayVar = FortranVarStr[FortranVar, {ToString[i], ToString[j]}];
+                        ham = Expand@D[If[ListQ[Invariants], 
+                                          Invariants.(ToExpression[CoeffType][#] & /@ Range[Length@Invariants]), 
+                                          Invariants], 
+                                       MMAVars[[i]], MMAVars[[j]]];
+                        {FortranArrayVar, ham}, {i, Length@MMAVars}, {j, Length@MMAVars}], 1];
+                        {#1, Expr2Fortran[#2, MMA2F90Vars]} & @@@ MMA, {inv, InvariantList}], 1];
+    body = Flatten[FortranExprBlock[#1, #2, 1] & @@@ Fortran, 1];
+    {head, tail} = HeadTailHessianOnSite[FuncName, If[Length@FortranVarList == 1, First@FortranVarList, {FuncType, FortranVarList}], 1]
 ];
   MMA2FORTRAN[F90dir <> "/" <> FuncName, Join[head, body, tail]];
 ]

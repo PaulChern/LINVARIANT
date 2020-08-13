@@ -103,7 +103,8 @@ Jij[spg0_, fielddef_?ListQ, OptionsPattern[{"OnSite" -> False, "IsoTranRules"->{
 ]
 
 Epsilon2Field[strain_] := Module[{}, 
-  {{{0, 0, 0}, IdentityMatrix[3][[strain[[2]]]]}, {IdentityMatrix[3][[strain[[3]]]], IdentityMatrix[3][[strain[[2]]]]}, {{0, 0, 0}, IdentityMatrix[3][[strain[[3]]]]}, {IdentityMatrix[3][[strain[[2]]]], IdentityMatrix[3][[strain[[3]]]]}}]
+  {{{0, 0, 0}, IdentityMatrix[3][[strain[[2]]]]}, {IdentityMatrix[3][[strain[[3]]]], IdentityMatrix[3][[strain[[2]]]]}, {{0, 0, 0}, IdentityMatrix[3][[strain[[3]]]]}, {IdentityMatrix[3][[strain[[2]]]], IdentityMatrix[3][[strain[[3]]]]}}
+]
 
 Field2Epsilon[field_] := Module[{}, 
   1/2 (Sum[Normalize[field[[2]][[1]]][[j]] Normalize[field[[1]][[2]]][[i]] Subscript[Epsilon, i, j], {j, 3}, {i, 3}] + Sum[Normalize[field[[4]][[1]]][[j]] Normalize[field[[3]][[2]]][[i]] Subscript[Epsilon, i, j], {j, 3}, {i, 3}])/.{Subscript[Epsilon, 2, 1] -> Subscript[Epsilon, 1, 2], Subscript[Epsilon, 3, 1] -> Subscript[Epsilon, 1, 3], Subscript[Epsilon, 3, 2] -> Subscript[Epsilon, 2, 3]}]
@@ -137,11 +138,11 @@ GetBasisField[id_, BasisMatrix_, BasisLabels_, pos_, ftype_] := Module[{BasisLab
   BasisField = Which[ListQ[id], 
                      GetBasisField[#, BasisMatrix, BasisLabels, pos, ftype] & /@ id, 
                      IntegerQ[id], 
-                     If[ftype!="orbital",
+                     If[ftype=="disp"||ftype=="spin",
                         {sites\[Transpose][[2]], 
                         {sites\[Transpose][[1]], Partition[Normal[BasisMatrix][[;; , id]], 3]}\[Transpose], 
                         ConstantArray[ftype, Length[sites]]}\[Transpose],
-                        (*ftype=="orbital"*)
+                        (*ftype=="spinor"||"orbital"*)
                         BasisLabelsupdn = Join[BasisLabels, BasisLabels];
                         sites = Join[sites, sites];
                         dim = Total@Flatten[Table[2 # + 1 &/@ lm, {lm, BasisLabelsupdn}]];
@@ -152,7 +153,7 @@ GetBasisField[id_, BasisMatrix_, BasisLabels_, pos_, ftype_] := Module[{BasisLab
                                {sites[[i,1]],
                                Table[p = p0; p0 = p0 + 2*lm +1;
                                      BasisMatrix[[p;;p+2*lm,id]], {lm, BasisLabelsupdn[[i]]}]}, 
-                               If[i<=Length[sites]/2, "up","dn"]}, {i, Length@BasisLabelsupdn}]
+                               If[i<=Length[sites]/2, "up", "dn"]}, {i, Length@BasisLabelsupdn}]
                 
                         ]
                     ];
@@ -187,12 +188,9 @@ GetMatrixRep[grp_, pos_, BasisMatrix_, BasisLabels_, ftype_] := Module[{i, op, o
   Which[AssociationQ[grp],
         cell = Length@DeleteDuplicates[#] & /@ ((Rationalize[# - Mod[#, 1]] & /@ DeleteDuplicates[xyzStr2TRot[Keys[grp]]\[Transpose][[2]]])\[Transpose]);
         If[BasisDim != 0,
-        {NormFactor, BasisField} = If[ftype != "orbital",
-        Table[basis=GetBasisField[i, BasisMatrix, BasisLabels, pos, ftype];
-           {1/Norm[Flatten[basis\[Transpose][[2]]\[Transpose][[2]]]], basis}, {i,BasisDim}]\[Transpose],
-        (* ftype == orbital *)
-        Table[basis=GetBasisField[i, BasisMatrix, BasisLabels, pos, ftype];
-           {1/Norm[Flatten[basis\[Transpose][[2]]\[Transpose][[2]]]], basis}, {i,BasisDim}]\[Transpose]];
+        {NormFactor, BasisField} = Table[
+            basis=GetBasisField[i, BasisMatrix, BasisLabels, pos, ftype];
+            {1/Norm[Flatten[basis\[Transpose][[2]]\[Transpose][[2]]]], basis}, {i,BasisDim}]\[Transpose];
         TransformedBasisField = ParallelTable[SymmetryOpBasisField[g, pos, cell, #, ftype] &/@ BasisField, {g, Keys@grp}, DistributedContexts -> {"LINVARIANT`ISODISTORT`Private`"}];
         ParallelTable[mat = Table[Rationalize[NormFactor[[i]]*NormFactor[[j]]*Flatten[TransformedBasisField[[ig]][[i]]\[Transpose][[2]]\[Transpose][[2]]].Flatten[BasisField[[j]]\[Transpose][[2]]\[Transpose][[2]]]], {i, Range@BasisDim}, {j, Range@BasisDim}];
         SparseArray[mat], {ig, Length@grp}, DistributedContexts -> {"LINVARIANT`ISODISTORT`Private`"}], 
@@ -214,7 +212,7 @@ DGrpTransform[monomials_, rules_] := Module[{P, PT, i, EDim, SpinReverse, Orbita
   Return[P+PT]
 ]
 
-SymmetryOpBasisField[grp_, pos_, cell_, BasisField_, ftype_] := Module[{latt, sites, site, i, trans, rot, NewField, NewFieldup, NewFielddn, posvec, difftable, posmap, updn, updnbasis, upbasis, dnbasis},
+SymmetryOpBasisField[grp_, pos_, cell_, BasisField_, ftype_] := Module[{latt, sites, site, i, trans, rot, rotL, SU2, NewField, NewFieldup, NewFielddn, posvec, difftable, posmap, updn, basis, upbasis, dnbasis, tesseral, dim},
   Which[
    AssociationQ[grp],
    SymmetryOpBasisField[#, pos, cell, BasisField, ftype] & /@ Keys[grp],
@@ -227,7 +225,7 @@ SymmetryOpBasisField[grp_, pos_, cell_, BasisField_, ftype_] := Module[{latt, si
    StringQ[grp] && Length[Dimensions[BasisField]] == 2,
    {latt, sites} = pos;
    {rot, trans} = xyzStr2TRot[grp];
-   If[ftype!="orbital",
+   If[ftype=="disp"||ftype=="spin",
      Which[
        ftype=="disp",
        posvec={ModCell[N[rot.(#2[[1]])+trans], cell], N[rot.(#2[[2]])]} & @@@ BasisField,
@@ -237,22 +235,27 @@ SymmetryOpBasisField[grp_, pos_, cell_, BasisField_, ftype_] := Module[{latt, si
      difftable = DistMatrix[BasisField\[Transpose][[2]]\[Transpose][[1]], posvec\[Transpose][[1]], cell];
      posmap = Position[difftable, x_ /; TrueQ[Chop[x] == 0]];
      NewField = {BasisField[[#1]][[1]], posvec[[#2]], BasisField[[#1]][[3]]} & @@@ posmap,
-     (*ftype=="orbital"*)
-     updnbasis=Table[
-       site=ModCell[N[rot.(#2[[1]])+trans], cell];
-       updn=If[Det[rot]==1, BasisField[[i,3]], If[BasisField[[i,3]]=="up","dn","up"]];
-       updn=BasisField[[i,3]];
-       {site, 
-        GetAngularMomentumRep[latt, First@xyzStr2TRot[grp], (Length[#]-1)/2].# &/@ BasisField[[i,2]][[2]], 
-        updn}, {i,Length@BasisField}];
-     upbasis=If[#[[3]]=="up",#,##&[]] &/@ updnbasis;
-     dnbasis=If[#[[3]]=="dn",#,##&[]] &/@ updnbasis;
+     (*ftype=="spinor"||"orbital"*)
+     dim = Length[BasisField];
+     basis = Transpose[Transpose[#][[2]]] &/@ Transpose[Partition[BasisField, dim/2]];
+     {upbasis, dnbasis} = Which[
+       ftype=="orbital",
+       Table[
+         site = ModCell[N[rot.#+trans], cell] &/@ basis[[i,1]];
+         tesseral = Partition[GetAngularMomentumRep[latt, rot, (Length[#]-1)/2, "Tesseral"].# &/@Flatten[basis[[i,2]], 1], Length@Flatten[basis[[i,2]], 1]/2];
+         Transpose[{site, tesseral, {"up","dn"}}], {i, dim/2}]\[Transpose],
+       ftype=="spinor",
+       SU2 = GetAngularMomentumRep[latt, rot, 1/2, "Spherical"];
+       Table[
+         site = ModCell[N[rot.#+trans], cell] &/@ basis[[i,1]];
+         tesseral = Partition[GetAngularMomentumRep[latt, rot, (Length[#]-1)/2, "Tesseral"].# &/@Flatten[basis[[i,2]], 1], Length@Flatten[basis[[i,2]], 1]/2];
+         Transpose[{site, Transpose[Transpose[Map[SU2.# &, Transpose[#]]] &/@ Transpose[tesseral]], {"up", "dn"}}], {i, dim/2}]\[Transpose]        
+     ];
+
      difftable = DistMatrix[sites\[Transpose][[1]], upbasis\[Transpose][[1]], cell];
      posmap = Position[difftable, x_ /; TrueQ[Chop[x] == 0]];
-     NewFieldup = {sites[[#1]][[2]], upbasis[[#2]][[1;;2]], upbasis[[#2]][[3]]} & @@@ posmap;
-     difftable = DistMatrix[sites\[Transpose][[1]], dnbasis\[Transpose][[1]], cell];
-     posmap = Position[difftable, x_ /; TrueQ[Chop[x] == 0]];
-     NewFielddn = {sites[[#1]][[2]], dnbasis[[#2]][[1;;2]], dnbasis[[#2]][[3]]} & @@@ posmap;
+     NewFieldup = {sites[[#1]][[2]], upbasis[[#2]][[1;;2]], "up"} & @@@ posmap;
+     NewFielddn = {sites[[#1]][[2]], dnbasis[[#2]][[1;;2]], "dn"} & @@@ posmap;
      NewField = Join[NewFieldup, NewFielddn];
    ];
   Return[NewField]]
@@ -268,9 +271,11 @@ GetIsoTransformRules[OpMatrix_, TranType_] := Module[{IsoDim, IsoVars, VarRules,
                    Subscript[ToExpression["Iso"], #] &/@ Range[IsoDim], 
                    TranType == "spin", 
                    Subscript[ToExpression["mIso"], #] &/@ Range[IsoDim],
-                   TranType == "orbital",
+                   TranType == "spinor" || TranType == "orbital",
                    Subscript[ToExpression["eIso"], #] &/@ Range[IsoDim]];
+
    VarRules = IsoVars[[#1[[1]]]] -> #2 IsoVars[[#1[[2]]]] & @@@ Drop[ArrayRules[OpMatrix], -1];
+
    Table[First@DeleteDuplicates[Keys[VarRules[[#]]] & /@ i] -> Total[Values[VarRules[[#]]] & /@ i], {i, Table[Flatten[Position[Keys@VarRules, var]], {var, IsoVars}]}], {}];
    Return[rules],
    Length[Dimensions@OpMatrix]==3,
@@ -288,7 +293,7 @@ GetIsoStrainTransformRules[spg0_] := Module[{StrainRules},
 GetTransformationRules[spg0_, OpMatrix_] := Module[{OpDispMatrix, OpSpinMatrix, OpOrbitalMatrix},
   {OpDispMatrix, OpSpinMatrix, OpOrbitalMatrix} = OpMatrix;
   Join[#1, #2, #3, #4] & @@@ ({GetIsoTransformRules[OpDispMatrix, "disp"], 
-    GetIsoTransformRules[OpSpinMatrix, "spin"], GetIsoTransformRules[OpOrbitalMatrix, "orbital"],
+    GetIsoTransformRules[OpSpinMatrix, "spin"], GetIsoTransformRules[OpOrbitalMatrix, "spinor"],
     GetIsoStrainTransformRules[spg0]}\[Transpose])
 ]
 
@@ -307,7 +312,7 @@ GetInvariants[seeds_, order_, OpMatrix_, spg0_, OptionsPattern[{"MustInclude"->{
 ]
 
 NumberCommonDivisor[NumList_] := Module[{TempList, DenominatorLCM},
- TempList = Which[Head[#] === Integer, #, Head[#] === Times, First@Level[#, {1}], Head[#] === Power, 1, Head[#] === Rational, #, Head[#] === Complex, Re[#]] &/@ NumList;
+ TempList = Which[Head[#] === Integer, #, Head[#] === Times, First@Level[#, {1}], Head[#] === Power, 1, Head[#] === Rational, #, (Head[#] === Complex)&&(Re[#]!=0), Abs[#], (Head[#] === Complex)&&(Re[#]==0), #] &/@ NumList;
  DenominatorLCM = If[MemberQ[TempList, _Rational], LCM @@ (Denominator[#] & /@ Extract[TempList, Position[TempList, _Rational]]), 1];
  Return[{DenominatorLCM, GCD @@ (TempList DenominatorLCM)}]
 ]
@@ -368,16 +373,17 @@ GetIsoBasis[grp0_, pos_, ftype_, kpoint_: {{0, 0, 0}, "\[CapitalGamma]"}, ct0_: 
   Return[{IsoDispModes, IsoDispModeMatrix}]
 ]
 
-GetSymAdaptedBasis[grp0_, pos_, cell_, kpoint_: {{0, 0, 0}, "\[CapitalGamma]"}, ftype_] := Module[{i, j, k, t, l, c1, c2, w, p, imode, WyckoffSites, ZeroModeMatrix, SymmetryAdaptedBasis, grpt, Latt0, Latt, tran, Wyckoff0, Sites, IsoDispModes, IsoDispModeMatrix, OpDispMatrix, ireps0, ireps, classes, ProjMat, g0, basis, irepbasis, ireplabel, grpk, m, n, lp, BasisMatrix, BasisModes, grp, ET},
+GetSymAdaptedBasis[grp0_, pos_, cell_, kpoint_: {{0, 0, 0}, "\[CapitalGamma]"}, ftype_] := Module[{i, j, k, t, l, c1, c2, w, p, imode, WyckoffSites, ZeroModeMatrix, SymmetryAdaptedBasis, grpt, Latt0, Latt, tran, Wyckoff0, Sites, IsoDispModes, IsoDispModeMatrix, OpDispMatrix, character, ireps0, ireps, classes, ProjMat, g0, basis, irepbasis, ireplabel, grpk, m, n, lp, BasisMatrix, BasisModes, grp, ET},
    tran = {ToExpression["\!\(\*SubscriptBox[\(t\), \(1\)]\)"], ToExpression["\!\(\*SubscriptBox[\(t\),  \(2\)]\)"], ToExpression["\!\(\*SubscriptBox[\(t\), \(3\)]\)"]};
   grpt = GetSuperCellGrp[Flatten[Table[{i, j, k} - {1, 1, 1}, {i, cell[[1]]}, {j, cell[[2]]}, {k, cell[[3]]}], 2]];
   grpk = GetGrpK[grp0, kpoint[[1]]];
   classes = GetClasses[grpk];
-  ireps0 = GetSpgIreps[grp0, kpoint[[1]]];
+  {ireps0, character} = GetSpgIreps[grp0, kpoint, "print"->False];
   g0 = Length[grp0];
   {Latt0, Wyckoff0} = pos;
   Latt = DiagonalMatrix[cell].Latt0;
   grp = xyzStr2Grp[Flatten@GTimes[{grpt, grp0}], "fast"->True];
+  grp = {grpt, grp0};
   ireps = Flatten[Table[ET = Simplify[#[[1]] /. Thread[tran->xyzStr2TRot[Keys[grpt][[t]]][[2]]]];
                         ET.(#[[i]] /. Thread[tran->{0, 0, 0}]), {t, Length[grpt]}, {i, g0}], 1] &/@ ireps0;
   WyckoffSites = GetWyckoffImages[grp0, Wyckoff0, cell];
