@@ -1,4 +1,4 @@
-BeginPackage["LINVARIANT`Boracite`",{"LINVARIANT`Structure`", "LINVARIANT`ISODISTORT`"}]
+BeginPackage["LINVARIANT`Boracite`",{"LINVARIANT`Structure`", "LINVARIANT`INVARIANT`"}]
 
 (*--------- Load, Save and Modify Crystal Structure Libraries ------------*)
 GetPmode           ::usage = "GetPmode[DspMode]"

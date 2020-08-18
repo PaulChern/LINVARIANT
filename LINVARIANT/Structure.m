@@ -1,7 +1,6 @@
-BeginPackage["LINVARIANT`Structure`", {"LINVARIANT`GroupTheory`"}]
+BeginPackage["LINVARIANT`Structure`"]
 
 (*--------- Load, Save and Modify Crystal Structure Libraries ------------*)
-GetWyckoffImages             ::usage = "GetWyckoffImages[grp, pos]"
 ModCell                      ::usage = "ModCell[xyz, cell]"
 exportXYZ                    ::usage = "exportXYZ[filepath_, {comment_, vertices_, atomcoordinates_}]"
 cif2mcif                     ::usage = "cif2mcif[id, IsoMatrix, pos0]"
@@ -55,14 +54,6 @@ ModCell[xyz_, cell_] := Module[{},
   Mod[#1, #2] &@@@ ({xyz, cell}\[Transpose])
 ]
 
-GetWyckoffImages[grp0_, pos_, cell_:{1,1,1}] := Module[{i, j, k, grpt, grp, xyzStrData, xyzExpData, WyckoffImages0, WyckoffImages1},
-  grpt = GetSuperCellGrp[Flatten[Table[{i, j, k} - {1, 1, 1}, {i, cell[[1]]}, {j, cell[[2]]}, {k, cell[[3]]}], 2]];
-  grp = Flatten@GTimes[{grpt, grp0}];
-  WyckoffImages0 = Table[Union[{ModCell[#[[1]].pos[[i,1]]+#[[2]], cell], pos[[i,2]]} &/@ xyzStr2TRot@grp, SameTest -> (Norm[Chop[#1[[1]] - #2[[1]]]] == 0. &)], {i, Length[pos]}];
-  WyckoffImages1 = Table[MapIndexed[{#1[[1]], SimplifyElementSymbol[#1[[2]]] <> ToString[i] <> "." <> ToString[First@#2]} &, WyckoffImages0[[i]]], {i, Length[pos]}];
-  Return[WyckoffImages1]
-]
-  
 exportXYZ[filepath_, {comment_, vertices_, atomcoordinates_}] := Module[{outputfilestream, outputstring},
   If[Or[Not@StringQ[filepath], Not@StringQ[comment]], Message[exportXYZ::usage]; Abort[]];
   If[Length@vertices != First@Dimensions@atomcoordinates, Message[exportXYZ::mismatch]; Abort[]];
@@ -128,9 +119,9 @@ SymmetryOpVectorField[grp_, pos_, vec_, ftype_] := Block[{originshift, xyzStrDat
   xyzRotData = xyzRotTranData - xyzTranslation;
 
   newvec = Which[ftype=="disp",
-                 Table[{Det[xyz2Rot[op]]^2*(op /. Thread[ToExpression[{"x", "y", "z"}] -> #1]), #2} & @@@ vec, {op, xyzRotData}],
+                 Table[{Det[Expr2Rot[op]]^2*(op /. Thread[ToExpression[{"x", "y", "z"}] -> #1]), #2} & @@@ vec, {op, xyzRotData}],
                  ftype=="spin",
-                 Table[{Det[xyz2Rot[op]]*(op /. Thread[ToExpression[{"x", "y", "z"}] -> #1]), #2} & @@@ vec, {op, xyzRotData}]];
+                 Table[{Det[Expr2Rot[op]]*(op /. Thread[ToExpression[{"x", "y", "z"}] -> #1]), #2} & @@@ vec, {op, xyzRotData}]];
   newpos = Table[{(op /. Thread[ToExpression[{"x", "y", "z"}] -> (pos[[i]][[1]]+originshift)]), i}, {op, xyzRotTranData}, {i, Length@pos}];
   
   (*difftable = ParallelTable[DistMatrix[#+originshift&/@(pos\[Transpose][[1]]), newpos[[op]]\[Transpose][[1]]], {op, Length@xyzRotTranData}, DistributedContexts -> {"LINVARIANT`Structure`Private`"}];*)
@@ -152,7 +143,7 @@ SymmetryOpVectorFieldCif[file_, pos_, vec_, OptionsPattern["spin" -> False]] := 
 
   axial = If[OptionValue["spin"], 1, 2];
 
-  newvec = Table[{Det[xyz2Rot[op]]^axial*N[op /. Thread[ToExpression[{"x", "y", "z"}] -> #1]], #2} & @@@ vec, {op, xyzRotData}];
+  newvec = Table[{Det[Expr2Rot[op]]^axial*N[op /. Thread[ToExpression[{"x", "y", "z"}] -> #1]], #2} & @@@ vec, {op, xyzRotData}];
   newpos = Table[{N[op /. Thread[ToExpression[{"x", "y", "z"}] -> (pos[[i]][[1]]+originshift)]], i}, {op, xyzRotTranData}, {i, Length@pos}];
 
   (*difftable = ParallelTable[DistMatrix[#+originshift&/@(pos\[Transpose][[1]]), newpos[[op]]\[Transpose][[1]]], {op, Length@xyzRotTranData}, DistributedContexts ->   {"LINVARIANT`Structure`Private`"}];*)

@@ -1,7 +1,7 @@
-(****m* /INVARIANT.m
+(****m* /LINVARIANT.m
 !
 ! NAME
-!  INVARIANT.m
+!  LINVARIANT.m
 ! AUTHOR
 !  Peng Chen and Sergey Artyukhin
 ! MODIFICATION HISTORY
@@ -19,7 +19,7 @@ BeginPackage["LINVARIANT`",
              "LINVARIANT`MultipoleExpansion`",
              "LINVARIANT`MathematicaPlus`",
              "LINVARIANT`QM`",
-             "LINVARIANT`ISODISTORT`",
+             "LINVARIANT`INVARIANT`",
 	         "LINVARIANT`Structure`",
 	         "LINVARIANT`Boracite`",
 	         "LINVARIANT`SpinHamiltonian`",
