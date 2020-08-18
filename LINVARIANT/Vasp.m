@@ -6,6 +6,8 @@ ExportPOSCAR                 ::usage "ExportPOSCAR[dir, fname, f]"
 ParseXML                     ::usage "ParseXML[xml, tag, label, level]"
 ParseXMLData                 ::usage "ParseXMLData[xml, DataType]"
 ParseVasprunBands            ::usage "ParseVasprunBands[xml]"
+Kpoints2Kpath                ::usage "Kpoints2Kpath[kp]"
+VaspBSPlot                   ::usage "VaspBSPlot[bsxml, klabels]"
 (*--------- Plot and Manipulate Crystal Structures -------------------- ----------------*)
 
 (*--------- Point and Space Group Information ---------------------------*)
@@ -52,7 +54,6 @@ ImportPOSCAR[f_] := Module[{inp, Latt, xyz, xyzType, EleType, EleNum, TotalNum},
   Return[{Latt, xyz}]
 ]
 
-
 ExportPOSCAR[dir_, fname_, f_] := Module[{i, pos, EleList, POSCAR},
   EleList = SimplifyElementSymbol[#] & /@ (f[[2]]\[Transpose][[2]]);
   pos = {f[[1]], {f[[2]]\[Transpose][[1]], EleList}\[Transpose]};
@@ -81,6 +82,36 @@ PlotGrid[latt_, pos_, dim_, OptionsPattern[{"vec" -> {}, "AtomSize" -> 0.02, "Im
                          {Black, FontSize -> 10, Table[Text[StringJoin[Riffle[ToString[#] & /@ {ix, iy}, ","]], latt.{ix, iy, iz} + latt.{0.2, 0.2, 0.0}], {ix, -Nx, Nx}, {iy, -Ny, Ny}, {iz, -Nz, Nz}]}}],
                    ImageSize -> OptionValue["ImageSize"],
                    ViewPoint -> {0, 0, 100}]];
+]
+
+Kpoints2Kpath[kp_] := Module[{},
+  {Accumulate[Join[{0}, Norm[#] & /@ Differences[kp]]], kp}\[Transpose]
+]
+
+VaspBSPlot[bsxml_, klabels_, OptionsPattern[{"ERange" -> All}]] := Module[{kpath, updata, dndata, upplot, dnplot},
+  kpath = {Accumulate[Join[{0}, Norm[#] & /@ Differences[bsxml["k"]]]], bsxml["k"]}\[Transpose];
+  updata = {kpath\[Transpose][[1]], #\[Transpose][[1]]}\[Transpose] & /@ (bsxml["up"]\[Transpose]);
+  dndata = {kpath\[Transpose][[1]], #\[Transpose][[1]]}\[Transpose] & /@ (bsxml["dn"]\[Transpose]);
+  upplot = ListLinePlot[updata, 
+                        PlotStyle -> {{Black, Thick}}, 
+                        Joined -> True, 
+                        PlotRange -> {All, OptionValue["ERange"]}, 
+                        AspectRatio -> 1/GoldenRatio, 
+                        Frame -> True, 
+                        GridLines -> {{klabels\[Transpose][[1]], ConstantArray[Thick, Length[klabels]]}\[Transpose], Automatic},
+                        FrameTicks -> {{Automatic, None}, {klabels, None}},
+                        ImageSize -> Medium];
+  dnplot = ListLinePlot[dndata,  
+                        PlotStyle -> {{Black, Dashed, Thin}},  
+                        Joined -> True,  
+                        PlotRange -> {All, {-3, 2}},  
+                        AspectRatio -> 1/GoldenRatio,  
+                        Frame -> True, 
+                        GridLines -> {{klabels\[Transpose][[1]], ConstantArray[Thick, Length[klabels]]}\[Transpose], Automatic},
+                        FrameTicks -> {{Automatic, None}, {klabels, None}},
+                        ImageSize -> Medium];
+
+  Return[Show[{upplot,dnplot}]]
 ]
 (*-------------------------- Attributes ------------------------------*)
 
