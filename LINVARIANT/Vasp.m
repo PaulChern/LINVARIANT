@@ -88,7 +88,7 @@ Kpoints2Kpath[kp_] := Module[{},
   {Accumulate[Join[{0}, Norm[#] & /@ Differences[kp]]], kp}\[Transpose]
 ]
 
-VaspBSPlot[bsxml_, klabels_, OptionsPattern[{"ERange" -> All}]] := Module[{kpath, updata, dndata, upplot, dnplot},
+VaspBSPlot[bsxml_, klabels_, OptionsPattern[{"ERange" -> All, "FigRatio"->1/GoldenRatio}]] := Module[{kpath, updata, dndata, upplot, dnplot},
   kpath = {Accumulate[Join[{0}, Norm[#] & /@ Differences[bsxml["k"]]]], bsxml["k"]}\[Transpose];
   updata = {kpath\[Transpose][[1]], #\[Transpose][[1]]}\[Transpose] & /@ (bsxml["up"]\[Transpose]);
   dndata = {kpath\[Transpose][[1]], #\[Transpose][[1]]}\[Transpose] & /@ (bsxml["dn"]\[Transpose]);
@@ -96,7 +96,7 @@ VaspBSPlot[bsxml_, klabels_, OptionsPattern[{"ERange" -> All}]] := Module[{kpath
                         PlotStyle -> {{Black, Thick}}, 
                         Joined -> True, 
                         PlotRange -> {All, OptionValue["ERange"]}, 
-                        AspectRatio -> 1/GoldenRatio, 
+                        AspectRatio -> OptionValue["FigRatio"], 
                         Frame -> True, 
                         GridLines -> {{klabels\[Transpose][[1]], ConstantArray[Thick, Length[klabels]]}\[Transpose], Automatic},
                         FrameTicks -> {{Automatic, None}, {klabels, None}},
@@ -105,7 +105,7 @@ VaspBSPlot[bsxml_, klabels_, OptionsPattern[{"ERange" -> All}]] := Module[{kpath
                         PlotStyle -> {{Black, Dashed, Thin}},  
                         Joined -> True,  
                         PlotRange -> {All, {-3, 2}},  
-                        AspectRatio -> 1/GoldenRatio,  
+                        AspectRatio -> OptionValue["FigRatio"],  
                         Frame -> True, 
                         GridLines -> {{klabels\[Transpose][[1]], ConstantArray[Thick, Length[klabels]]}\[Transpose], Automatic},
                         FrameTicks -> {{Automatic, None}, {klabels, None}},
