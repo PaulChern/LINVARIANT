@@ -1,7 +1,6 @@
 #!/usr/bin/env wolframscript
-
 tmp = URLSave["https://github.com/PaulChern/LINVARIANT/archive/master.zip"];
-dest = FileNameJoin[{$UserBaseDirectory, "Peng", "LINVARIANT"}];
+dest = FileNameJoin[{$UserBaseDirectory, "Applications", "LINVARIANT"}];
 tmpExpanded = CreateDirectory[];
 ExtractArchive[tmp, tmpExpanded];
 CopyDirectory[FileNameJoin[{tmpExpanded, "LINVARIANT-master", "LINVARIANT"}], dest];

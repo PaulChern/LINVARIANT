@@ -20,7 +20,7 @@ Begin["`Private`"]
 
 (*--------------------------- Modules ----------------------------*)
 GetMultipoleExpansionCoeff[latt_, grp_, fieldseed_, Jcut_, Harmonic_:"Tesseral"] := Module[{i, field, g, J, m, eqns, sol, coeff, Alm, vars},
-  field = Union@Flatten[Table[{latt\[Transpose].First[#].fieldseed[[i,1]], fieldseed[[i,2]]} &/@ xyz2RotTSU2[Keys[grp]], {i, Length[fieldseed]}], 1];
+  field = Union@Flatten[Table[{latt\[Transpose].First[#].fieldseed[[i,1]], fieldseed[[i,2]]} &/@ xyz2RotT[Keys[grp]], {i, Length[fieldseed]}], 1];
   Alm[J_, m_] := 1/(2 J +1) Total[#2 SolidTesseralHarmonicY[J, m, #1]/Norm[#1]^(J+1) &@@@ field];
   g = Length[grp];
   coeff = Table[

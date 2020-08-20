@@ -40,7 +40,7 @@ Mat2EulerVector[mat_] := Module[{\[Phi], axes, es, s, \[Epsilon]},
   es = Eigensystem[Rationalize[\[Epsilon] mat]];
   axes = es[[2]][[First@First@Position[es[[1]], 1]]];
 
-Return[{axes, Rationalize[\[Phi]/Pi]*Pi, \[Epsilon]}]
+  Return[{axes, Rationalize[\[Phi]/Pi]*Pi, \[Epsilon]}]
 ]
 
 GetEulerRodrigues[n_, \[Theta]_, \[Epsilon]_:1] := Module[{K, R, nx, ny, nz},
@@ -63,7 +63,7 @@ Mat2EulerAngles[latt_, mat_] := Module[{\[Epsilon], axis, \[Phi], R, K, nx, ny, 
   {nx, ny, nz} = Normalize[latt\[Transpose].axis];
   K = {{0, -nz, ny}, {nz, 0, -nx}, {-ny, nx, 0}};
   (*R = Expand[(\[Epsilon] IdentityMatrix[3] + Sin[\[Phi]] K + \[Epsilon] (1 - \[Epsilon] Cos[\[Phi]]) K.K)];*)
-  R = Expand[(IdentityMatrix[3] + Sin[\[Phi]] K + (1 - Cos[\[Phi]]) K.K)];
+  R = Expand[(IdentityMatrix[3] + Sin[-\[Phi]] K + (1 - Cos[-\[Phi]]) K.K)];
   {\[Alpha], \[Beta], \[Gamma]} = EulerAngles[R];
   (*\[Beta] = ArcCos[R[[3, 3]]];
   Which[
