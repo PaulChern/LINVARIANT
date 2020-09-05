@@ -24,7 +24,7 @@ Begin["`Private`"]
 (*--------------------------- Modules ----------------------------*)
 GetJi0Bonds[spg0_, tij_, pos_] := Module[{latt, AllSites, c1, c2, c3, sol, site, AllBonds, ReducedBonds},
   {latt, AllSites} = pos;
-  AllBonds = Flatten[Table[{(xyz2Mat[xyz].Join[AllSites[[#1[[1]], 1]], {1}])[[1 ;; 3]], (xyz2Mat[xyz].Join[AllSites[[#1[[2]], 1]] + #2, {1}])[[1 ;; 3]], (latt.Inverse[xyz2Mat[xyz]][[1 ;; 3, 1 ;; 3]].Inverse[latt])\[Transpose].#3.(latt.Inverse[xyz2Mat[xyz]][[1 ;; 3, 1 ;; 3]].Inverse[latt])}, {xyz, Keys[spg0]}] & @@@ tij, 1];
+  AllBonds = Flatten[Table[{(xyz2m4[xyz].Join[AllSites[[#1[[1]], 1]], {1}])[[1 ;; 3]], (xyz2m4[xyz].Join[AllSites[[#1[[2]], 1]] + #2, {1}])[[1 ;; 3]], (latt.Inverse[xyz2m4[xyz]][[1 ;; 3, 1 ;; 3]].Inverse[latt])\[Transpose].#3.(latt.Inverse[xyz2m4[xyz]][[1 ;; 3, 1 ;; 3]].Inverse[latt])}, {xyz, Keys[spg0]}] & @@@ tij, 1];
   ReducedBonds = Flatten[Table[sol = Rationalize@Chop@First@Values@Solve[site[[2]] + IdentityMatrix[3].{c1, c2, c3} == site[[1]]]; If[AllTrue[sol, IntegerQ], {#1 - sol, #2 - sol, #3}, ## &[]], {site, Tuples[{{#1, #2}, AllSites\[Transpose][[1]]}]}] & @@@ AllBonds, 1];
   ReducedBonds = DeleteDuplicates[If[Rationalize[Chop[#1 - Mod[#1, 1]]] == {0, 0, 0}, {#1, #2, #3}, {#2, #1, #3\[Transpose]}] &@@@ ReducedBonds, Chop[#1[[1]] - #2[[1]]] == {0, 0, 0} && Chop[#1[[2]] - #2[[2]]] == {0,  0, 0} &];
   ReducedBonds = {pos2index[AllSites, {#1, Mod[#2, 1]}], Rationalize[#2 - Mod[#2, 1]], 1, #3} & @@@ ReducedBonds;

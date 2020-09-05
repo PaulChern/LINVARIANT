@@ -373,8 +373,7 @@ SimplifyElementSymbol[ele_] := Module[{SimplifyList},
   Return[SimplifyList]
 ]
 
-PlotCrystal[latt_, pos_, dim_, OptionsPattern[{"vec" -> {}, "shift"->{0,0,0}, "AtomSize" -> 0.02, "ImageSize" -> 500}]] := Module[{xlimit, ylimit, zlimit, Nx, Ny, Nz, ExtVec, PointList, PosSymbols, PosTypes, PosColorCode, PosColorRange, PosColorList, PosList, vec},
-  {Nx, Ny, Nz} = dim;
+PlotCrystal[latt_, pos_, dim_, OptionsPattern[{"vec" -> {}, "shift"->{0,0,0}, "AtomSize" -> 0.02, "ImageSize" -> 500}]] := Module[{xlimit, ylimit, zlimit, ExtVec, PointList, PosSymbols, PosTypes, PosColorCode, PosColorRange, PosColorList, PosList, vec},
   {xlimit, ylimit, zlimit} = If[Divisible[#, 2], {-#/2 + 1, #/2}, {-Floor[#/2], Floor[#/2]}] &/@ dim;
   ExtVec = If[OptionValue["vec"] != {}, Table[{vec[[1]], Arrowheads[1.0*OptionValue["AtomSize"]], Arrow[Tube[{latt.(#1-OptionValue["shift"]), latt.(#1+#2-OptionValue["shift"])}, 2.5*OptionValue["AtomSize"]]]} & @@@ vec[[2]], {vec, OptionValue["vec"]}], {{}}];
   PosSymbols = pos\[Transpose][[2]];

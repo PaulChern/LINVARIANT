@@ -75,7 +75,7 @@ Mat2EulerAngles[latt_, mat_] := Module[{\[Epsilon], axis, \[Phi], R, K, nx, ny, 
        \[Alpha] = ArcTan[nz nx Sin[\[Phi]/2] + ny Cos[\[Phi]/2], nz ny Sin[\[Phi]/2] - nx Cos[\[Phi]/2]];
        \[Gamma] = ArcTan[-nz nx Sin[\[Phi]/2] + ny Cos[\[Phi]/2], nz ny Sin[\[Phi]/2] + nx Cos[\[Phi]/2]];
       ];*)
-  Return[{{Rationalize[\[Alpha]/Pi]*Pi, Rationalize[\[Beta]/Pi]*Pi, Rationalize[\[Gamma]/Pi]*Pi}, \[Epsilon]}]
+  Return[{Chop[{Rationalize[\[Alpha]/Pi]*Pi, Rationalize[\[Beta]/Pi]*Pi, Rationalize[\[Gamma]/Pi]*Pi}], \[Epsilon]}]
 ]
 
 SolidSphericalHarmonicY[l_?IntegerQ, m_?IntegerQ, xyz_, coord_: "Cartesian"] := Module[{rr, \[Theta]\[Theta], \[Phi]\[Phi], xx, yy, zz, x1, x2, x3},
