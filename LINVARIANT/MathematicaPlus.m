@@ -40,6 +40,10 @@ NOrderResponse[eqn_, var_, n_] := Module[{\[Epsilon], exp, varnew},
   Expand[(exp /. {\[Epsilon] -> 1}) - (exp /. {\[Epsilon] -> 0})]
 ]
 
+GetSubscripteInfo[atom_] := Module[{},
+  If[MatchQ[atom, _List], GetSubscripteInfo[#] & /@ atom, Which[AtomQ[atom], ## &[], MatchQ[atom, _Subscript], Level[atom, 1], MatchQ[atom, _Power], GetSubscripteInfo[#] & /@ ConstantArray[Level[atom, 1][[1]], Level[atom, 1][[2]]], True, GetSubscripteInfo[#] & /@ Level[atom, 1]]]
+]
+
 (*-------------------------- Attributes ------------------------------*)
 
 (*Attributes[]={Protected, ReadProtected}*)

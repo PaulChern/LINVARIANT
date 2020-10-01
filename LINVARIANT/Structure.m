@@ -30,6 +30,7 @@ pos2index                    ::usage = "pos2index[atoms, pos]"
 AtomicFormFactor             ::usage = "AtomicFormFactor[atom, q]"
 XRayDiffraction              ::usage = "XRayDiffraction[q, latt, Atoms]"
 GetBZKList                   ::usage = "GetBZKList[spg0, kinv]"
+PlotStruct                   ::usage = "PlotStruct[pos]"
 
 (*--------- Plot and Manipulate Crystal Structures -------------------- ----------------*)
 
@@ -47,9 +48,9 @@ Options[ImportIsodistortCIF]    = {Fractional->False, CorrectLabels->True, Toler
 Begin["`Private`"]
 
 (*--------------------------- Modules ----------------------------*)
-pos2index[atoms_, pos_] := If[Length[Dimensions[pos]] > 1, 
+pos2index[latt_, atoms_, pos_] := If[Length[Dimensions[pos]] > 1, 
                               pos2index[atoms, #] &/@ pos,
-                              First@First@Position[Rationalize[Chop[Flatten[DistMatrix[atoms\[Transpose][[1]], {pos}, {1,1,1}]]]], 0]]
+                              First@First@Position[Rationalize[Chop[Flatten[DistMatrix[latt, atoms\[Transpose][[1]], {pos}, {1,1,1}]]]], 0]]
 ModCell[xyz_, cell_] := Module[{},
   Mod[#1, #2] &@@@ ({xyz, cell}\[Transpose])
 ]
@@ -94,9 +95,9 @@ DistMatrix = Compile[{{pos1, _Real, 2}, {pos2, _Real, 2}}, Module[{i, j},
    Return[Table[Norm[Round[Which[# > 0.5, # - 1, # <= -0.5, # + 1, True, #] & /@ (pos1[[i]] - pos2[[j]]), 10^-8]^2], {i, Length@pos1}, {j, Length@pos2}]]
 ]]*)
 
-DistMatrix = Compile[{{pos1, _Real, 2}, {pos2, _Real, 2}, {cell, _Integer, 1}}, Module[{i, j, n, diff},
-  Return[Table[diff = (pos1[[i]] - pos2[[j]]);
-               Norm[Round[Table[Which[diff[[n]] > cell[[n]]/2, diff[[n]] - cell[[n]], diff[[n]] < -cell[[n]]/2, diff[[n]] + cell[[n]], True, diff[[n]]], {n, 3}], 10^-8]^2], {i, Length@pos1}, {j, Length@pos2}]]
+DistMatrix = Compile[{{latt, _Real, 2}, {pos1, _Real, 2}, {pos2, _Real, 2}, {cell, _Integer, 1}}, Module[{i, j, n, diff},
+  Return[Table[diff = pos1[[i]] - pos2[[j]];
+               Norm[Round[latt.Table[Which[diff[[n]] > cell[[n]]/2, diff[[n]] - cell[[n]], diff[[n]] < -cell[[n]]/2, diff[[n]] + cell[[n]], True, diff[[n]]], {n, 3}], 10^-6]], {i, Length@pos1}, {j, Length@pos2}]]
 ]]
 
 (*DistMatrix[pos1_, pos2_, cell_:{1, 1, 1}] := Module[{i, j},
@@ -104,8 +105,8 @@ DistMatrix = Compile[{{pos1, _Real, 2}, {pos2, _Real, 2}, {cell, _Integer, 1}}, 
 ]
 *)
 
-PosMatchTo[spos_, dpos_, tol_, OptionsPattern["shift"->False]] := Module[{difftable, posmap, i, newpos},
-  difftable = DistMatrix[spos, dpos, {1,1,1}];
+PosMatchTo[latt_, spos_, dpos_, tol_, OptionsPattern["shift"->False]] := Module[{difftable, posmap, i, newpos},
+  difftable = DistMatrix[latt, spos, dpos, {1,1,1}];
   posmap = Position[difftable, x_ /; TrueQ[x <= tol]];
   newpos = If[OptionValue["shift"], PbcDiff[#]&/@(Table[dpos[[posmap[[i]][[2]]]], {i, Length@spos}] - spos) + spos,Table[dpos[[posmap[[i]][[2]]]], {i, Length@spos}]];
   Return[{posmap, newpos}]
@@ -411,6 +412,16 @@ GetBZKList[spg0_, kinv_] := Module[{kstar, klist, kx, ky, kz, i},
   kstar = DeleteDuplicates[Sort[DeleteDuplicates[Table[Mod[Values[spg0][[i]].#, 1][[1 ;; 3]], {i, Length[spg0]}]]] & /@ Flatten[Table[{kx, ky, kz, 0}, {kx, -0.5, 0.5, kinv}, {ky, -0.5, 0.5, kinv}, {kz, -0.5, 0.5, kinv}], 2], #1 == #2 &];
   klist = {PbcDiff[First[#]], Length[#]/(N@Length@Flatten[kstar, 1])} & /@ kstar;
   Return[klist]
+]
+
+PlotStruct[pos_] := Module[{latt, sites, SiteData, BondData, LabelData, tt, HoppingPairs},
+   {latt, sites} = pos;
+   SiteData = {ElementData[SimplifyElementSymbol[#2], "IconColor"], Specularity[White, 20], Sphere[latt.#1,QuantityMagnitude[ElementData[SimplifyElementSymbol[#2], "AtomicRadius"], "Angstroms"]/2]} & @@@ sites;
+   LabelData = Text[Style[#2, Medium, Bold, Black], latt.#1] &@@@ sites;
+   Graphics3D[Join[SiteData, LabelData],
+                     ImageSize -> 500, Axes -> True,
+                     AxesLabel -> (Style[#, Bold, 64] & /@ {"a", "b", "c"}),
+                     ViewPoint -> {0, 0, \[Infinity]}]
 ]
 
 (*-------------------------- Attributes ------------------------------*)

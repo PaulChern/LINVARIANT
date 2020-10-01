@@ -6,6 +6,7 @@ EulerVector2Mat            ::usage "EulerVector2Mat[axis, ang, \[Epsilon]]"
 Mat2EulerAngles            ::usage "Mat2EulerAngles[latt, mat]"
 SolidSphericalHarmonicY    ::usage "SolidSphericalHarmonicY[l, m, x1, x2, x3, coord]"
 SolidTesseralHarmonicY     ::usage "SolidTesseralHarmonicY[l, m, x1, x2, x3, coord]"
+TesseralLabel              ::usage "TesseralLabel[l, i]"
 GetEulerRodrigues          ::usage "GetEulerRodrigues[n, \[Theta], \[Epsilon]]"
 ThreeYIntegral             ::usage "ThreeYIntegral[jm1, jm2, jm3]"
 
@@ -98,6 +99,12 @@ SolidTesseralHarmonicY[l_?IntegerQ, m_?IntegerQ, xyz_, coord_: "Cartesian"] := M
                  m == 0, 
                  SolidSphericalHarmonicY[l, 0, xyz, coord]
                 ]
+]
+
+TesseralLabel[l_, i_] := Module[{dict},
+  dict = <|1 -> {"py", "pz", "px"},
+           2 -> {"dxy", "dyz", "dz2", "dxz", "dx2-y2"}|>;
+  Return[dict[l][[i]]]
 ]
 
 ThreeYIntegral[jm1_, jm2_, jm3_] := Module[{j1, j2, j3, m1, m2, m3},

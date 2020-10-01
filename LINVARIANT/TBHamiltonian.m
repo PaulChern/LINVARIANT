@@ -1,4 +1,4 @@
-BeginPackage["LINVARIANT`TBHamiltonian`", {"LINVARIANT`Structure`", "LINVARIANT`GroupTheory`"}]
+BeginPackage["LINVARIANT`TBHamiltonian`", {"LINVARIANT`Structure`", "LINVARIANT`GroupTheory`", "LINVARIANT`INVARIANT`"}]
 
 (*--------- Load, Save and Modify Crystal Structure Libraries ------------*)
 GetTi0Bonds                  ::usage "GetTi0Bonds[spg0, tij, latt, AllSites]"
@@ -9,6 +9,10 @@ TBBandsSpinCharacterPlot     ::usage "TBBandsSpinCharacterPlot[Ti0, klist, kintv
 TBPlotSpinTextureSurface     ::usage "TBGetSpinTextureSurface[Ti0, latt, E0, klimit, kintv, tol, si]"
 BondsToTi0                   ::usage "BondsToTi0[Bonds, ExtBonds, Atoms]"
 Hso                          ::usage "Hso[l]"
+CheckTBInvariants            ::usage "CheckTBInvariants[def, rules, sub]"
+PlotTBInvariants             ::usage "PlotTBInvariants[pos, thop]"
+GetAtomTBPair                ::usage "GetAtomTBPair[tb, atomlist]"
+
 (*--------- Plot and Manipulate Crystal Structures -------------------- ----------------*)
 
 (*--------- Point and Space Group Information ---------------------------*)
@@ -136,6 +140,37 @@ Hso[l_] := Module[{\[Mu], \[Tau], \[Theta], m, m1, m2, h11, h22, h12, h21},
                            Sqrt[(l+m1^2-Abs[m1*m2])(l+m2^2-Abs[m1*m2])]/2, {m1,-l,l}, {m2,-l,l}];
  hso = ArrayFlatten[{{h11, h12}, {h21, h22}}];
  Return[hso]
+]
+
+CheckTBInvariants[def_, rules_, sub_] := Module[{s, orb, ind, vars, tb, invariants},
+  vars = Table[
+    s = Which[def[[i, 4]] == "up", "\[UpArrow]", def[[i, 4]] == "dn", "\[DownArrow]"];
+    orb = Which[def[[i, 2]] == 1, Subscript[ToExpression["p"], def[[i, 1]], def[[i, 3]], s], 
+                def[[i, 2]] == 2, Subscript[ToExpression["d"], def[[i, 1]], def[[i, 3]], s]];
+    ind = First@First@Position[Values[sub], orb];
+    Subscript[ToExpression["eIso"], ind], {i, Length[def]}];
+  invariants = Expand[Total[Times @@ vars /. # & /@ rules] /. sub];
+  tb = If[invariants===0, 0, SimplifyCommonFactor[invariants]];
+  Return[tb]
+]
+
+PlotTBInvariants[pos_, thop_] := Module[{tb, latt, sites, SiteData, BondData, LabelData, tt, HoppingPairs},
+  {latt, sites} = pos;
+  tb = If[Head[thop]===Plus, Level[thop, 1], {thop}];
+  HoppingPairs = Table[{First@First@Position[sites\[Transpose][[2]], #2], #3, #4} & @@@ Flatten[Which[NumberQ[#], ##&[], MatchQ[#, _Power]&&NumberQ[Level[#,1][[1]]], ##&[], MatchQ[#, _Subscript], #, MatchQ[#, _Power], ConstantArray[Level[#, 1][[1]], Level[#, 1][[2]]]] &/@ Which[MatchQ[tt, _Times], Level[tt, 1], MatchQ[tt, _Power], {tt}]], {tt, tb}];
+  SiteData = {ElementData[SimplifyElementSymbol[#2], "IconColor"], Specularity[White, 20], Sphere[latt.#1, QuantityMagnitude[ElementData[SimplifyElementSymbol[#2], "AtomicRadius"], "Angstroms"]/2]} & @@@ sites;
+  BondData = {Gray, Tube[{latt.sites[[#1[[1]], 1]], latt.sites[[#2[[1]], 1]]}]} & @@@ HoppingPairs;
+  LabelData = Text@@# & /@ Flatten[{{ToString[Style[sites[[#1[[1]], 2]] <> ":", Medium, Bold, Black], StandardForm]<>ToString[Style[#1[[2]] <> #1[[3]], Medium, Bold, Red], StandardForm], latt.sites[[#1[[1]], 1]]},
+                                     {ToString[Style[sites[[#2[[1]], 2]] <> ":", Medium, Bold, Black], StandardForm]<>ToString[Style[#2[[2]] <> #2[[3]], Medium, Bold, Red], StandardForm], latt.sites[[#2[[1]], 1]]}} & @@@ HoppingPairs, 1];
+  Graphics3D[Join[SiteData, BondData, LabelData],
+                    ImageSize -> 500, Axes -> True,
+                    AxesLabel -> (Style[#, Bold, 64] & /@ {"a", "b", "c"}),
+                    ViewPoint -> {0, 0, \[Infinity]}]
+]
+
+GetAtomTBPair[tb_, atomlist_] := Module[{SitePairs},
+  SitePairs = {#1[[2]], #2[[2]]} & @@@ (Flatten[Which[NumberQ[#], ## &[], MatchQ[#, _Power] && NumberQ[Level[#, 1][[1]]], ## &[], MatchQ[#, _Subscript], #, MatchQ[#, _Power], ConstantArray[Level[#, 1][[1]], Level[#, 1][[2]]]] & /@ Which[MatchQ[#, _Times], Level[#, 1], MatchQ[#, _Power], {#}]] & /@ Level[tb, 1]);
+  Table[If[Complement[SitePairs[[i]], atomlist] == {}, {i, Level[tb, 1][[i]]}, ## &[]], {i, Length@SitePairs}]
 ]
 
 (*-------------------------- Attributes ------------------------------*)

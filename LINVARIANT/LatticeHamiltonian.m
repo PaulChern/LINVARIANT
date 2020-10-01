@@ -148,11 +148,11 @@ Unfolding[PhononNK_, G_, DMPos_, SPCPos_, NSC_] := Module[{w2, K, phonon, PCTran
   {w2, K, phonon} = PhononNK;
   PCTrans = Join[{{0, 0, 0}}, Inverse[DiagonalMatrix[NSC]]];
   PC2SCList = DeleteDuplicates[Total[#] & /@ DeleteCases[Subsets[PCTrans, 3], {}]];
-  ReorderPosMap = Association[#1 -> #2 & @@@ (PosMatchTo[DMPos\[Transpose][[1]], SPCPos[[2]]\[Transpose][[1]], 0.01][[1]])];
+  ReorderPosMap = Association[#1 -> #2 & @@@ (PosMatchTo[IdentityMatrix[3], DMPos\[Transpose][[1]], SPCPos[[2]]\[Transpose][[1]], 0.01][[1]])];
   PosStd = Table[SPCPos[[2]][[ReorderPosMap[i]]], {i, Length[SPCPos[[2]]]}];
   ElementMatched = AllTrue[Table[DMPos[[i]][[2]] === SPCPos[[2]][[ReorderPosMap[i]]][[2]], {i, Length[SPCPos[[2]]]}], # === True &];
   If[Not@ElementMatched, Print["The selected quasi primary cell doesn't have a matched atom list!"]; Abort[]];
-  PCTranMap = Association[Table[t -> Association[#1 -> #2 & @@@ (PosMatchTo[PosStd\[Transpose][[1]], Mod[# + t, 1] & /@ (PosStd\[Transpose][[1]]), 0.01][[1]])], {t, PC2SCList}]];
+  PCTranMap = Association[Table[t -> Association[#1 -> #2 & @@@ (PosMatchTo[IdentityMatrix, PosStd\[Transpose][[1]], Mod[# + t, 1] & /@ (PosStd\[Transpose][[1]]), 0.01][[1]])], {t, PC2SCList}]];
   WNJG = Norm[1/Length[PC2SCList] Sum[Tphonon =Table[{phonon\[Transpose][[1]][[i]], phonon\[Transpose][[2]][[PCTranMap[t][i]]]}, {i, Length[phonon\[Transpose][[2]]]}];
       Flatten[Tphonon\[Transpose][[2]]] Exp[-I 2 Pi (K + G).t], {t, PC2SCList}]]^2;
   Return[{Inverse[DiagonalMatrix[NSC]].(K+G), w2, Chop[WNJG]}]

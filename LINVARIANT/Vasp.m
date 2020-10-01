@@ -8,6 +8,9 @@ ParseXMLData                 ::usage "ParseXMLData[xml, DataType]"
 ParseVasprunBands            ::usage "ParseVasprunBands[xml]"
 Kpoints2Kpath                ::usage "Kpoints2Kpath[kp]"
 VaspBSPlot                   ::usage "VaspBSPlot[bsxml, klabels]"
+BerryPol                     ::usage "BerryPol[vasprun]"
+Rot2FFTGrid                  ::usage "Rot2FFTGrid[NGrid, k]"
+GetBlochFunc                 ::usage "GetBlochFunc[file, is, ik, ib]"
 (*--------- Plot and Manipulate Crystal Structures -------------------- ----------------*)
 
 (*--------- Point and Space Group Information ---------------------------*)
@@ -23,8 +26,8 @@ VaspBSPlot                   ::usage "VaspBSPlot[bsxml, klabels]"
 Begin["`Private`"]
 
 (*--------------------------- Modules ----------------------------*)
-ParseXML[xml_, tag_, label_, level_: Infinity] := Module[{xmldata, DataType},
-  xmldata = Cases[xml, XMLElement[tag, #1 -> #2 & @@@ label, x_] :> x, level];
+ParseXML[xml_, tag_, label_, level_: Infinity] := Module[{xmldata, DataType, x},
+  xmldata = Cases[xml, XMLElement[tag, #1 -> #2 & @@@ If[label==={},label,{label}], x_] :> x, level];
   Return[xmldata]
 ]
 
@@ -33,9 +36,9 @@ ParseXMLData[xml_, DataType_] := Module[{xmldata},
 ]
 
 ParseVasprunBands[xml_] := Module[{ik, klist, NumKpoint, spinupdn},
-  klist = Flatten[ParseXMLData[ParseXML[xml, "varray", {{"name", "kpointlist"}}], "v"], 1];
+  klist = Flatten[ParseXMLData[ParseXML[xml, "varray", {"name", "kpointlist"}], "v"], 1];
   NumKpoint = Length[klist];
-  spinupdn = <|"k" -> klist, "up" -> Table[Flatten[ParseXMLData[ParseXML[ParseXML[ParseXML[xml, "projected", {}], "set", {{"comment", "spin 1"}}], "set", {{"comment", "kpoint " <> ToString[ik]}}], "r"], 1], {ik, NumKpoint}], "dn" -> Table[Flatten[ParseXMLData[ParseXML[ParseXML[ParseXML[xml, "projected", {}], "set", {{"comment", "spin 2"}}], "set", {{"comment", "kpoint " <> ToString[ik]}}], "r"], 1], {ik, NumKpoint}]|>;
+  spinupdn = <|"k" -> klist, "up" -> Table[Flatten[ParseXMLData[ParseXML[ParseXML[ParseXML[xml, "projected", {}], "set", {"comment", "spin 1"}], "set", {"comment", "kpoint " <> ToString[ik]}], "r"], 1], {ik, NumKpoint}], "dn" -> Table[Flatten[ParseXMLData[ParseXML[ParseXML[ParseXML[xml, "projected", {}], "set", {"comment", "spin 2"}], "set", {"comment", "kpoint " <> ToString[ik]}], "r"], 1], {ik, NumKpoint}]|>;
   Return[spinupdn]
 ]
 
@@ -112,6 +115,70 @@ VaspBSPlot[bsxml_, klabels_, OptionsPattern[{"PlotRange" -> {All, All}, "FigRati
                         ImageSize -> Medium];
 
   Return[Show[{upplot,dnplot}]]
+]
+
+BerryPol[vasprun_, coord_] := Module[{ZVAL, lattice, sites, pos, units, PolIon, PolEle, Ptot},
+  ZVAL = Flatten[ConstantArray[{#2, #4}, #1] & @@@ Partition[ToExpression[#] & /@ Flatten@ParseXML[ParseXML[vasprun, "array", {"name", "atomtypes"}], "c", {}], 5], 1]\[Transpose];
+  lattice = First@ParseXMLData[ParseXML[ParseXML[vasprun, "structure", {"name", "finalpos"}], "varray", {"name", "basis"}], "v"];
+  sites = First@ParseXMLData[ParseXML[ParseXML[vasprun, "structure", {"name", "finalpos"}], "varray", {"name", "positions"}], "v"];
+  pos = {lattice, Join[{sites}, ZVAL]\[Transpose]};
+  Print[ZVAL];
+
+  units = 1.6021766 10^-13 10^16/Det[lattice];
+  PolIon =Chop@ToExpression@StringSplit[First@First@ParseXML[vasprun, "v", {"name", "PION"}]];
+  PolEle =Chop@ToExpression@StringSplit[First@First@ParseXML[vasprun, "v", {"name", "PELC"}]];
+  PolIon = Total[#1 #3 & @@@ (Join[{sites}, ZVAL]\[Transpose])];
+  Ptot = units lattice\[Transpose].PbcDiff[Mod[PolIon - Inverse[(lattice\[Transpose])].PolEle, 1]];
+  Ptot = If[coord == "Cartesian", 
+            units lattice\[Transpose].PbcDiff[Mod[PolIon - Inverse[(lattice\[Transpose])].PolEle, 1]], 
+            units (Norm[#] &@lattice)*PbcDiff[Mod[PolIon - Inverse[(lattice\[Transpose])].PolEle, 1]]];
+  Return[Chop[Ptot, 10^-4]]
+]
+
+Rot2FFTGrid[NGrid_, k_] := Module[{},
+  If[#2 > #1/2, #2 - #1, #2] & @@@ ({NGrid, k}\[Transpose])
+]
+
+GetBlochFunc[file_, is_, ik_, ib_, OptionsPattern[{"refine" -> 1}]] := Module[{Bohr2Ang, Ry2eV, EleKin, wavecar, LineRecord, NumSpin, ComplexTag, WFPrec, info, NumKPTs, NumBands, Ecut, lattice, NumGrid, Bands, PWCoeff, BinaryShift, temp, NumPW, icoeff, unkG, unkr, G, R, eikr, Ekin, kvec, Phi},
+  Bohr2Ang = 0.529177249;
+  Ry2eV = 13.605826;
+  EleKin = 3.8100198740807945;
+  wavecar = OpenRead[file, BinaryFormat -> True];
+  
+  (* Read info *)
+  SetStreamPosition[wavecar, 0];
+  {LineRecord, NumSpin, ComplexTag} = Rationalize[BinaryReadList[wavecar, "Real64", 3]];
+  WFPrec = Which[ComplexTag == 45200, "Complex64", ComplexTag == 45210, "Complex128"];
+  SetStreamPosition[wavecar, LineRecord];
+  info = BinaryReadList[wavecar, "Real64", 12];
+  {NumKPTs, NumBands} = Rationalize[info[[1 ;; 2]]];
+  Ecut = info[[3]];
+  lattice = Partition[info[[4 ;; 12]], 3];
+  NumGrid = OptionValue["refine"] (2 Ceiling[Norm[#]/(2 Pi Bohr2Ang) Sqrt[Ecut/Ry2eV]] + 1 & /@ lattice);
+
+  (* Read Bands *)
+  BinaryShift = 2 + (is - 1) NumKPTs (NumBands + 1) + (ik - 1) (NumBands + 1);
+  SetStreamPosition[wavecar, BinaryShift LineRecord];
+  temp = Chop@BinaryReadList[wavecar, "Real64", 4 + 3 NumBands];
+  Bands = {Rationalize[temp[[1]]], temp[[2 ;; 4]], {#1, #3} & @@@ Partition[temp[[5 ;;]], 3]};
+
+  (* Read PW Coefficients *)
+  NumPW = Bands[[1]];
+  BinaryShift = 2 + (is - 1) NumKPTs (NumBands + 1) + (ik - 1) (NumBands + 1) + ib;
+  SetStreamPosition[wavecar, BinaryShift LineRecord];
+  PWCoeff = Chop@Normalize@BinaryReadList[wavecar, WFPrec, NumPW];
+  
+  kvec = Bands[[2]];
+  R = Table[lattice\[Transpose].({i, j, k}/NumGrid), {k, 0, NumGrid[[3]] - 1}, {j, 0, NumGrid[[2]] - 1}, {i, 0, NumGrid[[1]] - 1}];
+  eikr = Table[Exp[I 2 Pi kvec.({i, j, k}/NumGrid)], {k, 0, NumGrid[[3]] - 1}, {j, 0, NumGrid[[2]] - 1}, {i, 0, NumGrid[[1]] - 1}];
+  icoeff = 0;
+  unkG = Table[G = Rot2FFTGrid[NumGrid, {i, j, k}];
+               Ekin = EleKin Norm[2 Pi Inverse[lattice].(kvec + G)]^2;
+               If[Ekin < Ecut, icoeff = icoeff + 1; PWCoeff[[icoeff]], 0.0], 
+               {k, 0, NumGrid[[3]] - 1}, {j, 0, NumGrid[[2]] - 1}, {i, 0, NumGrid[[1]] - 1}];
+  unkr = InverseFourier[unkG];
+  Phi = eikr unkr;
+  Return[{R, Phi}]
 ]
 (*-------------------------- Attributes ------------------------------*)
 
