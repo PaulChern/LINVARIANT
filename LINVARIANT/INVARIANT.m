@@ -181,9 +181,11 @@ GetOpMatrix[grp_, pos_, IsoMatrix_, Modes_, ftype_] := Module[{latt, sites, op2,
   ]
 ]
 
-GetMatrixRep[grp0_, grpt_, pos_, BasisMatrix_, BasisLabels_, ftype_] := Module[{i, j, grp, op, op2, ir1, ir2, mat, OpMatrix, AllIRvectors, BasisField, TransformedBasisField, BasisDim, g, ig, field, NormFactor, latt, sites, cell, basis},
+GetMatrixRep[grp0_, grpt_, pos_, BasisMatrix_, BasisLabels_, ftype_] := Module[{i, j, grp, op, op2, ir1, ir2, mat, OpMatrix, AllIRvectors, BasisField, TransformedBasisField, BasisDim, g, ig, field, NormFactor, latt, slatt, sites, cell, basis},
   grp = {grpt, grp0};
   {latt, sites} = pos;
+  (*slatt = Lattice2Symbolic[latt] /. {ToExpression["a"]->1, ToExpression["b"]->2, ToExpression["c"]->4};*)
+  slatt = Lattice2Symbolic[latt];
   BasisDim = Length@BasisMatrix;
   cell = GetCellFromGrp[grpt];
   OpMatrix =
@@ -191,9 +193,9 @@ GetMatrixRep[grp0_, grpt_, pos_, BasisMatrix_, BasisLabels_, ftype_] := Module[{
       If[BasisDim != 0,
          {NormFactor, BasisField} = Table[
          basis=GetBasisField[i, BasisMatrix, BasisLabels, pos, ftype];
-         {1/Norm[Flatten[basis\[Transpose][[2]]\[Transpose][[2]]]], basis}, {i,BasisDim}]\[Transpose];
+         {1/ComplexExpand@Norm[Flatten[slatt\[Transpose].# &/@ (basis\[Transpose][[2]]\[Transpose][[2]])]], basis}, {i,BasisDim}]\[Transpose];
          TransformedBasisField = ParallelTable[SymmetryOpBasisField[g, pos, cell, #, ftype] &/@ BasisField, {g, Keys[grp[[ig]]]}, DistributedContexts -> {"LINVARIANT`INVARIANT`Private`"}];
-         ParallelTable[mat = Table[Rationalize[NormFactor[[i]]*NormFactor[[j]]*Flatten[TransformedBasisField[[g]][[i]]\[Transpose][[2]]\[Transpose][[2]]].Flatten[BasisField[[j]]\[Transpose][[2]]\[Transpose][[2]]]], {i, Range@BasisDim}, {j, Range@BasisDim}];
+         ParallelTable[mat = Table[Simplify@Expand[NormFactor[[i]] NormFactor[[j]] Flatten[slatt\[Transpose].# &/@ (TransformedBasisField[[g]][[i]]\[Transpose][[2]]\[Transpose][[2]])].Flatten[slatt\[Transpose].# &/@ (BasisField[[j]]\[Transpose][[2]]\[Transpose][[2]])]], {i, Range@BasisDim}, {j, Range@BasisDim}];
          SparseArray[mat], {g, Length[grp[[ig]]]}, DistributedContexts -> {"LINVARIANT`INVARIANT`Private`"}],
          Table[{}, {Length[grp[[ig]]]}]], {ig, 2}];
   If[BasisDim != 0,
@@ -222,9 +224,9 @@ SymmetryOpBasisField[grp_, pos_, cell_, BasisField_, ftype_] := Module[{latt, si
    If[ftype=="disp"||ftype=="spin",
      Which[
        ftype=="disp",
-       posvec={ModCell[N[rot.(#2[[1]])+trans], cell], N[rot.(#2[[2]])]} & @@@ BasisField,
+       posvec={ModCell[N[rot.(#2[[1]])+trans], cell], rot.(#2[[2]])} & @@@ BasisField,
        ftype=="spin",
-       posvec={ModCell[N[rot.(#2[[1]])+trans], cell], Det[rot] N[rot.(#2[[2]])]} & @@@ BasisField
+       posvec={ModCell[N[rot.(#2[[1]])+trans], cell], Det[rot] rot.(#2[[2]])} & @@@ BasisField
        ];
      difftable = DistMatrix[pos[[1]], BasisField\[Transpose][[2]]\[Transpose][[1]], posvec\[Transpose][[1]], cell];
      posmap = Position[difftable, x_ /; TrueQ[Chop[x] == 0]];
@@ -300,7 +302,7 @@ GetInvariants[latt_, seeds_, order_, OpMatrix_, spg0_, OptionsPattern[{"MustIncl
     fixlist = Flatten[Table[MonomialList[Total[#1]^i], {i, #2}] &@@@ OptionValue["MustInclude"]];
     Flatten[Table[# ss & /@ MonomialList[Total[seeds]^n], {ss, fixlist}]]];
   TransformRules = GetTransformationRules[latt, spg0, OpMatrix];
-  invariant = Rationalize[DeleteDuplicates[DeleteCases[Chop[Union[Expand[Total[MonomialTransform[monomials, TransformRules]]]]], i_/;i==0], (Chop[#1 -#2] == 0 || Chop[#1 + #2] == 0) &]];
+  invariant = DeleteDuplicates[DeleteCases[Chop[Union[Expand[Total[MonomialTransform[monomials, TransformRules]]]], 10^-5], i_/;i==0], (Chop[#1 -#2] == 0 || Chop[#1 + #2] == 0) &];
   If[OptionValue["Simplify"], SimplifyCommonFactor[invariant], invariant], {n, order}];
   Return[DeleteDuplicates[#, (#1 - #2 == 0 || #1 + #2 == 0 || Expand[#1 + I #2] == 0 || Expand[#1 - I #2] == 0) &] &/@ out]
 ]

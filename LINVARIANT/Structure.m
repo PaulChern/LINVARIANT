@@ -7,6 +7,7 @@ cif2mcif                     ::usage = "cif2mcif[id, IsoMatrix, pos0]"
 SymmetryOpOrigin             ::usage = "SymmetryOpOrigin[file, set]"
 SymmetryOpVectorField        ::usage = "SymmetryOpVectorField[file, set]"
 GetLatticeVectors            ::usage = "GetLatticeVectors[dat]"
+Lattice2Symbolic             ::usage = "Lattice2Symbolic[latt]"
 ImportIsodistortCIF          ::usage = "ImportIsodistortCIF[\*StyleBox[\"filename\",\"TI\"]] opens .cif file and imports relevant data."
 PosMatchTo                   ::usage = "PosMatchTo[spos, dpos, tol]"
 GetStrainTensor              ::usage = "GetStrainTensor[parent, sub]"
@@ -164,13 +165,30 @@ GetUpTo3rdNeighbors[OptionsPattern[{"OnSite" -> False}]] := Module[{FirstNeighbo
   ]
 ]
 
-GetLatticeVectors[dat_] := Module[{a1, b1, c1, \[Alpha]1, \[Beta]1, \[Gamma]1,bt},
-     a1 = dat[[1]]; b1 = dat[[2]]; c1 = dat[[3]]; \[Alpha]1 = dat[[4]]; \[Beta]1 = dat[[5]]; \[Gamma]1 = dat[[6]];
+GetLatticeVectors[dat_] := Module[{a1, b1, c1, \[Alpha]1, \[Beta]1, \[Gamma]1, bt},
+     {a1, b1, c1, \[Alpha]1, \[Beta]1, \[Gamma]1} = dat;
      bt = {{a1, 0, 0},
            {b1 Cos[\[Gamma]1], b1 Sin[\[Gamma]1], 0},
            {c1 Cos[\[Beta]1], c1 (Cos[\[Alpha]1] - Cos[\[Beta]1] Cos[\[Gamma]1])/Sin[\[Gamma]1],
             c1 Sqrt[1 - (Cos[\[Alpha]1]^2 + Cos[\[Beta]1]^2 + Cos[\[Gamma]1]^2) + 2 Cos[\[Alpha]1] Cos[\[Beta]1] Cos[\[Gamma]1]]/Sin[\[Gamma]1]}};
      Return[bt]
+]
+
+Lattice2Symbolic[latt_] := Module[{G, aa, bb, cc, \[Alpha], \[Beta], \[Gamma], LatticeVectors, LatticeScales},
+  {aa, bb, cc} = Rationalize[Norm[#]] & /@ latt;
+  G = (latt.(latt\[Transpose]));
+  {\[Alpha], \[Beta], \[Gamma]} = Rationalize[ArcCos[G[[#1, #2]]/(Norm[latt[[#1]]] Norm[latt[[#2]]])]/Pi] Pi & @@@ {{2, 3}, {1, 3}, {1, 2}};
+  LatticeVectors = GetLatticeVectors[{aa, bb, cc, \[Alpha], \[Beta], \[Gamma]}];
+  LatticeScales = Table[ToExpression[FromCharacterCode[96 + i]] -> Simplify@Norm[LatticeVectors[[i]]], {i, Length[LatticeVectors]}];
+  LatticeVectors = Table[ToExpression[FromCharacterCode[96 + i]]*Simplify@Normalize[LatticeVectors[[i]]], {i, Length[LatticeVectors]}];
+  {x, y, z} = ToExpression["{a, b, c}"] /. LatticeScales;
+  If[PossibleZeroQ[y - z], LatticeScales = Delete[LatticeScales, 3];LatticeVectors = LatticeVectors /. {ToExpression["c"] -> ToExpression["b"]}, 
+     If[PossibleZeroQ[x - z], LatticeScales = Delete[LatticeScales, 3];
+     LatticeVectors = LatticeVectors /. {ToExpression["c"] -> ToExpression["a"]}]];
+  If[PossibleZeroQ[x - y], LatticeScales = Delete[LatticeScales, 2];LatticeVectors = LatticeVectors /. {ToExpression["b"] -> ToExpression["a"]}];
+  Clear[x, y, z];
+  (*LatticeVectors= LatticeVectors /. {ToExpression["a"] -> ToExpression["a1"], ToExpression["b"] -> ToExpression["a2"], ToExpression["c"] -> ToExpression["a3"]};*)
+  Return[LatticeVectors]
 ]
 
 ImportIsodistortCIF[file_,OptionsPattern[]] := Module[{CifData, CifFlags, xyzName, ElemSym, ElemName, SpgName, xyzStrData, xyzExpData, xyzTranslation, Atoms, EveryAtomPos, LatticeVectors, LatticeScales, sol, i, j, k, failed, x,y,z, SpgNumber, aa,bb,cc,alpha,beta,gamma,FracOutText,Wyckoff,IsoDim,IsoDispModeRow,IsoDispModeCol,IsoDispModeVal,IsoDispModeMatrix, IsoDispModesID,IsoDispModesNam,IsoDispModesAmp,IsoDispModes,IsoDispModeNormVal,IsoDeltaCoordID,IsoDeltaCoordLabel,IsoDeltaCoordVal,IsoDeltaCoord, IsoCoordLabel,IsoCoordFormula,IsoCoord, IsoStrainModesID,IsoStrainModesNam,IsoStrainModesAmp,IsoStrainModes, IsoStrainModeRow, IsoStrainModeCol, IsoStrainModeVal},
@@ -234,7 +252,6 @@ ImportIsodistortCIF[file_,OptionsPattern[]] := Module[{CifData, CifFlags, xyzNam
           Print["no atom_side_fract"];Abort[]
        ];
     ];
-
 	(*--- get multiplicity and transform to cartesian ---*)
     xyzName = Part[CifFlags, Flatten[Position[StringCount[CifFlags, "xyz"], 1]]];
     xyzStrData = Flatten[xyzName /. CifData];

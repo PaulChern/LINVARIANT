@@ -5,6 +5,9 @@ NOrderResponse       ::usage "NOrderResponse[eqn, var, n]"
 GetVariationVar      ::usage "GetVariationVar[var]"
 Complex2Exp          ::usage "Complex2Exp[exp]"
 Exp2Complex          ::usage "Exp2Complex[exp]"
+GetSubscripteInfo    ::usage "GetSubscripteInfo[atom]"
+ReadNonEmptyLine     ::usage "ReadNonEmptyLine[stream]"
+PermuteThrough       ::usage "PermuteThrough[tab]"
 (*--------- Plot and Manipulate Crystal Structures -------------------- ----------------*)
 
 (*--------- Point and Space Group Information ---------------------------*)
@@ -41,9 +44,20 @@ NOrderResponse[eqn_, var_, n_] := Module[{\[Epsilon], exp, varnew},
 ]
 
 GetSubscripteInfo[atom_] := Module[{},
-  If[MatchQ[atom, _List], GetSubscripteInfo[#] & /@ atom, Which[AtomQ[atom], ## &[], MatchQ[atom, _Subscript], Level[atom, 1], MatchQ[atom, _Power], GetSubscripteInfo[#] & /@ ConstantArray[Level[atom, 1][[1]], Level[atom, 1][[2]]], True, GetSubscripteInfo[#] & /@ Level[atom, 1]]]
+  If[MatchQ[atom, _List], GetSubscripteInfo[#] & /@ atom, Which[AtomQ[atom], ## &[], MatchQ[atom, _Subscript], Level[atom, 1], MatchQ[atom, _Power], If[MatchQ[Level[atom, 1][[2]], _Integer], GetSubscripteInfo[#] & /@ ConstantArray[Level[atom, 1][[1]], Level[atom, 1][[2]]], ##&[]], True, GetSubscripteInfo[#] & /@ Level[atom, 1]]]
 ]
 
+ReadNonEmptyLine[stream_] := Module[{templine},
+  templine = ReadLine[stream];
+  If[StringSplit[templine] === {}, ReadNonEmptyLine[stream], templine]
+]
+
+PermuteThrough[tab_] := Module[{depth, len, perm},
+  {depth, len} = Dimensions[tab];
+  perm = {};
+  Do[perm = Permute[Prepend[perm, Range[len]]\[Transpose], FindPermutation[Range[len], tab[[i]]]]\[Transpose], {i, depth, 1, -1}];
+  Return[perm]
+]
 (*-------------------------- Attributes ------------------------------*)
 
 (*Attributes[]={Protected, ReadProtected}*)
