@@ -5,9 +5,10 @@ NOrderResponse       ::usage "NOrderResponse[eqn, var, n]"
 GetVariationVar      ::usage "GetVariationVar[var]"
 Complex2Exp          ::usage "Complex2Exp[exp]"
 Exp2Complex          ::usage "Exp2Complex[exp]"
-GetSubscripteInfo    ::usage "GetSubscripteInfo[atom]"
+GetSubscriptInfo     ::usage "GetSubscriptInfo[atom]"
 ReadNonEmptyLine     ::usage "ReadNonEmptyLine[stream]"
 PermuteThrough       ::usage "PermuteThrough[tab]"
+Var2Var              ::usage "Var2Var[var1, var2, dir]"
 (*--------- Plot and Manipulate Crystal Structures -------------------- ----------------*)
 
 (*--------- Point and Space Group Information ---------------------------*)
@@ -43,8 +44,8 @@ NOrderResponse[eqn_, var_, n_] := Module[{\[Epsilon], exp, varnew},
   Expand[(exp /. {\[Epsilon] -> 1}) - (exp /. {\[Epsilon] -> 0})]
 ]
 
-GetSubscripteInfo[atom_] := Module[{},
-  If[MatchQ[atom, _List], GetSubscripteInfo[#] & /@ atom, Which[AtomQ[atom], ## &[], MatchQ[atom, _Subscript], Level[atom, 1], MatchQ[atom, _Power], If[MatchQ[Level[atom, 1][[2]], _Integer], GetSubscripteInfo[#] & /@ ConstantArray[Level[atom, 1][[1]], Level[atom, 1][[2]]], ##&[]], True, GetSubscripteInfo[#] & /@ Level[atom, 1]]]
+GetSubscriptInfo[atom_] := Module[{},
+  If[MatchQ[atom, _List], GetSubscriptInfo[#] & /@ atom, Which[AtomQ[atom], ## &[], MatchQ[atom, _Subscript], Level[atom, 1], MatchQ[atom, _Power], If[MatchQ[Level[atom, 1][[2]], _Integer], GetSubscriptInfo[#] & /@ ConstantArray[Level[atom, 1][[1]], Level[atom, 1][[2]]], ##&[]], True, GetSubscriptInfo[#] & /@ Level[atom, 1]]]
 ]
 
 ReadNonEmptyLine[stream_] := Module[{templine},
@@ -57,6 +58,18 @@ PermuteThrough[tab_] := Module[{depth, len, perm},
   perm = {};
   Do[perm = Permute[Prepend[perm, Range[len]]\[Transpose], FindPermutation[Range[len], tab[[i]]]]\[Transpose], {i, depth, 1, -1}];
   Return[perm]
+]
+
+Var2Var[var1_, var2_, dir_?IntegerQ, OptionsPattern[{"site"->False}]] := Module[{},
+  If[OptionValue["site"],
+     Which[dir == 1, 
+           Thread[(Subscript@@(Join[GetSubscriptInfo[#],ToExpression["{ix_,iy_,iz_}"]])&/@var2)
+                ->(Subscript@@(Join[GetSubscriptInfo[#],ToExpression["{ix,iy,iz}"]])&/@var1)], 
+           dir == 2, 
+           Thread[(Subscript@@(Join[GetSubscriptInfo[#],ToExpression["{ix_,iy_,iz_}"]])&/@var1)
+                ->(Subscript@@(Join[GetSubscriptInfo[#],ToExpression["{ix,iy,iz}"]])&/@var2)]],
+     Which[dir == 1, Thread[var2 -> var1], dir == 2, Thread[var1 -> var2]]
+     ]
 ]
 (*-------------------------- Attributes ------------------------------*)
 

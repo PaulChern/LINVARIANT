@@ -3,6 +3,7 @@ BeginPackage["LINVARIANT`LatticeHamiltonianFortran`",{"LINVARIANT`Structure`","L
 (*--------- Load, Save and Modify Crystal Structure Libraries ------------*)
 FortranLatticeTikTok         ::usage "FortranLatticeTikTok[]"
 FortranLatticeMCStep         ::usage "FortranLatticeMCStep[]"
+FortranLatticePTSwap         ::usage "FortranLatticePTSwap[]"
 FortranGetInitConfig         ::usage "FortranGetInitConfig[]"
 FortranEwaldMatrix           ::usage "FortranEwaldMatrix[]"
 FortranDeltaHEwald           ::usage "FortranDeltaHEwald[]"
@@ -196,6 +197,139 @@ FortranLatticeTikTok[OptionsPattern[{"AllSites"->True}]] := Module[{Fint, n, Fou
   Return[Fout]
 ]
 
+FortranLatticePTSwap[] := Module[{Fint, Fout},
+  Fint[n_] := StringRepeat["  ", n];
+  Fout = {{"Subroutine GetPTSwapMap(TempList, EtotList, NumReplicas, Replicas)"},
+          {Fint[1]},
+          {Fint[1] <> "Use LINVARIANT"},
+          {Fint[1] <> "Use Constants"},
+          {Fint[1] <> "Use Inputs"},
+          {Fint[1]},
+          {Fint[1] <> "Implicit none"},
+          {Fint[1] <> "Integer, Intent(in)    :: NumReplicas"},
+          {Fint[1] <> "Real*8,  Intent(inout) :: TempList(NumReplicas)"},
+          {Fint[1] <> "Integer, Intent(inout) :: Replicas(NumReplicas,5)"},
+          {Fint[1] <> "Real*8,  Intent(inout) :: EtotList(NumReplicas)"},
+          {Fint[1] <> "Integer                :: ireplica, TempReplica(3)"},
+          {Fint[1] <> "Real*8                 :: dene, ProbTest, TempEtot"},
+          {Fint[1] <> "Real*8                 :: rdum, AccProb"},
+          {Fint[1]},
+          {Fint[1] <> "do ireplica = 1, NumReplicas"},
+          {Fint[2] <> "Replicas(ireplica,1) = ireplica"},
+          {Fint[1] <> "end do"},
+          {Fint[1]},
+          {Fint[1] <> "do ireplica = 1, NumReplicas - 1"},
+          {Fint[2] <> "dene = Hartree/k_bolt_ev*(1/TempList(ireplica+1)-1/TempList(ireplica))*(EtotList(ireplica+1)-EtotList(ireplica))"},
+          {Fint[2] <> "AccProb = Min(1.0d0, Exp(dene))"},
+          {Fint[2] <> "Call random_number(ProbTest)"},
+          {Fint[2] <> "if(ProbTest .lt. AccProb) then"},
+          {Fint[3] <> "TempReplica(:) = Replicas(ireplica,1:3) "},
+          {Fint[3] <> "Replicas(ireplica,1:3) = Replicas(ireplica+1,1:3)"},
+          {Fint[3] <> "Replicas(ireplica+1,1:3) = TempReplica(:)"},
+          {Fint[3] <> "TempEtot = EtotList(ireplica)"},
+          {Fint[3] <> "EtotList(ireplica) = EtotList(ireplica+1)"},
+          {Fint[3] <> "EtotList(ireplica+1) = TempEtot"},
+          {Fint[2] <> "end if"},
+          {Fint[1] <> "end do"},
+          {Fint[1]},
+          {Fint[1] <> "Replicas(1,3) = 1"},
+          {Fint[1] <> "Replicas(NumReplicas,3) = -1"},
+          {Fint[1] <> "do ireplica = 1, NumReplicas"},
+          {Fint[2] <> "if(ireplica.ne.Replicas(ireplica,1)) then"},
+          {Fint[3] <> "if(Replicas(ireplica,3).eq.1) then"},
+          {Fint[4] <> "Replicas(ireplica,4) = Replicas(ireplica,4) + 1"},
+          {Fint[3] <> "else if(Replicas(ireplica,3).eq.-1) then"},
+          {Fint[4] <> "Replicas(ireplica,5) = Replicas(ireplica,5) + 1"},
+          {Fint[3] <> "end if"},
+          {Fint[2] <> "end if"},
+          {Fint[1] <> "end do"},
+          {Fint[1]},
+          {"End Subroutine GetPTSwapMap"},
+          {Fint[1]},
+          {Fint[1]},
+          {"Subroutine PTSwap(TempList, Fields, EwaldField, e0ij, NumReplicas, Replicas, ireplica, istep)"},
+          {Fint[1]},
+          {Fint[1] <> "Use LINVARIANT"},
+          {Fint[1] <> "Use Constants"},
+          {Fint[1] <> "Use Inputs"},
+          {Fint[1] <> "use mpi"},
+          {Fint[1] <> ""},
+          {Fint[1] <> "Implicit none"},
+          {Fint[1] <> "Real*8,  Intent(inout) :: TempList(NumReplicas)"},
+          {Fint[1] <> "Integer, Intent(inout) :: Replicas(NumReplicas,5)"},
+          {Fint[1] <> "Real*8,  Intent(inout) :: Fields(FieldDim, NumField, NGridx, NGridy, NGridz)"},
+          {Fint[1] <> "Real*8,  Intent(inout) :: EwaldField(FieldDim, NumField, NGridx, NGridy, NGridz)"},
+          {Fint[1] <> "Real*8,  Intent(inout) :: e0ij(3,3)"},
+          {Fint[1] <> "Integer, Intent(in)    :: NumReplicas, ireplica"},
+          {Fint[1] <> "Integer                :: i, istep, DimFields1D, IERROR"},
+          {Fint[1]},
+          {Fint[1] <> "Real*8   :: MPI_EWALDFIELD_1D(NGridx*NGridy*NGridz*NumField*FieldDim)"},
+          {Fint[1] <> "Real*8   :: MPI_EWALDFIELD_1D_Recv(NumReplicas*NGridx*NGridy*NGridz*NumField*FieldDim)"},
+          {Fint[1] <> "Real*8   :: MPI_FIELD_1D(NGridx*NGridy*NGridz*NumField*FieldDim)"},
+          {Fint[1] <> "Real*8   :: MPI_FIELD_1D_Recv(NumReplicas*NGridx*NGridy*NGridz*NumField*FieldDim)"},
+          {Fint[1] <> "Real*8   :: MPI_ETA(6)"},
+          {Fint[1] <> "Real*8   :: MPI_ETA_Recv(NumReplicas*6)"},
+          {Fint[1] <> "Real*8   :: EtotRecv(NumReplicas)"},
+          {Fint[1] <> "Real*8   :: Etot"},
+          {Fint[1]},
+          {Fint[1] <> "DimFields1D = NGridx*NGridy*NGridz*NumField*FieldDim"},
+          {Fint[1]},
+          {Fint[1] <> "if(CoolingSteps.eq.0)then"},
+          {Fint[2] <> "Etot = GetEtot(Fields, e0ij)"},
+          {Fint[1] <> "else"},
+          {Fint[2] <> "if(ireplica.eq.istep) then"},
+          {Fint[3] <> "Etot = (ireplica-1)*1.0E6 "},
+          {Fint[2] <> "elseif(ireplica.eq.istep-1)then"},
+          {Fint[3] <> "Etot = (ireplica+1)*1.0E6"},
+          {Fint[2] <> "else"},
+          {Fint[3] <> "Etot = ireplica*1.0E6"},
+          {Fint[2] <> "end if"},
+          {Fint[1] <> "end if"},
+          {Fint[1] <> "MPI_ETA = eij2eta(e0ij)"},
+          {Fint[1] <> "MPI_FIELD_1D = FieldsTo1D(Fields)"},
+          {Fint[1] <> "MPI_EWALDFIELD_1D = FieldsTo1D(EwaldField)"},
+          {Fint[1] <> "if(mod(istep,TapeRate).eq.0) then"},
+          {Fint[2] <> "do i = 1, NumReplicas"},
+          {Fint[3] <> "if(i == ireplica) then"},
+          {Fint[4] <> "write(*,*) i, \": \", TempList(i), \"(K)\", \"    \",\"Etot: \", Etot"},
+          {Fint[3] <> "end if"},
+          {Fint[3] <> "call MPI_BARRIER(MPI_COMM_WORLD, IERROR)"},
+          {Fint[2] <> "end do"},
+          {Fint[1] <> "end if"},
+          {Fint[1]},
+          {Fint[1] <> "call MPI_GATHER(Etot,1,MPI_DOUBLE_PRECISION,&"},
+          {Fint[1] <> "EtotRecv,1,MPI_DOUBLE_PRECISION,0,&"},
+          {Fint[1] <> "MPI_COMM_WORLD,IERROR)"},
+          {Fint[1] <> "call MPI_ALLGATHER(MPI_ETA,6,MPI_DOUBLE_PRECISION,&"},
+          {Fint[1] <> "MPI_ETA_Recv,6,MPI_DOUBLE_PRECISION,&"},
+          {Fint[1] <> "MPI_COMM_WORLD,IERROR)"},
+          {Fint[1] <> "call MPI_ALLGATHER(MPI_FIELD_1D,DimFields1D,MPI_DOUBLE_PRECISION,&"},
+          {Fint[1] <> "MPI_FIELD_1D_Recv,DimFields1D,MPI_DOUBLE_PRECISION,&"},
+          {Fint[1] <> "MPI_COMM_WORLD,IERROR)"},
+          {Fint[1] <> "call MPI_ALLGATHER(MPI_EWALDFIELD_1D,DimFields1D,MPI_DOUBLE_PRECISION,&"},
+          {Fint[1] <> "MPI_EWALDFIELD_1D_Recv,DimFields1D,MPI_DOUBLE_PRECISION,&"},
+          {Fint[1] <> "MPI_COMM_WORLD,IERROR)"},
+          {Fint[1]},
+          {Fint[1] <> "call MPI_BARRIER(MPI_COMM_WORLD, IERROR)"},
+          {Fint[1]},
+          {Fint[1] <> "if(ireplica.eq.1) then"},
+          {Fint[2] <> "call GetPTSwapMap(TempList,EtotRecv,NumReplicas,Replicas)"},
+          {Fint[1] <> "end if"},
+          {Fint[1]},
+          {Fint[1] <> "call MPI_BCAST(Replicas(:,1), NumReplicas, MPI_INTEGER, 0, MPI_COMM_WORLD, IERROR)"},
+          {Fint[1] <> "call MPI_BCAST(TempList, NumReplicas, MPI_DOUBLE_PRECISION, 0, MPI_COMM_WORLD, IERROR)"},
+          {Fint[1] <> "call MPI_BARRIER(MPI_COMM_WORLD, IERROR)"},
+          {Fint[1] <> "e0ij=eta2eij(MPI_ETA_Recv(1+Replicas(ireplica,1)*6-6:&"},
+          {Fint[1] <> "Replicas(ireplica,1)*6))"},
+          {Fint[1] <> "Fields=FieldsToND(MPI_FIELD_1D_Recv(1+Replicas(ireplica,1)*DimFields1D-DimFields1D:&"},
+          {Fint[1] <> "Replicas(ireplica,1)*DimFields1D))"},
+          {Fint[1] <> "EwaldField=FieldsToND(MPI_EWALDFIELD_1D_Recv(1+Replicas(ireplica,1)*DimFields1D-DimFields1D:&"},
+          {Fint[1] <> "1+Replicas(ireplica,1)*DimFields1D))"},
+          {Fint[1]},
+          {"End Subroutine PTSwap"}};
+  Return[Fout]
+]
+
 FortranLatticeMCStep[OptionsPattern[{"EwaldField"->True, "SwapAll"->False}]] := Module[{Fint, n, Fout, EwaldFieldArg, EwaldFieldBlock},
   Fint[n_] := StringRepeat["  ", n];
   EwaldFieldArg = If[OptionValue["EwaldField"], "EwaldField,", ""];
@@ -203,7 +337,7 @@ FortranLatticeMCStep[OptionsPattern[{"EwaldField"->True, "SwapAll"->False}]] := 
                                                    {Fint[7] <> "Call UpdateEwaldField(ix, iy, iz, EwaldField, idelta, dfield)"},
                                                    {Fint[6] <> "end if"}}, {}];
   Fout = Join[{
-    {"Subroutine MCStep(imc, iseed, Fields, EwaldField, e0ij, T, udamp, etadamp, dene)"},
+    {"Subroutine MCMCStep(imc, iseed, Fields, EwaldField, e0ij, T, udamp, etadamp, dene)"},
     {Fint[1]},
     {Fint[1] <> "Use LINVARIANT"},
     {Fint[1] <> "Use Constants"},
@@ -218,12 +352,9 @@ FortranLatticeMCStep[OptionsPattern[{"EwaldField"->True, "SwapAll"->False}]] := 
     {Fint[1] <> "Real*8,  Intent(inout) :: e0ij(3,3)"}, 
     {Fint[1] <> "Integer                :: i, j, idelta, ix, iy, iz"}, 
     {Fint[1] <> "Integer                :: idum, acceptedu(NumField), acceptedeta"}}, 
-   {{Fint[1] <> "Real*8                 :: dfield(FieldDim, NumField), deta(6), DeltaE"}}, 
+   {{Fint[1] <> "Real*8                 :: dfield(FieldDim), deta(6), DeltaE"}}, 
    {{Fint[1] <> "Real*8                 :: ProbTest"},
     {Fint[1] <> "Real*8                 :: rdum, AccProb"},
-    {Fint[1] <> "Real*4                 :: ran1"},
-    {Fint[1]},
-    {Fint[1] <> "Call random_seed()"},
     {Fint[1]},
     {Fint[1] <> "acceptedu = 0"},
     {Fint[1] <> "acceptedeta = 0"},
@@ -236,9 +367,6 @@ FortranLatticeMCStep[OptionsPattern[{"EwaldField"->True, "SwapAll"->False}]] := 
     {Fint[3] <> "do ix = 1, NGridx"},
     {Fint[4] <> "do idelta = 1, NumField"},
     {Fint[5]},
-    {Fint[5] <> "!do i = 1, FieldDimList(idelta)"},
-    {Fint[6] <> "!dfield(i) = udamp(idelta)*(ran1(iseed)-0.5d0)"},
-    {Fint[5] <> "!end do"},
     {Fint[5] <> "Call random_number(dfield)"},
     {Fint[5] <> "dfield = udamp(idelta)*(dfield - 0.5D0)"},
     {Fint[5]},
@@ -264,10 +392,9 @@ FortranLatticeMCStep[OptionsPattern[{"EwaldField"->True, "SwapAll"->False}]] := 
     {Fint[2] <> "end do"},
     {Fint[1] <> "end do"},
     {Fint[1]},
+    {Fint[1] <> "Call RemoveGridDrifts(Fields)"},
+    {Fint[1]},
     {Fint[1] <> "do idum = 1, 2*NGridz+1"},
-    {Fint[2] <> "!do i = 1, 6"},
-    {Fint[3] <> "!deta(i) = etadamp*(ran1(iseed)-0.5d0)"},
-    {Fint[2] <> "!end do"},
     {Fint[2] <> "Call random_number(deta)"},
     {Fint[2] <> "deta = etadamp*(deta - 0.5D0)"},
     {Fint[2] <> "DeltaE = 0.0D0"},
@@ -276,8 +403,7 @@ FortranLatticeMCStep[OptionsPattern[{"EwaldField"->True, "SwapAll"->False}]] := 
     {Fint[4] <> "do ix = 1, NGridx"},
     {Fint[5] <> "!DeltaE = DeltaE + GetDeltaH(ix, iy, iz, Fields, e0ij, NumField+1, deta)"},
     {Fint[5] <> "DeltaE = DeltaE &"},
-    {Fint[6] <> "+ GetDeltaHEpsDisp(ix, iy, iz, Fields, e0ij, NumField+1, deta) &"},
-    {Fint[6] <> "+ GetDeltaHEpsu(ix, iy, iz, Fields, e0ij, NumField+1, deta)"},
+    {Fint[6] <> "+ GetDeltaHEpsDisp(ix, iy, iz, Fields, e0ij, NumField+1, deta)"},
     {Fint[4] <> "end do"},
     {Fint[3] <> "end do"},
     {Fint[2] <> "end do"},
@@ -308,7 +434,7 @@ FortranLatticeMCStep[OptionsPattern[{"EwaldField"->True, "SwapAll"->False}]] := 
     {Fint[2] <> "udamp(idelta) = Min(udamp(idelta), 3.0d0)"},
     {Fint[1] <> "end do"},
     {Fint[1]},
-    {Fint[1] <> "if(mod(imc,20).eq.0) then"},
+    {Fint[1] <> "if(mod(imc,1).eq.0) then"},
     {Fint[2] <> "rdum = real(acceptedeta)/real(2*NGridz+1)"},
     {Fint[2] <> "if(rdum .gt. AcceptRatio) then"},
     {Fint[3] <> "etadamp = DampRatio*etadamp"},
@@ -318,31 +444,33 @@ FortranLatticeMCStep[OptionsPattern[{"EwaldField"->True, "SwapAll"->False}]] := 
     {Fint[2] <> "etadamp = Min(etadamp, 3.0d0)"},
     {Fint[1] <> "end if"},
     {Fint[1]},
-    {"End Subroutine MCStep"}}];
+    {"End Subroutine MCMCStep"}}];
   Return[Fout]
 ] 
 
 FortranGetInitConfig[] := Module[{Fint, n, Fout},
   Fint[n_] := StringRepeat["  ", n];
   Fout = {
-  {"Subroutine GetInitConfig(Fields, e0ij, inittype)"},
+  {"Subroutine GetInitConfig(Fields, e0ij, inittype, FileCode)"},
   {Fint[1] <> "use Parameters"},
   {Fint[1] <> "use Inputs"},
   {Fint[1] <> "use Fileparser"},
   {Fint[1]},
   {Fint[1] <> "Implicit none"},
-  {Fint[1] <> "character(20)                 :: keyword, filename"},
+  {Fint[1] <> "character(20)                 :: keyword"},
+  {Fint[1] <> "character(50)                 :: filename"},
   {Fint[1] <> "character(20), intent(inout)  :: inittype"},
+  {Fint[1] <> "character(10), intent(in)     :: FileCode"},
   {Fint[1] <> "real*8,        intent(inout)  :: Fields(FieldDim, NumField, NGridx, NGridy, NGridz)"},
   {Fint[1] <> "real*8,        intent(inout)  :: e0ij(3,3)"},
-  {Fint[1] <> "Real*4                        :: ran1"},
+  {Fint[1] <> "real*8                        :: rand"},
   {Fint[1] <> "integer                       :: i, j, ix, iy, iz"},
   {Fint[1] <> "logical                       :: file_exists"},
   {Fint[1] <> " "},
   {Fint[1]},
   {Fint[1] <> "e0ij = 0.0D0"},
   {Fint[1]},
-  {Fint[1] <> "filename = trim(inittype)"},
+  {Fint[1] <> "filename = trim(Solver)//\".out/\"//trim(inittype)//\"-\"//trim(FileCode)//\".dat\""},
   {Fint[1] <> "call caps2small(inittype)"},
   {Fint[1] <> "keyword=trim(inittype)"},
   {Fint[1] <> "      "},
@@ -353,7 +481,8 @@ FortranGetInitConfig[] := Module[{Fint, n, Fout},
   {Fint[5] <> "do ix = 1, NGridx"},
   {Fint[6] <> "do i = 1, NumField"},
   {Fint[7] <> "do j = 1, FieldDimList(i)"},
-  {Fint[8] <> "Fields(j,i,ix,iy,iz) = ran1(seed)-0.5d0"},
+  {Fint[8] <> "Call random_number(rand)"},
+  {Fint[8] <> "Fields(j,i,ix,iy,iz) = temp-0.5d0"},
   {Fint[7] <> "end do"},
   {Fint[6] <> "end do"},
   {Fint[5] <> "end do"},
@@ -595,7 +724,7 @@ FortranDeltaHEwald[OptionsPattern[{"EwaldField"->True, "SwapAll" -> False}]] := 
              {Fint[1] <> "Implicit none"},
              {Fint[1] <> "Integer, Intent(in) :: x0, y0, z0" <> If[OptionValue["SwapAll"], "", ", idelta"]},
              {Fint[1] <> "Real*8,  Intent(in) :: EwaldField(FieldDim, NumField, NGridx, NGridy, NGridz)"}},
-            {{Fint[1] <> "Real*8,  Intent(in) :: delta(FieldDim, NumField)"}},
+            {{Fint[1] <> "Real*8,  Intent(in) :: delta(FieldDimList(idelta))"}},
             {{Fint[1] <> "Integer             :: i, j, ifield, jfield"},
              {Fint[1] <> "Real*8              :: ene, ThreadEne"},
              {Fint[1]},
@@ -603,18 +732,18 @@ FortranDeltaHEwald[OptionsPattern[{"EwaldField"->True, "SwapAll" -> False}]] := 
              {Fint[1]}},
             If[OptionValue["SwapAll"], {{Fint[1] <> "do ifield = 1, NumField - 1"},
                                         {Fint[2] <> "do i = 1, FieldDimList(ifield)"},
-                                        {Fint[3] <> "ene = ene + delta(i,ifield)*EwaldField(i,ifield,x0,y0,z0)"},
+                                        {Fint[3] <> "ene = ene + delta(i)*EwaldField(i,ifield,x0,y0,z0)"},
                                         {Fint[2] <> "end do ! i"},
                                         {Fint[1] <> "end do ! i"}},
                                        {{Fint[1] <> "do i = 1, FieldDimList(idelta)"},
-                                        {Fint[2] <> "ene = ene + delta(i,idelta)*EwaldField(i,idelta,x0,y0,z0)"},
+                                        {Fint[2] <> "ene = ene + delta(i)*EwaldField(i,idelta,x0,y0,z0)"},
                                         {Fint[1] <> "end do ! i"}}],
             If[OptionValue["SwapAll"], {{Fint[1]},
                                         {Fint[1] <> "do ifield = 1, NumField - 1"},
                                         {Fint[2] <> "do jfield = 1, NumField - 1"},
                                         {Fint[3] <> "do i = 1, FieldDimList(ifield)"},
                                         {Fint[4] <> "do j = 1, FieldDimList(jfield)"},
-                                        {Fint[5] <> "ene = ene + 0.5*FieldCharge(ifield)*FieldCharge(jfield)*delta(i,ifield)*EwaldMat(j,i,1,1,1)*delta(j,jfield)"},
+                                        {Fint[5] <> "ene = ene + 0.5*FieldCharge(ifield)*FieldCharge(jfield)*delta(i)*EwaldMat(j,i,1,1,1)*delta(j)"},
                                         {Fint[4] <> "end do ! j"},
                                         {Fint[3] <> "end do ! j"},
                                         {Fint[2] <> "end do ! j"},
@@ -622,7 +751,7 @@ FortranDeltaHEwald[OptionsPattern[{"EwaldField"->True, "SwapAll" -> False}]] := 
                                        {{Fint[1]},
                                         {Fint[1] <> "do i = 1, FieldDimList(idelta)"},
                                         {Fint[2] <> "do j = 1, FieldDimList(idelta)"},
-                                        {Fint[3] <> "ene = ene + 0.5*FieldCharge(idelta)**2*delta(i,idelta)*EwaldMat(j,i,1,1,1)*delta(j)"},
+                                        {Fint[3] <> "ene = ene + 0.5*FieldCharge(idelta)**2*delta(i)*EwaldMat(j,i,1,1,1)*delta(j)"},
                                         {Fint[2] <> "end do ! j"},
                                         {Fint[1] <> "end do ! i"}}],
             {{Fint[1]},
@@ -635,7 +764,7 @@ FortranDeltaHEwald[OptionsPattern[{"EwaldField"->True, "SwapAll" -> False}]] := 
              {Fint[1] <> "Implicit none"},
              {Fint[1] <> "Integer, Intent(in) :: ix, iy, iz" <> If[OptionValue["SwapAll"], "", ", idelta"]},
              {Fint[1] <> "Real*8,  Intent(in) :: Fields(FieldDim, NumField, NGridx, NGridy, NGridz)"}},
-            {{Fint[1] <> "Real*8,  Intent(in) :: delta(FieldDim, NumField)"}},
+            {{Fint[1] <> "Real*8,  Intent(in) :: delta(FieldDimList(idelta))"}},
             {{Fint[1] <> "Integer             :: i, j, jx, jy, jz, x, y, z, ifield, jfield"},
              {Fint[1] <> "Real*8              :: ene, ThreadEne"},
              {Fint[1]},
@@ -657,7 +786,7 @@ FortranDeltaHEwald[OptionsPattern[{"EwaldField"->True, "SwapAll" -> False}]] := 
                                         {Fint[10] <> "y = (jy-iy+1)-floor(real(jy-iy)/real(NGridy))*NGridy"},
                                         {Fint[10] <> "z = (jz-iz+1)-floor(real(jz-iz)/real(NGridz))*NGridz"},
                                         {Fint[10] <> "ThreadEne = ThreadEne &"},
-                                        {Fint[11] <> "+ FieldCharge(ifield)*FieldCharge(jfield)*delta(i,ifield)*EwaldMat(j,i,x,y,z)*Fields(j,jfield,jx,jy,jz)"},
+                                        {Fint[11] <> "+ FieldCharge(ifield)*FieldCharge(jfield)*delta(i)*EwaldMat(j,i,x,y,z)*Fields(j,jfield,jx,jy,jz)"},
                                         {Fint[9] <> "end do ! j"},
                                         {Fint[8] <> "end do ! i"},
                                         {Fint[7] <> "end do ! jz"},
@@ -683,7 +812,7 @@ FortranDeltaHEwald[OptionsPattern[{"EwaldField"->True, "SwapAll" -> False}]] := 
                                         {Fint[9] <> "y = (jy-iy+1)-floor(real(jy-iy)/real(NGridy))*NGridy"},
                                         {Fint[9] <> "z = (jz-iz+1)-floor(real(jz-iz)/real(NGridz))*NGridz"},
                                         {Fint[9] <> "ThreadEne = ThreadEne &"},
-                                        {Fint[10] <> "+ FieldCharge(idelta)*FieldCharge(jfield)*delta(i,idelta)*EwaldMat(j,i,x,y,z)*Fields(j,jfield,jx,jy,jz)"},
+                                        {Fint[10] <> "+ FieldCharge(idelta)*FieldCharge(jfield)*delta(i)*EwaldMat(j,i,x,y,z)*Fields(j,jfield,jx,jy,jz)"},
                                         {Fint[8] <> "end do ! j"},
                                         {Fint[7] <> "end do ! i"},
                                         {Fint[6] <> "end do ! jz"},
@@ -702,14 +831,14 @@ FortranDeltaHEwald[OptionsPattern[{"EwaldField"->True, "SwapAll" -> False}]] := 
                                         {Fint[2] <> "do jfield = 1, NumField - 1"},
                                         {Fint[1] <> "do i = 1, FieldDimList(ifield)"},
                                         {Fint[2] <> "do j = 1, FieldDimList(jfield)"},
-                                        {Fint[3] <> "ene = ene + 0.5*FieldCharge(ifield)*FieldCharge(jfield)*delta(i,ifield)*EwaldMat(j,i,1,1,1)*delta(j,jfield)"},
+                                        {Fint[3] <> "ene = ene + 0.5*FieldCharge(ifield)*FieldCharge(jfield)*delta(i)*EwaldMat(j,i,1,1,1)*delta(j)"},
                                         {Fint[2] <> "end do ! j"},
                                         {Fint[2] <> "end do ! j"},
                                         {Fint[2] <> "end do ! j"},
                                         {Fint[1] <> "end do ! i"}},
                                        {{Fint[1] <> "do i = 1, 3"},
                                         {Fint[2] <> "do j = 1, 3"},
-                                        {Fint[3] <> "ene = ene + 0.5*FieldCharge(idelta)*FieldCharge(idelta)*delta(i,idelta)*EwaldMat(j,i,1,1,1)*delta(j,idelta)"},
+                                        {Fint[3] <> "ene = ene + 0.5*FieldCharge(idelta)*FieldCharge(idelta)*delta(i)*EwaldMat(j,i,1,1,1)*delta(j)"},
                                         {Fint[2] <> "end do ! j"},
                                         {Fint[1] <> "end do ! i"}}],
             {{Fint[1]},
@@ -779,7 +908,7 @@ FortranUpdateEwaldField[OptionsPattern[{"SwapAll"->False}]] := Module[{Fint, n, 
      {Fint[1] <> "Implicit none"},
      {Fint[1] <> "integer, intent(in)     :: ix, iy, iz" <> If[OptionValue["SwapAll"], "", ", idelta"]},
      {Fint[1] <> "real*8,  intent(inout)  :: EwaldField(FieldDim, NumField, NGridx, NGridy, NGridz)"}},
-    {{Fint[1] <> "real*8,  intent(in)     :: delta(FieldDim, NumField)"}},
+    {{Fint[1] <> "real*8,  intent(in)     :: delta(FieldDimList(idelta))"}},
     {{Fint[1] <> "integer                 :: i, j, ifield, jfield, jx, jy, jz, x, y, z"},
      {Fint[1]}},
     If[OptionValue["SwapAll"], {{Fint[1] <> "!$OMP    PARALLEL  DEFAULT(SHARED) PRIVATE(x,y,z)"},
@@ -795,7 +924,7 @@ FortranUpdateEwaldField[OptionsPattern[{"SwapAll"->False}]] := Module[{Fint, n, 
                                 {Fint[3] <> "y = (jy-iy+1)-floor(real(jy-iy)/real(NGridy))*NGridy"},
                                 {Fint[3] <> "z = (jz-iz+1)-floor(real(jz-iz)/real(NGridz))*NGridz"},
                                 {Fint[3] <> "EwaldField(j,jfield,jx,jy,jz) = &"},
-                                {Fint[3] <> "EwaldField(j,jfield,jx,jy,jz) + FieldCharge(jfield)*FieldCharge(ifield)*EwaldMat(j,i,x,y,z)*delta(i,ifield)"},
+                                {Fint[3] <> "EwaldField(j,jfield,jx,jy,jz) + FieldCharge(jfield)*FieldCharge(ifield)*EwaldMat(j,i,x,y,z)*delta(i)"},
                                 {Fint[2] <> "end do"},
                                 {Fint[2] <> "end do"},
                                 {Fint[2] <> "end do"},
@@ -817,7 +946,7 @@ FortranUpdateEwaldField[OptionsPattern[{"SwapAll"->False}]] := Module[{Fint, n, 
                                 {Fint[3] <> "y = (jy-iy+1)-floor(real(jy-iy)/real(NGridy))*NGridy"},
                                 {Fint[3] <> "z = (jz-iz+1)-floor(real(jz-iz)/real(NGridz))*NGridz"},
                                 {Fint[3] <> "EwaldField(j,jfield,jx,jy,jz) = &"},
-                                {Fint[3] <> "EwaldField(j,jfield,jx,jy,jz) + FieldCharge(jfield)*FieldCharge(idelta)*EwaldMat(j,i,x,y,z)*delta(i,idelta)"},
+                                {Fint[3] <> "EwaldField(j,jfield,jx,jy,jz) + FieldCharge(jfield)*FieldCharge(idelta)*EwaldMat(j,i,x,y,z)*delta(i)"},
                                 {Fint[2] <> "end do"},
                                 {Fint[2] <> "end do"},
                                 {Fint[2] <> "end do"},
@@ -1056,63 +1185,44 @@ HeadTailEOnSite[FunctionName_?StringQ, ReturnVar_, nn_, OptionsPattern[{"AllSite
   Return[{head, tail}]
 ]
 
-WriteLatticeModelF90[F90dir_, FuncName_?StringQ, FuncType_?StringQ, InvariantList_?ListQ, MMAVars_, MMA2F90Vars_, OptionsPattern[{"AllSites" -> True, "TylorOrder" -> 6}]] := Module[{FortranVar, FortranArrayVar, Invariants, ham, CoeffType, FortranVarList, ifield, i, inv, MMA, Fortran, f90, body, head, tail, CaseExprTable},
+WriteLatticeModelF90[F90dir_, FuncName_?StringQ, FuncType_?StringQ, InvariantList_?ListQ, MMAVars_, OptionsPattern[{"AllSites" -> False, "TylorOrder" -> 6}]] := Module[{FortranVar, FortranArrayVar, Invariants, HamList, ham, CoeffType, FortranVarList, ifield, i, inv, MMA, Fortran, f90, body, head, tail, CaseExprTable, var, ii},
 
+  MMA2F90Vars = FortranVarSub[MMAVars];
+  
   FortranVarList = FuncType <> # & /@ First[Transpose[InvariantList]];
+  HamList = Table[{inv[[1]], Expand@If[ListQ[inv[[2]]], inv[[2]].(ToExpression["Coeff"<>inv[[1]]][#] & /@ Range[Length@inv[[2]]]), inv[[2]]]}, {inv, InvariantList}];
   Which[
   (* Forces *)
     FuncType == "Forces",
     Fortran = Flatten[
-                Table[FortranVar = FuncType <> inv[[1]];
-                      Invariants = inv[[2]]; 
-                      CoeffType = "Coeff" <> inv[[1]];
-                      MMA =Flatten[Table[Table[
+                Table[MMA =Flatten[Table[Table[
                         FortranArrayVar = If[OptionValue["AllSites"],
-                                             FortranVarStr[FortranVar, {ToString[i], ToString[ifield], "x0", "y0", "z0"}], 
-                                             FortranVarStr[FortranVar, {ToString[i], ToString[ifield]}]];
-                        ham = Expand@If[ListQ[Invariants], 
-                                        Invariants.(ToExpression[CoeffType][#] & /@ Range[Length@Invariants]),
-                                        Invariants];
-                        {FortranArrayVar, -D[Expand[ham], MMAVars[[ifield, i]]]}, {i, Length@MMAVars[[ifield]]}], {ifield, Length@MMAVars}], 1];
-                      {#1, Expr2Fortran[#2, MMA2F90Vars]} & @@@ MMA, {inv, InvariantList}], 1];
+                                             FortranVarStr[FuncType<>ham[[1]], {ToString[i], ToString[ifield], "x0", "y0", "z0"}], 
+                                             FortranVarStr[FuncType<>ham[[1]], {ToString[i], ToString[ifield]}]];
+                        {FortranArrayVar, -D[Expand[ham[[2]]], MMAVars[[ifield, i]]]}, {i, Length@MMAVars[[ifield]]}], {ifield, Length@MMAVars}], 1];
+                      {#1, Expr2Fortran[#2, MMA2F90Vars]} & @@@ MMA, {ham, HamList}], 1];
     body = Flatten[FortranExprBlock[#1, #2, If[OptionValue["AllSites"], 2, 1]] & @@@ Fortran, 1];
     {head, tail} = HeadTailForces[FuncName, If[Length@FortranVarList == 1, First@FortranVarList, {FuncType, FortranVarList}], 1, "AllSites" -> OptionValue["AllSites"]],
   (* DeltaH *)
     FuncType == "DeltaH",
-    Fortran = Table[FortranVar = FuncType <> inv[[1]];
-                    Invariants = inv[[2]]; 
-                    CoeffType = "Coeff" <> inv[[1]];
-                    MMA = Table[
-                      ham = Expand@If[ListQ[Invariants], Invariants.(ToExpression[CoeffType][#] & /@ Range[Length@Invariants]), Invariants]; 
-                      NOrderResponse[ham, MMAVars[[ifield]], OptionValue["TylorOrder"]], {ifield, Length@MMAVars}];
-                    Expr2Fortran[#, MMA2F90Vars] &/@ MMA, {inv, InvariantList}];
+    Fortran = Table[MMA = NOrderResponse[ham[[2]], #, OptionValue["TylorOrder"]] &/@ MMAVars;
+                    Expr2Fortran[#, MMA2F90Vars] &/@ MMA, {ham, HamList}];
     CaseExprTable = Transpose[Table[FortranExprBlock[#1, #2[[i]], 2], {i, Length@#2}] & @@@ Transpose[{FortranVarList, Fortran}]];
     body = FortranCaseBlock["idelta", {ToString[#] & /@ Range[Length[First@Fortran]], Table[Join[Flatten[CaseExprTable[[i]], 1], {{"    " <> FuncType <> "=" <> StringJoin[Riffle[FortranVarList, "+"]]}, {"  "}}], {i, Length@CaseExprTable}]}\[Transpose], GetCaseDefaults[{{"write(*,*) \"mode out of range!\""}, {"call abort"}}, 1], 1];
     {head, tail} = HeadTailDeltaH[FuncName, {FuncType, FortranVarList}, 1], 
   (* EOnSite *)
     FuncType == "EOnSite",
     Fortran = Flatten[
-                Table[FortranVar = FuncType <> inv[[1]];
-                      Invariants = inv[[2]]; 
-                      CoeffType = "Coeff" <> inv[[1]];
-                      FortranArrayVar = If[OptionValue["AllSites"], FortranVarStr[FortranVar, {"x0", "y0", "z0"}], FortranVar];
-                      ham = Expand[If[ListQ[Invariants], Invariants.(ToExpression[CoeffType][#] & /@ Range[Length@Invariants]), Invariants]];
-                      MMA = {{FortranArrayVar, ham}};
-                      {#1, Expr2Fortran[#2, MMA2F90Vars]} & @@@ MMA, {inv, InvariantList}], 1];
+                Table[FortranArrayVar = If[OptionValue["AllSites"], FortranVarStr[FuncType<>ham[[1]], {"x0", "y0", "z0"}], FuncType<>ham[[1]]];
+                      MMA = {{FortranArrayVar, ham[[2]]}};
+                      {#1, Expr2Fortran[#2, MMA2F90Vars]} & @@@ MMA, {ham, HamList}], 1];
     body = Flatten[FortranExprBlock[#1, #2, If[OptionValue["AllSites"], 2, 1]] & @@@ Fortran, 1];
     {head, tail} = HeadTailEOnSite[FuncName, If[Length@FortranVarList == 1, First@FortranVarList, {FuncType, FortranVarList}], 1, "AllSites" -> OptionValue["AllSites"]],
   (* HessianOnSite *)
     FuncType == "HessianOnSite",
-    Fortran = Flatten[Table[FortranVar = FuncType <> inv[[1]];
-    Invariants = inv[[2]]; 
-    CoeffType = "Coeff" <> inv[[1]];
-    MMA = Flatten[Table[FortranArrayVar = FortranVarStr[FortranVar, {ToString[i], ToString[j]}];
-                        ham = Expand@D[If[ListQ[Invariants], 
-                                          Invariants.(ToExpression[CoeffType][#] & /@ Range[Length@Invariants]), 
-                                          Invariants], 
-                                       MMAVars[[i]], MMAVars[[j]]];
-                        {FortranArrayVar, ham}, {i, Length@MMAVars}, {j, Length@MMAVars}], 1];
-                        {#1, Expr2Fortran[#2, MMA2F90Vars]} & @@@ MMA, {inv, InvariantList}], 1];
+    Fortran = Flatten[Table[MMA = Flatten[Table[FortranArrayVar = FortranVarStr[FuncType<>ham[[1]], {ToString[i], ToString[j]}];
+                                    {FortranArrayVar, Expand@D[ham[[2]], MMAVars[[i]], MMAVars[[j]]]}, {i, Length@MMAVars}, {j, Length@MMAVars}], 1];
+                            {#1, Expr2Fortran[#2, MMA2F90Vars]} & @@@ MMA, {ham, HamList}], 1];
     body = Flatten[FortranExprBlock[#1, #2, 1] & @@@ Fortran, 1];
     {head, tail} = HeadTailHessianOnSite[FuncName, If[Length@FortranVarList == 1, First@FortranVarList, {FuncType, FortranVarList}], 1]
 ];
