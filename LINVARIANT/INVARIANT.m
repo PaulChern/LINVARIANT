@@ -181,9 +181,14 @@ GetMatrixRep[grp0_, grpt_, pos_, BasisMatrix_, BasisLabels_, ftype_] := Module[{
       If[BasisDim != 0,
          {NormFactor, BasisField} = Table[
          basis=GetBasisField[i, BasisMatrix, BasisLabels, pos, ftype];
-         {1/ComplexExpand@Norm[Flatten[slatt\[Transpose].# &/@ (basis\[Transpose][[2]]\[Transpose][[2]])]], basis}, {i,BasisDim}]\[Transpose];
+         {If[ftype!="orbital",1/ComplexExpand@Norm[Flatten[slatt\[Transpose].# &/@ (basis\[Transpose][[2]]\[Transpose][[2]])]],
+                              1/Norm[Flatten[basis\[Transpose][[2]]\[Transpose][[2]]]]], 
+          basis}, {i,BasisDim}]\[Transpose];
          TransformedBasisField = ParallelTable[SymmetryOpBasisField[g, pos, cell, #, ftype] &/@ BasisField, {g, Keys[grp[[ig]]]}, DistributedContexts -> {"LINVARIANT`INVARIANT`Private`"}];
-         ParallelTable[mat = Table[Simplify@Expand[NormFactor[[i]] NormFactor[[j]] Flatten[slatt\[Transpose].# &/@ (TransformedBasisField[[g]][[i]]\[Transpose][[2]]\[Transpose][[2]])].Flatten[slatt\[Transpose].# &/@ (BasisField[[j]]\[Transpose][[2]]\[Transpose][[2]])]], {i, Range@BasisDim}, {j, Range@BasisDim}];
+         ParallelTable[mat = 
+                       If[ftype!="orbital",
+                          Table[Simplify@Expand[NormFactor[[i]] NormFactor[[j]] Flatten[slatt\[Transpose].# &/@ (TransformedBasisField[[g]][[i]]\[Transpose][[2]]\[Transpose][[2]])].Flatten[slatt\[Transpose].# &/@ (BasisField[[j]]\[Transpose][[2]]\[Transpose][[2]])]], {i, Range@BasisDim}, {j, Range@BasisDim}],
+                          Table[Simplify@Expand[NormFactor[[i]] NormFactor[[j]] Flatten[TransformedBasisField[[g]][[i]]\[Transpose][[2]]\[Transpose][[2]]].Flatten[BasisField[[j]]\[Transpose][[2]]\[Transpose][[2]]]], {i, Range@BasisDim}, {j, Range@BasisDim}]];
          SparseArray[mat], {g, Length[grp[[ig]]]}, DistributedContexts -> {"LINVARIANT`INVARIANT`Private`"}],
          Table[{}, {Length[grp[[ig]]]}]], {ig, 2}];
   If[BasisDim != 0,
