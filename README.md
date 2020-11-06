@@ -15,8 +15,9 @@
 - Heisenberg model with DM model builder
 - Tight-Binding model builder
 - Finite Element Method (FEM), Minimization, molecular dynamics (MD), Monte Carlo (MC), and Finite Differences nonlinear solver on large scale continuous model
+- Parallel tempering algorithm is available with both MC and MD
 - Generate Fortran source code from mathematica
-- openmp parallelization
+- mpi and openmp parallelization
 - dynamics under external electric field
 - Jij of Heisenberg model from DFT, in Liechtenstein manner
 - Unfolding
