@@ -8,14 +8,17 @@
 - LINVARIANT has numerical solvers running on the model, such as MC, MD, Exact diagnalization, Minimization, and et al..
 - For large scale calculations, LINVARIANT exports the symbolic models into FORTRAN/C++ modules together with FORTRAN/C++ solvers, buiding files.
 ## Features:
+### models:
 - Displacement and magnetic modes analysis
 - INVARIANT generator (couplings among distortion, strain and magnetic)
 - Modulate modes in supercell, generate initial Domain walls (DWs) structures for Density Functional Theory (DFT) codes
 - Landau model builder, Generate DFT training sets by phonon and magnetic frozen-in.
 - Heisenberg model with DM model builder
 - Tight-Binding model builder
-- Finite Element Method (FEM), Minimization, molecular dynamics (MD), Monte Carlo (MC), and Finite Differences nonlinear solver on large scale continuous model
+### solvers:
+- (1) Finite Element Method (FEM), (2) Minimization, (3) molecular dynamics (MD), (4) Monte Carlo (MC), and (5) Finite Differences nonlinear solver on large scale continuous model
 - Parallel tempering algorithm is available with both MC and MD
+### Auxiliary:
 - Generate Fortran source code from mathematica
 - mpi and openmp parallelization
 - dynamics under external electric field
@@ -25,7 +28,8 @@
 - X ray diffraction simulation
 - Nudged Elastic Bands (NEB) and Growing String Method (GSM) to explore the phase transition, dynamics, and domain wall structures
 - Mollwide projection
-- Examples: Boracite, Perovskite (To be added: Spinel, Rutile, Pyrochlore)
+### Examples:
+- Boracite, Perovskite (To be added: Spinel, Rutile, Pyrochlore)
 ## Todo:
 - implement LLG dynamics
 - implement k dot p model builder
