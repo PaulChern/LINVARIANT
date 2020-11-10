@@ -70,10 +70,10 @@ ShowIsoModes[PosVec_] := Module[{StructData},
                    ViewPoint -> {0, 0, \[Infinity]}]];
 ]
 
-ISODISTORT[R0_, pos0_, pos_, IsoMatrix_, label_] := Module[{imode, Amp, NN, posmatched},
-  posmatched = Transpose[{PosMatchTo[IdentityMatrix[3], pos0\[Transpose][[1]], pos\[Transpose][[1]], 0.01][[2]], Transpose[pos0][[2]]}];
-  Amp = Table[Flatten[R0.PbcDiff[#] & /@ (Transpose[posmatched][[1]] - Transpose[pos0][[1]])].Normalize@Normal[IsoMatrix[[;; , imode]]], {imode, Length@label}];
-  NN = Table[1/Norm@Flatten[R0.# & /@ Partition[Normal[IsoMatrix][[;; , imode]], 3]], {imode, Length@label}];
+ISODISTORT[Lattice_, pos0_, pos_, IsoMatrix_, label_] := Module[{imode, Amp, NN, posmatched},
+  posmatched = Transpose[{PosMatchTo[IdentityMatrix[3], pos0\[Transpose][[1]], pos\[Transpose][[1]]][[2]], Transpose[pos0][[2]]}];
+  Amp = Table[Flatten[Lattice\[Transpose].PbcDiff[#] & /@ (Transpose[posmatched][[1]] - Transpose[pos0][[1]])].Normalize@Normal[IsoMatrix[[;; , imode]]], {imode, Length@label}];
+  NN = Table[1/Norm@Flatten[Lattice\[Transpose].# & /@ Partition[Normal[IsoMatrix][[;; , imode]], 3]], {imode, Length@label}];
   Return[{Range[Length@label], label, NN, Chop[Amp, 2 10^-4]}\[Transpose]]
 ]
 

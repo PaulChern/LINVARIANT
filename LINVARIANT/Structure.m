@@ -106,10 +106,10 @@ DistMatrix = Compile[{{latt, _Real, 2}, {pos1, _Real, 2}, {pos2, _Real, 2}, {cel
 ]
 *)
 
-PosMatchTo[latt_, spos_, dpos_, tol_, OptionsPattern["shift"->False]] := Module[{difftable, posmap, i, newpos},
+PosMatchTo[latt_, spos_, dpos_, OptionsPattern["shift"->False]] := Module[{difftable, posmap, i, newpos},
   difftable = DistMatrix[latt, spos, dpos, {1,1,1}];
-  posmap = Position[difftable, x_ /; TrueQ[x <= tol]];
-  newpos = If[OptionValue["shift"], PbcDiff[#]&/@(Table[dpos[[posmap[[i]][[2]]]], {i, Length@spos}] - spos) + spos,Table[dpos[[posmap[[i]][[2]]]], {i, Length@spos}]];
+  posmap = First@First@Position[#, x_ /; TrueQ[x == Min[#]]] & /@ difftable;
+  newpos = If[OptionValue["shift"], PbcDiff[#]&/@(Table[dpos[[posmap[[i]]]], {i, Length@spos}] - spos) + spos,Table[dpos[[posmap[[i]]]], {i, Length@spos}]];
   Return[{posmap, newpos}]
 ]
 

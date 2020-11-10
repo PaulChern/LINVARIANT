@@ -82,7 +82,7 @@ ImportPOSCAR[f_] := Module[{inp, Latt, xyz, xyzType, EleType, EleNum, TotalNum},
   inp = OpenRead[f];
   Read[inp, String];
   Latt = Quiet@ReadList[inp, Number, RecordLists -> True];
-  Latt = (Latt[[1, 1]]*Latt[[2 ;; 4]])\[Transpose];
+  Latt = Latt[[1, 1]]*Latt[[2 ;; 4]];
   EleType = ReadList[StringToStream@Read[inp, String], Word];
   EleNum = ReadList[StringToStream@Read[inp, String], Number];
   TotalNum = Total[EleNum];
