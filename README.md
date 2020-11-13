@@ -20,6 +20,8 @@
 - Parallel tempering algorithm is available with both MC and MD
 ### Auxiliary:
 - Generate Fortran source code from mathematica
+- interface to VASP
+- interface to WANNIER90
 - mpi and openmp parallelization
 - dynamics under external electric field
 - Jij of Heisenberg model from DFT, in Liechtenstein manner
