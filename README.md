@@ -33,6 +33,7 @@
 ### Examples:
 - Boracite, Perovskite (To be added: Spinel, Rutile, Pyrochlore)
 ## Todo:
+- implement DFTB
 - implement LLG dynamics
 - implement k dot p model builder
 - add exact diagonalization solver
