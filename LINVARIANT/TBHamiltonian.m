@@ -43,6 +43,7 @@ ReadWannier90[filename_] := Module[{Wannier90, SystemName, NBands, NumCells, Wei
   NumCells = Read[Wannier90, Number];
   WeightList = Table[Read[Wannier90, Number], {NumCells}];
   Ti0 = {#[[1]][[1 ;; 3]], Normal[SparseArray[{#4, #5} -> #6 + I #7 & @@@ #, {NBands, NBands}]]} & /@ Partition[ReadList[Wannier90, Number, RecordLists -> True], NBands^2];
+  Close[Wannier90];
   Return[{Ti0\[Transpose][[1]], WeightList, Ti0\[Transpose][[2]]}\[Transpose]]
 ]
 

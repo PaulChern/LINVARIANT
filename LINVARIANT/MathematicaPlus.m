@@ -9,6 +9,7 @@ GetSubscriptInfo     ::usage "GetSubscriptInfo[atom]"
 ReadNonEmptyLine     ::usage "ReadNonEmptyLine[stream]"
 PermuteThrough       ::usage "PermuteThrough[tab]"
 Var2Var              ::usage "Var2Var[var1, var2, dir]"
+ParseFortranNumber    ::usage "ParseFortranNumber[stream]"
 (*--------- Plot and Manipulate Crystal Structures -------------------- ----------------*)
 
 (*--------- Point and Space Group Information ---------------------------*)
@@ -70,6 +71,15 @@ Var2Var[var1_, var2_, dir_?IntegerQ, OptionsPattern[{"site"->False}]] := Module[
                 ->(Subscript@@(Join[GetSubscriptInfo[#],ToExpression["{ix,iy,iz}"]])&/@var2)]],
      Which[dir == 1, Thread[var2 -> var1], dir == 2, Thread[var1 -> var2]]
      ]
+]
+
+ParseFortranNumber[stream_] := Module[{out},
+  If[ListQ[stream],
+     ParseFortranNumber[#] &/@ stream,
+     out = If[MatchQ[Head[stream], InputStream],
+              ToExpression[StringSplit[StringReplace[ReadLine[stream], "e" | "E" -> "*^"]]],
+              ToExpression[StringSplit[StringReplace[stream, "e" | "E" -> "*^"]]]];
+     Return[If[Length[out] == 1, First@out, out]]]
 ]
 (*-------------------------- Attributes ------------------------------*)
 

@@ -19,6 +19,9 @@ GetBlochFunc                 ::usage "GetBlochFunc[file, is, ik, ib]"
 GetTDM                       ::usage "GetTDM[fwavecar, poscar, skb1, skb2]"
 WAVECAR2WANNIER              ::usage "WAVECAR2WANNIER[wavecar, vasprun]"
 GetBlochLink                 ::usage "GetBlochLink[file]"
+UoptPsik                     ::usage "UoptPsik[ik, iw, UmatOpt, ndimwin, lwindow, wavecar]"
+UPsik                        ::usage "UPsik[ik, iw, UmatOpt, Umat, lwindow, ndimwin, wavecar]"
+GetWannierFunc               ::usage "GetWannierFunc[iw, R, chk, wavecar_, vasprun]"
 (*--------- Plot and Manipulate Crystal Structures -------------------- ----------------*)
 
 (*--------- Point and Space Group Information ---------------------------*)
@@ -40,14 +43,14 @@ ParseXML[xml_, tag_, label_, level_: Infinity] := Module[{xmldata, DataType, x},
 ]
 
 ParseXMLData[xml_, DataType_] := Module[{xmldata},
-  Flatten[Cases[#, XMLElement[DataType, {}, x_] :> ToExpression[StringSplit[x]]], 1] & /@ xml
+  Flatten[Cases[#, XMLElement[DataType, {}, x_] :> ParseFortranNumber[x]], 1] & /@ xml
 ]
 
 ParseVasprunBands[xml_, OptionsPattern[{"fermi"->None}]] := Module[{is, ik, klist, NumKpoint, spinupdn=<||>, fermi, ISPIN},
   klist = Flatten[ParseXMLData[ParseXML[xml, "varray", {"name", "kpointlist"}], "v"], 1];
-  fermi = If[OptionValue["fermi"]===None, ToExpression@First@First@ParseXML[xml, "i", {"name", "efermi"}], OptionValue["fermi"]];
+  fermi = If[OptionValue["fermi"]===None, ParseFortranNumber@First@First@ParseXML[xml, "i", {"name", "efermi"}], OptionValue["fermi"]];
   NumKpoint = Length[klist];
-  ISPIN = ToExpression@First@First@ParseXML[xml, "i", {{"type", "int"}, {"name", "ISPIN"}}];
+  ISPIN = ParseFortranNumber@First@First@ParseXML[xml, "i", {{"type", "int"}, {"name", "ISPIN"}}];
 
   spinupdn["k"] = klist;
   spinupdn["fermi"] = fermi;
@@ -58,10 +61,10 @@ ParseVasprunBands[xml_, OptionsPattern[{"fermi"->None}]] := Module[{is, ik, klis
 
 ParseVasprunFatBands[xml_, OptionsPattern[{"fermi"->None, "FatBandRange"->None}]] := Module[{is, ik, ib, klist, NumKpoint, spinupdn=<||>, character=<||>, fermi, NBANDS, ISPIN, fat, orbits, ifat0, ifat1},
   klist = Flatten[ParseXMLData[ParseXML[xml, "varray", {"name", "kpointlist"}], "v"], 1];
-  fermi = If[OptionValue["fermi"]===None, ToExpression@First@First@ParseXML[xml, "i", {"name", "efermi"}], OptionValue["fermi"]];
+  fermi = If[OptionValue["fermi"]===None, ParseFortranNumber@First@First@ParseXML[xml, "i", {"name", "efermi"}], OptionValue["fermi"]];
   NumKpoint = Length[klist];
-  NBANDS = ToExpression@First@First@ParseXML[xml, "i", {{"type", "int"}, {"name", "NBANDS"}}];
-  ISPIN = ToExpression@First@First@ParseXML[xml, "i", {{"type", "int"}, {"name", "ISPIN"}}]; 
+  NBANDS = ParseFortranNumber@First@First@ParseXML[xml, "i", {{"type", "int"}, {"name", "NBANDS"}}];
+  ISPIN = ParseFortranNumber@First@First@ParseXML[xml, "i", {{"type", "int"}, {"name", "ISPIN"}}]; 
   {ifat0, ifat1} = If[OptionValue["FatBandRange"]===None, {Floor[0.75*NBANDS], NBANDS}, OptionValue["FatBandRange"]];
 
   spinupdn["k"] = klist;
@@ -88,7 +91,7 @@ ImportPOSCAR[f_] := Module[{inp, Latt, xyz, xyzType, EleType, EleNum, TotalNum},
   TotalNum = Total[EleNum];
   xyzType = ToLowerCase[Read[inp, String]];
   xyz = ReadList[inp, String, RecordLists -> True][[1 ;; TotalNum]];
-  xyz = {ToExpression[First[StringSplit[#1]][[1 ;; 3]]], #2} & @@@ ({xyz, Flatten[ConstantArray @@@ ({EleType, EleNum}\[Transpose])]}\[Transpose]);
+  xyz = {ParseFortranNumber[First[StringSplit[#1]][[1 ;; 3]]], #2} & @@@ ({xyz, Flatten[ConstantArray @@@ ({EleType, EleNum}\[Transpose])]}\[Transpose]);
   Close[inp];
   Return[{Latt, xyz}]
 ]
@@ -136,7 +139,7 @@ VaspKLabel[kpt_] := Module[{},
 
 ImportKPATH[kpath_] := Module[{KPATH, klist, kpt, i},
   KPATH = ReadList[kpath, String][[5 ;;]];
-  klist = Table[kpt = StringSplit[KPATH[[i]]]; {ToExpression@kpt[[1 ;; 3]], VaspKLabel[kpt[[5]]]}, {i, Length@KPATH}];
+  klist = Table[kpt = StringSplit[KPATH[[i]]]; {ParseFortranNumber[kpt[[1 ;; 3]]], VaspKLabel[kpt[[5]]]}, {i, Length@KPATH}];
   Prepend[Table[If[klist[[i + 1]] === klist[[i]], ## &[], klist[[i + 1]]], {i, Length[klist] - 1}], klist[[1]]]
 ]
 
@@ -144,28 +147,29 @@ ImportWannierCHK[chk_] := Module[{wchkfile, NumBands, NumExcludeBands, Lattice, 
   wchkfile = OpenRead[chk];
   SetStreamPosition[wchkfile, 0];
   ReadLine[wchkfile];
-  NumBands = ToExpression[ReadLine[wchkfile]];
-  NumExcludeBands = ToExpression[ReadLine[wchkfile]];
+  NumBands = ParseFortranNumber[wchkfile];
+  NumExcludeBands = ParseFortranNumber[wchkfile];
   Do[ReadLine[wchkfile], {i, NumExcludeBands}];
-  Lattice = Partition[ToExpression[StringSplit[ReadLine[wchkfile]]], 3];
+  Lattice = Partition[ParseFortranNumber[wchkfile], 3];
   ReadLine[wchkfile];
-  NKPT = ToExpression[ReadLine[wchkfile]];
-  KGrid = ToExpression[StringSplit[ReadLine[wchkfile]]];
-  KPOINTS = Table[ToExpression[StringSplit[ReadLine[wchkfile]]], {i, NKPT}];
-  NumNNkpt = ToExpression[ReadLine[wchkfile]];
-  NumWann = ToExpression[ReadLine[wchkfile]];
+  NKPT = ParseFortranNumber[wchkfile];
+  KGrid = ParseFortranNumber[wchkfile];
+  KPOINTS = Table[ParseFortranNumber[wchkfile], {i, NKPT}];
+  NumNNkpt = ParseFortranNumber[wchkfile];
+  NumWann = ParseFortranNumber[wchkfile];
   chkpos = ReadLine[wchkfile];
-  DisentanglementQ = If[ToExpression[ReadLine[wchkfile]] == 0, False, True];
+  DisentanglementQ = If[ParseFortranNumber[wchkfile] == 0, False, True];
   If[DisentanglementQ,
-     omega = ToExpression[ReadLine[wchkfile]];
-     lwindow = Table[ToExpression[ReadLine[wchkfile]], {ik, NKPT}, {ib, NumBands}];
-     ndimwin = Table[ToExpression[ReadLine[wchkfile]], {ik, NKPT}];
-     UMatOpt = SparseArray[Table[ToExpression[StringSplit[ReadLine[wchkfile]]].{1, I}, {ik, NKPT}, {iw, NumWann}, {ib, NumBands}]]];
-  UMat = Table[ToExpression[StringSplit[ReadLine[wchkfile]]].{1, I}, {ik, NKPT}, {iw, NumWann}, {jw, NumWann}];
-  Mmat = Table[ToExpression[StringSplit[ReadLine[wchkfile]]].{1, I}, {ik, NKPT}, {in, NumNNkpt}, {iw, NumWann}, {jw, NumWann}];
-  WannCenters = Mod[Inverse[Lattice\[Transpose]].#, 1] & /@ Table[ToExpression[StringSplit[ReadLine[wchkfile]]], {iw, NumWann}];
-  WannSpreads = Table[ToExpression[ReadLine[wchkfile]], {iw, NumWann}];
-  If[DisentanglementQ, Return[{UMatOpt, Umat, lwindow, ndimwin, Mmat, WannCenters}], Return[{UMat, lwindow, ndimwin, Mmat, WannCenters}]]
+     omega = ParseFortranNumber[wchkfile];
+     lwindow = Table[ParseFortranNumber[wchkfile], {ik, NKPT}, {ib, NumBands}];
+     ndimwin = Table[ParseFortranNumber[wchkfile], {ik, NKPT}];
+     UMatOpt = SparseArray[Table[ParseFortranNumber[wchkfile].{1, I}, {ik, NKPT}, {iw, NumWann}, {ib, NumBands}]]];
+  UMat = Table[ParseFortranNumber[wchkfile].{1, I}, {ik, NKPT}, {iw, NumWann}, {jw, NumWann}];
+  Mmat = Table[ParseFortranNumber[wchkfile].{1, I}, {ik, NKPT}, {in, NumNNkpt}, {iw, NumWann}, {jw, NumWann}];
+  WannCenters = Mod[Inverse[Lattice\[Transpose]].#, 1] & /@ Table[ParseFortranNumber[wchkfile], {iw, NumWann}];
+  WannSpreads = Table[ParseFortranNumber[wchkfile], {iw, NumWann}];
+  Close[wchkfile];
+  If[DisentanglementQ, Return[{UMatOpt, UMat, lwindow, ndimwin, Mmat, WannCenters}], Return[{UMat, lwindow, ndimwin, Mmat, WannCenters}]]
 ]
 
 VaspBSPlot[bsxml_, klabels_, OptionsPattern[{"PlotRange" -> {All, All}, "FigRatio"->1/GoldenRatio}]] := Module[{kpath, updata, dndata, upplot, dnplot},
@@ -200,33 +204,34 @@ ParsePROCAR[file_] := Module[{procar, templine, NKPT, NBANDS, NumAtoms, bands, w
   SetStreamPosition[procar, 0];
   ReadNonEmptyLine[procar];
   templine = StringSplit@ReadNonEmptyLine[procar];
-  NKPT = ToExpression[templine[[4]]];
-  NBANDS = ToExpression[templine[[8]]];
-  NumAtoms = ToExpression[templine[[12]]];
+  NKPT = ParseFortranNumber[templine[[4]]];
+  NBANDS = ParseFortranNumber[templine[[8]]];
+  NumAtoms = ParseFortranNumber[templine[[12]]];
   bands = Table[templine = ReadNonEmptyLine[procar];
-                weight = ToExpression[StringSplit[StringTrim[StringSplit[StringSplit[templine, ":"][[2]], "weight"][[2]]]][[2]]];
-                kpt = ToExpression@StringPartition[" " <> StringTrim[StringSplit[StringSplit[templine, ":"][[2]], "weight"][[1]]], 11];
+                weight = ParseFortranNumber[StringSplit[StringTrim[StringSplit[StringSplit[templine, ":"][[2]], "weight"][[2]]]][[2]]];
+                kpt = ParseFortranNumber[StringPartition[" " <> StringTrim[StringSplit[StringSplit[templine, ":"][[2]], "weight"][[1]]], 11]];
                 Table[templine = StringSplit@ReadNonEmptyLine[procar];
-                      ene = ToExpression[templine[[5]]];
-                      occ = ToExpression[templine[[8]]];
+                      ene = ParseFortranNumber[templine[[5]]];
+                      occ = ParseFortranNumber[templine[[8]]];
                       templine = StringSplit@ReadNonEmptyLine[procar];
                       orbits = templine[[2 ;; -2]];
                       {kpt, ene, occ, weight, 
-                       SparseArray[Table[ToExpression[StringSplit[ReadLine[procar]]][[2 ;; -2]], {i,NumAtoms + 1}][[1 ;; NumAtoms]]]}, {ib, NBANDS}], {ik, NKPT}];
+                       SparseArray[Table[ParseFortranNumber[procar][[2 ;; -2]], {i,NumAtoms + 1}][[1 ;; NumAtoms]]]}, {ib, NBANDS}], {ik, NKPT}];
+  Close[procar];
   Return[{orbits, bands}]
 ]
 
 BerryPol[vasprun_, coord_] := Module[{ZVAL, lattice, sites, pos, units, PolIon, PolEle, Ptot},
-  ZVAL = Flatten[ConstantArray[{#2, #4}, #1] & @@@ Partition[ToExpression[#] & /@ Flatten@ParseXML[ParseXML[vasprun, "array", {"name", "atomtypes"}], "c", {}], 5], 1]\[Transpose];
+  ZVAL = Flatten[ConstantArray[{#2, ParseFortranNumber@#4}, ParseFortranNumber@#1] & @@@ Partition[Flatten@ParseXML[ParseXML[vasprun, "array", {"name", "atomtypes"}], "c", {}], 5], 1]\[Transpose];
   lattice = First@ParseXMLData[ParseXML[ParseXML[vasprun, "structure", {"name", "finalpos"}], "varray", {"name", "basis"}], "v"];
   sites = First@ParseXMLData[ParseXML[ParseXML[vasprun, "structure", {"name", "finalpos"}], "varray", {"name", "positions"}], "v"];
   pos = {lattice, Join[{sites}, ZVAL]\[Transpose]};
-  Print[ZVAL];
 
   units = 1.6021766 10^-13 10^16/Det[lattice];
-  PolIon =Chop@ToExpression@StringSplit[First@First@ParseXML[vasprun, "v", {"name", "PION"}]];
-  PolEle =Chop@ToExpression@StringSplit[First@First@ParseXML[vasprun, "v", {"name", "PELC"}]];
+  PolIon =Chop@ParseFortranNumber@StringSplit[First@First@ParseXML[vasprun, "v", {"name", "PION"}]];
+  PolEle =Chop@ParseFortranNumber@StringSplit[First@First@ParseXML[vasprun, "v", {"name", "PELC"}]];
   PolIon = Total[#1 #3 & @@@ (Join[{sites}, ZVAL]\[Transpose])];
+  Print[PolIon, Inverse[(lattice\[Transpose])].PolEle];
   Ptot = units lattice\[Transpose].PbcDiff[Mod[PolIon - Inverse[(lattice\[Transpose])].PolEle, 1]];
   Ptot = If[coord == "Cartesian", 
             units lattice\[Transpose].PbcDiff[Mod[PolIon - Inverse[(lattice\[Transpose])].PolEle, 1]], 
@@ -266,6 +271,8 @@ GetBlochFunc[file_, is_, ik_, ib_, OptionsPattern[{"refine" -> 1}]] := Module[{B
   BinaryShift = 2 + (is - 1) NumKPTs (NumBands + 1) + (ik - 1) (NumBands + 1) + ib;
   SetStreamPosition[wavecar, BinaryShift LineRecord];
   PWCoeff = Chop@Normalize@BinaryReadList[wavecar, WFPrec, NumPW];
+
+  Close[wavecar];
   
   kvec = Bands[[2]];
   {En, fn} = Bands[[3, ib]];
@@ -278,7 +285,7 @@ GetBlochFunc[file_, is_, ik_, ib_, OptionsPattern[{"refine" -> 1}]] := Module[{B
                {k, 0, NumGrid[[3]] - 1}, {j, 0, NumGrid[[2]] - 1}, {i, 0, NumGrid[[1]] - 1}], {3,2,1}];
   unkr = InverseFourier[unkG, FourierParameters -> {0, -1}];
   Phi = eikr unkr;
-  Return[{En, fn, Rmesh, Phi}]
+  Return[{En, kvec, Phi, Rmesh, fn}]
 ]
 
 GetTDM[fwavecar_, poscar_, skb_, LatticePadding_:{0,0,0}, OptionsPattern[{"refine" -> 1}]] := Module[{is, ik, ib, iskb, site, Bohr2Ang, Ry2eV, EleKin, LineRecord, wavecar, pos, NumSpin, ComplexTag, WFPrec, info, NumKPTs, NumBands, Ecut, lattice, NumGrid, Bands, PWCoeff, BinaryShift, temp, NumPW, icoeff, unkG, unkr, G, eikr, Ekin, DeltaK={0,0,0}, kvec, En, fn, Phi, rR, tdm, i, j, k, Ri, Rj, Rk},
@@ -347,6 +354,7 @@ WAVECAR2WANNIER[wavecar_, vasprun_] := Module[{klist, lattice, sites, pos, bin, 
   SetStreamPosition[bin, LineRecord];
   BlochInfo = BinaryReadList[bin, "Real64", 12];
   {NumKPTs, NumBands} = Rationalize[BlochInfo[[1 ;; 2]]];
+  Close[bin];
 
   Return[klist]
 ]
@@ -359,6 +367,7 @@ GetBlochLink[file_] := Module[{BlochLink, wavecar, LineRecord, NumSpin, ComplexT
   SetStreamPosition[wavecar, LineRecord];
   info = BinaryReadList[wavecar, "Real64", 12];
   {NumKPTs, NumBands} = Rationalize[info[[1 ;; 2]]];
+  Close[wavecar];
 
   OverlapMat = Table[Table[Table[ph1 = GetBlochFunc[dir0 <> "WAVECAR", is, ik-1, ib, "refine" -> 1][[4]];
                                  ph2 = GetBlochFunc[dir0 <> "WAVECAR", is, ik, jb, "refine" -> 1][[4]];
@@ -366,6 +375,26 @@ GetBlochLink[file_] := Module[{BlochLink, wavecar, LineRecord, NumSpin, ComplexT
   PermChain = Table[Table[First@First@Position[OverlapMat[[is, ik, ib]], Max[OverlapMat[[is, ik, ib]]]]+ib-1, {ib, NumBands}], {is, NumSpin}, {ik, NumKPTS-1}];
   BlochLink = Table[Prepend[PermuteThrough[PermChain], Range[NumBands]], {is, NumSpin}];
   Return[BlochLink]
+]
+
+UoptPsik[ik_, iw_, UmatOpt_, ndimwin_, lwindow_, wavecar_, resolution_] := Module[{i, shift, Psik},
+  shift = First@First@Position[lwindow[[ik]], 1] - 1;
+  Psik = Total@Table[If[Norm[UmatOpt[[ik, iw, i]]] == 0, ## &[], UmatOpt[[ik, iw, i]] GetBlochFunc[wavecar, 1, ik, i + shift, "refine" -> resolution][[3]]], {i, ndimwin[[ik]]}];
+  Return[Psik]
+]
+
+UPsik[ik_, iw_, UmatOpt_, Umat_, lwindow_, ndimwin_, wavecar_, resolution_] := Module[{jw, PsikOpt, Psik},
+  Psik = Sum[PsikOpt = UoptPsik[ik, jw, UmatOpt, ndimwin, lwindow, wavecar, resolution];
+             Umat[[ik]][[iw, jw]] PsikOpt, {jw, 72}];
+  Return[Psik]
+];
+
+GetWannierFunc[iw_, R_, chk_, wavecar_, vasprun_, OptionsPattern[{"refine" -> 1}]] := Module[{xml, UmatOpt, Umat, lwindow, ndimwin, Mmat, WannCenters, Wann, NumKpoints, klist},
+  {UmatOpt, Umat, lwindow, ndimwin, Mmat, WannCenters} = ImportWannierCHK[chk];
+  xml = Import[vasprun];
+  klist = Flatten[ParseXMLData[ParseXML[Import[xml], "varray", {"name", "kpointlist"}], "v"], 1];
+  NumKpoints = Length[ndimwin];
+  Wann = Sum[Exp[-I 2 Pi klist[[ik]].R] UPsik[ik,iw,UmatOpt,Umat,lwindow,ndimwin,wavecar,OptionValue["refine"]], {ik, NumKpoints}]/NumKpoints;
 ]
 (*-------------------------- Attributes ------------------------------*)
 
