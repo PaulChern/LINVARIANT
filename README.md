@@ -41,9 +41,9 @@
 - including electron phonon coupling (EPC) by fitting phonon dependent Tight-Binding (TB) model from DFT molecular dynamics (MD).
 ## Authors
 * **Peng Chen** - peng.chen.iphy@gmail.com
+* **Hongjian Zhao** - solidstatezhao@gmail.com
 * **Sergey Artyukhin** - sergey.artyukhin@iit.it  <br />
 ## Contributors
-* **Hongjian Zhao** - solidstatezhao@gmail.com
 * **Laurent Bellaiche** - laurent@uark.edu
 
 See also the list of [contributors](https://github.com/PaulChern/LINVARIANT/contributors) who participated in this project.
