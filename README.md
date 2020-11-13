@@ -35,7 +35,7 @@
 ## Todo:
 - implement LLG dynamics
 - implement k dot p model builder
-- interface to exact diagonalization method
+- add exact diagonalization solver
 - adding Atomistic Green's Function (AGF) method to study scattering and ultrafast non-equilibrium dynamics
 - including electron phonon coupling (EPC) by fitting phonon dependent Tight-Binding (TB) model from DFT molecular dynamics (MD).
 ## Authors
