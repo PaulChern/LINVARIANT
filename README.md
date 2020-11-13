@@ -43,7 +43,5 @@
 * **Peng Chen** - peng.chen.iphy@gmail.com
 * **Hongjian Zhao** - solidstatezhao@gmail.com
 * **Sergey Artyukhin** - sergey.artyukhin@iit.it  <br />
-## Contributors
-* **Laurent Bellaiche** - laurent@uark.edu
 
 See also the list of [contributors](https://github.com/PaulChern/LINVARIANT/contributors) who participated in this project.
