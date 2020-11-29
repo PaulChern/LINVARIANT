@@ -100,10 +100,10 @@ ExportPOSCAR[dir_, fname_, f_] := Module[{i, pos, EleList, POSCAR},
   EleList = SimplifyElementSymbol[#] & /@ (f[[2]]\[Transpose][[2]]);
   pos = {f[[1]], {f[[2]]\[Transpose][[1]], EleList}\[Transpose]};
   POSCAR = Flatten /@ Join[{{"From Mathematica"}, {1}}, 
-                           Table[ToString[NumberForm[N[i], {16, 15}]], {i, #}] & /@ pos[[1]], 
+                           Table[ToString[NumberForm[DecimalForm[N@i], {16, 15}]], {i, #}] & /@ pos[[1]], 
                            Through[{Keys, Values}[Counts[pos[[2]]\[Transpose][[-1]]]]], 
                            {{"Direct"}}, 
-                           {Table[ToString[NumberForm[N[i], {17, 16}]], {i, #[[1]]}], #[[2]]} & /@ (pos[[2]])];
+                           {Table[ToString[NumberForm[DecimalForm[N@i], {17, 16}]], {i, #[[1]]}], #[[2]]} & /@ (pos[[2]])];
   Export[dir <> "/" <> fname, POSCAR, "Table", "FieldSeparators" -> "    "]
 ]
 
@@ -392,9 +392,10 @@ UPsik[ik_, iw_, UmatOpt_, Umat_, lwindow_, ndimwin_, wavecar_, resolution_] := M
 GetWannierFunc[iw_, R_, chk_, wavecar_, vasprun_, OptionsPattern[{"refine" -> 1}]] := Module[{xml, UmatOpt, Umat, lwindow, ndimwin, Mmat, WannCenters, Wann, NumKpoints, klist},
   {UmatOpt, Umat, lwindow, ndimwin, Mmat, WannCenters} = ImportWannierCHK[chk];
   xml = Import[vasprun];
-  klist = Flatten[ParseXMLData[ParseXML[Import[xml], "varray", {"name", "kpointlist"}], "v"], 1];
+  klist = Flatten[ParseXMLData[ParseXML[xml, "varray", {"name", "kpointlist"}], "v"], 1];
   NumKpoints = Length[ndimwin];
   Wann = Sum[Exp[-I 2 Pi klist[[ik]].R] UPsik[ik,iw,UmatOpt,Umat,lwindow,ndimwin,wavecar,OptionValue["refine"]], {ik, NumKpoints}]/NumKpoints;
+  Return[Wann]
 ]
 (*-------------------------- Attributes ------------------------------*)
 

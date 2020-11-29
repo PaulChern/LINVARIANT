@@ -15,7 +15,6 @@ PhononBandsPlot              ::usage "PhononBandsPlot[Fi0, pos, klist, kintv]"
 Unfolding                    ::usage "Unfolding[PhononNK, G, DMPos, SPCPos, NSC]"
 UnfoldingPW                  ::usage "UnfoldingPW[PhononNK, Gsc, DMPos, SPCPos, NSC]"
 PhononUnfolding              ::usage "PhononUnfolding[Fi0, DMPos, StdPos, q, Qbz, unfoldDim]"
-MakeMatrixBlock              ::usage "MakeMatrixBlock[mat, dim]"
 GetEwaldMatrix               ::usage "GetEwaldMatrix[NGrid, tol]"
 (*--------- Plot and Manipulate Crystal Structures -------------------- ----------------*)
 
@@ -56,12 +55,6 @@ ReadForceConstants[file_] := Module[{data, NumPos, FC},
   Return[FC]
 ]
 
-MakeMatrixBlock[mat_, dim_] := Module[{MBlocked, col, row},
-  {col, row} = dim;
-  MBlocked = (Partition[#, col] & /@ ((Partition[#, row] & /@ mat)\[Transpose]))\[Transpose];
-  Return[MBlocked]
-]
-
 ImposeTranslationalSymmetry[FC_] := Module[{ni, nj, na, nb, dim, SymFC},
   {ni, nj, na, nb} = Dimensions[FC];
   dim = ni na;
@@ -97,7 +90,7 @@ FC2Fi0Bonds[FC_, pos_, NSC_, OptionsPattern["tol" -> 0.1]] := Module[{latt, site
   {Nx, Ny, Nz} = NSC;
   NeighborList = Flatten[Table[{i, j, k} - {1, 1, 1}, {i, Nx}, {j, Ny}, {k, Nz}], 2];
   spos = Join[{latt}, {{Rationalize@Chop[Inverse[latt].Nij.latt.#1], #2} & @@@ sites}];
-  ppos = Join[{Inverse[Nij].spos[[1]]}, {DeleteDuplicates[{Rationalize@Mod[Chop[Inverse[latt].Nij.latt.#1], 1], #2} & @@@ sites, Norm[#1[[1]] - #2[[1]]] < OptionValue["tol"] &]}];
+  ppos = Join[{Inverse[Nij].spos[[1]]}, {DeleteDuplicates[{Rationalize@Mod[Chop[Inverse[latt].Nij.latt.#1], 1], #2} & @@@ sites, ((Norm[#1[[1]] - #2[[1]]] < OptionValue["tol"])&&(#1[[2]]===#2[[2]])) &]}];
   NumPpos = Length[ppos[[2]]];
   NumSpos = Length[spos[[2]]];
   p2s = Association[Thread[NeighborList -> Table[Association[Table[i -> First@First@Position[Rationalize[Norm[ppos[[2]][[i]][[1]] + shift - #1]] & @@@ spos[[2]], 0], {i, NumPpos}]], {shift, NeighborList}]]];
@@ -105,10 +98,14 @@ FC2Fi0Bonds[FC_, pos_, NSC_, OptionsPattern["tol" -> 0.1]] := Module[{latt, site
   Fi0 = Flatten[Table[multi = Length[ImageVectorList[[p2s[{0, 0, 0}][i], p2s[shift][j]]]]; Table[{{i, j}, shift + imagevec[[3]], multi, FC[[p2s[{0, 0, 0}][i], p2s[shift][j]]]}, {imagevec, ImageVectorList[[p2s[{0, 0, 0}][i], p2s[shift][j]]]}], {shift, Keys@p2s}, {i, NumPpos}, {j, NumPpos}], 3];
   Return[{Fi0, ppos}]]
 
-GetDynamicMatrix[Fi0_, pos_, q_] := Module[{latt, sites, HermiteDM, dm, dmBlock, NumPos, mass, Vasp2THz = 15.633302300230191, i, j},
+GetDynamicMatrix[Fi0_, pos_, q_] := Module[{latt, sites, HermiteDM, dm, dmBlock, NumPos, mass, ele, amu, s, mfactor, Vasp2THz = 15.633302300230191, i, j},
   {latt, sites} = pos;
   NumPos = Length[sites];
-  mass = Table[QuantityMagnitude[ElementData[i, "AtomicMass"]], {i, sites\[Transpose][[2]]}];
+  mass = Table[amu=ToLowerCase[First@StringCases[i, RegularExpression["[[:upper:]]*[[:lower:]]*"]]]==="amu";
+               ele=If[amu, "C", First@StringCases[i, RegularExpression["[[:upper:]]*[[:lower:]]*"]]];
+               s = StringCases[i, RegularExpression["\\d+"]];
+               mfactor=If[s==={}, 1, ToExpression[First@s]] If[amu, 1/12, 1];
+               mfactor QuantityMagnitude[ElementData[ele, "AtomicMass"]], {i, sites\[Transpose][[2]]}];
   dmBlock = Merge[{#1 -> 1/Sqrt[mass[[#1[[1]]]] mass[[#1[[2]]]]] #4/#3 Exp[I 2 Pi q.(sites[[#1[[2]], 1]] + #2 - sites[[#1[[1]], 1]])]} & @@@ Fi0, Total];
   dm = ArrayFlatten[Table[dmBlock[{i, j}], {i, NumPos}, {j, NumPos}]];
   HermiteDM = 1/2 (dm + dm\[ConjugateTranspose]) Vasp2THz^2;

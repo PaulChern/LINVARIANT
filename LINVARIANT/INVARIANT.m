@@ -70,17 +70,21 @@ ShowIsoModes[PosVec_] := Module[{StructData},
                    ViewPoint -> {0, 0, \[Infinity]}]];
 ]
 
-ISODISTORT[Lattice_, pos0_, pos_, IsoMatrix_, label_] := Module[{imode, Amp, NN, posmatched},
-  posmatched = Transpose[{PosMatchTo[IdentityMatrix[3], pos0\[Transpose][[1]], pos\[Transpose][[1]]][[2]], Transpose[pos0][[2]]}];
-  Amp = Table[Flatten[Lattice\[Transpose].PbcDiff[#] & /@ (Transpose[posmatched][[1]] - Transpose[pos0][[1]])].Normalize@Normal[IsoMatrix[[;; , imode]]], {imode, Length@label}];
+ISODISTORT[Lattice_, pos0_, pos_, IsoMatrix_, label_] := Module[{imode, Amp, NN, posmatched, phonon, basis},
+  posmatched = Transpose[{PosMatchTo[Lattice, pos0\[Transpose][[1]], pos\[Transpose][[1]]][[2]], Transpose[pos0][[2]]}];
+  Amp = Table[phonon=Flatten[Lattice\[Transpose].PbcDiff[#] & /@ (Transpose[posmatched][[1]] - Transpose[pos0][[1]])];
+              basis=Normalize[Flatten[Lattice\[Transpose].# &/@ Partition[Normal[IsoMatrix[[;;, imode]]],3]]];
+              phonon.basis, {imode, Length@label}];
   NN = Table[1/Norm@Flatten[Lattice\[Transpose].# & /@ Partition[Normal[IsoMatrix][[;; , imode]], 3]], {imode, Length@label}];
   Return[{Range[Length@label], label, NN, Chop[Amp, 2 10^-4]}\[Transpose]]
 ]
 
-ImposeMode[Wyckoff0_, IsoMatrix_, modeset_, s_] := Module[{mode, id, Amp, pos},
+ImposeMode[latt_, Wyckoff0_, IsoMatrix_, modeset_, s_] := Module[{mode, id, NN, Amp, pos},
   pos = Wyckoff0;
-  Do[id = mode[[1]]; Amp = s mode[[3]] mode[[4]];
-     pos = Transpose[{#[[1]] & /@ pos + Amp If[IntegerQ[id], # & /@ Partition[IsoMatrix[[;; , id]] // Normal, 3], Print["mode not exist!"]], First@StringCases[#,RegularExpression["[[:upper:]][[:lower:]]*"]] & /@ Transpose[pos][[2]]}], {mode, modeset}];
+  Do[id = mode[[1]];
+     NN = 1/Norm@Flatten[latt\[Transpose].# & /@ Partition[Normal[IsoMatrix][[;; , id]], 3]];
+     Amp = s NN mode[[4]];
+     pos = Transpose[{#[[1]] & /@ pos + Amp Partition[IsoMatrix[[;; , id]] // Normal, 3], First@StringCases[#,RegularExpression["[[:upper:]][[:lower:]]*"]] & /@ Transpose[pos][[2]]}], {mode, modeset}];
   Return[pos]
 ]
 
@@ -299,7 +303,7 @@ GetTransformationRules[latt_, spg0_, OpMatrix_] := Module[{OpDispMatrix, OpSpinM
     GetIsoStrainTransformRules[latt, spg0]}\[Transpose])
 ]
 
-GetInvariants[TRules_, seeds_, order_, OptionsPattern[{"MustInclude"->{}, "Simplify"->True}]] := Module[{fixlist, monomials, invariant, n, i, j, ss, factor, out, factorLCM, factorGCD, OpDispMatrix, OpSpinMatrix, OpOrbitalMatrix},
+GetInvariants[TRules_, seeds_, order_, OptionsPattern[{"MustInclude"->{}, "Simplify"->True}]] := Module[{fixlist, monomials, invariant, n, i, j, ss, factor, out, factorLCM, factorGCD, OpDispMatrix, OpSpinMatrix, OpOrbitalMatrix, ReducedOut, mm},
   out = Table[
   monomials = If[
     OptionValue["MustInclude"]=={}, 
@@ -308,7 +312,11 @@ GetInvariants[TRules_, seeds_, order_, OptionsPattern[{"MustInclude"->{}, "Simpl
     Flatten[Table[# ss & /@ MonomialList[Total[seeds]^n], {ss, fixlist}]]];
   invariant = DeleteDuplicates[DeleteCases[Chop[Union[Expand[Total[MonomialTransform[monomials, TRules]]]], 10^-5], i_/;i==0], (Chop[#1 -#2] == 0 || Chop[#1 + #2] == 0) &];
   If[OptionValue["Simplify"], SimplifyCommonFactor[invariant], invariant], {n, order}];
-  Return[DeleteDuplicates[#, (#1 - #2 == 0 || #1 + #2 == 0 || Expand[#1 + I #2] == 0 || Expand[#1 - I #2] == 0) &] &/@ out]
+  ReducedOut = DeleteDuplicates[#, (#1 - #2 == 0 || #1 + #2 == 0 || Expand[#1 + I #2] == 0 || Expand[#1 - I #2] == 0) &] &/@ out;
+  Table[mm = PolynomialReduce[#, ReducedOut[[i]], seeds] & /@ (ReducedOut[[i]]);
+        If[! (DiagonalMatrixQ[Quiet[mm\[Transpose][[1]]]] || (ReducedOut[[i]] === {})), 
+           Print["Warnning! ", ToString[i] <> "th order polynomial not independent: ", MatrixForm[mm]]], {i, Length[ReducedOut]}];
+  Return[ReducedOut]
 ]
 
 NumberCommonDivisor[NumList_] := Module[{TempList, DenominatorLCM},

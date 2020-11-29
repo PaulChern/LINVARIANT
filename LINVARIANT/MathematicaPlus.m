@@ -9,7 +9,8 @@ GetSubscriptInfo     ::usage "GetSubscriptInfo[atom]"
 ReadNonEmptyLine     ::usage "ReadNonEmptyLine[stream]"
 PermuteThrough       ::usage "PermuteThrough[tab]"
 Var2Var              ::usage "Var2Var[var1, var2, dir]"
-ParseFortranNumber    ::usage "ParseFortranNumber[stream]"
+ParseFortranNumber   ::usage "ParseFortranNumber[stream]"
+MakeMatrixBlock      ::usage "MakeMatrixBlock[mat, dim]"
 (*--------- Plot and Manipulate Crystal Structures -------------------- ----------------*)
 
 (*--------- Point and Space Group Information ---------------------------*)
@@ -81,6 +82,13 @@ ParseFortranNumber[stream_] := Module[{out},
               ToExpression[StringSplit[StringReplace[stream, "e" | "E" -> "*^"]]]];
      Return[If[Length[out] == 1, First@out, out]]]
 ]
+
+MakeMatrixBlock[mat_, dim_] := Module[{MBlocked, col, row},
+  {col, row} = dim;
+  MBlocked = (Partition[#, col] & /@ ((Partition[#, row] & /@ mat)\[Transpose]))\[Transpose];
+  Return[MBlocked]
+]
+
 (*-------------------------- Attributes ------------------------------*)
 
 (*Attributes[]={Protected, ReadProtected}*)

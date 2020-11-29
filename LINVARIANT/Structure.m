@@ -175,7 +175,7 @@ GetLatticeVectors[dat_] := Module[{a1, b1, c1, \[Alpha]1, \[Beta]1, \[Gamma]1, b
 ]
 
 Lattice2Symbolic[latt_] := Module[{G, aa, bb, cc, \[Alpha], \[Beta], \[Gamma], LatticeVectors, LatticeScales},
-  {aa, bb, cc} = Rationalize[Norm[#]] & /@ latt;
+  {aa, bb, cc} = Rationalize[Norm[#], 10^-9] & /@ latt;
   G = (latt.(latt\[Transpose]));
   {\[Alpha], \[Beta], \[Gamma]} = Rationalize[ArcCos[G[[#1, #2]]/(Norm[latt[[#1]]] Norm[latt[[#2]]])]/Pi] Pi & @@@ {{2, 3}, {1, 3}, {1, 2}};
   LatticeVectors = GetLatticeVectors[{aa, bb, cc, \[Alpha], \[Beta], \[Gamma]}];
