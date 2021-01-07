@@ -489,7 +489,6 @@ FortranParamModule[CoeffList_, FieldsDef_] := Module[{Fint, n, head, tail, body,
          {Fint[1] <> "Integer, dimension("<>ToString[Length[FieldDim]+1]<>") :: FieldDimList = " <> "(/" <> StringJoin[Riffle[ToString[#] & /@ Join[FieldDim, {6}], ", "]] <> "/)"},
          {Fint[1] <> "Integer               :: OnSiteDim = " <> ToString[Total[FieldDim]]},
          {Fint[1] <> "Real*8                :: alat(3,3)"},
-         {Fint[1] <> "Real*8, dimension("<> ToString[Length[FieldDim]] <>")  :: mass = " <> "(/" <> StringJoin[Riffle[mass, ", "]] <> "/)"},
          {Fint[1] <> "Real*8, dimension (:,:,:,:,:), allocatable :: EwaldMat"},
          {Fint[1]}};
   tail = {{Fint[1]}, { "End Module Parameters"}};

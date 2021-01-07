@@ -231,7 +231,7 @@ BerryPol[vasprun_, coord_] := Module[{ZVAL, lattice, sites, pos, units, PolIon, 
   PolIon =Chop@ParseFortranNumber@StringSplit[First@First@ParseXML[vasprun, "v", {"name", "PION"}]];
   PolEle =Chop@ParseFortranNumber@StringSplit[First@First@ParseXML[vasprun, "v", {"name", "PELC"}]];
   PolIon = Total[#1 #3 & @@@ (Join[{sites}, ZVAL]\[Transpose])];
-  Print[PolIon, Inverse[(lattice\[Transpose])].PolEle];
+  (*Print[PolIon, Inverse[(lattice\[Transpose])].PolEle];*)
   Ptot = units lattice\[Transpose].PbcDiff[Mod[PolIon - Inverse[(lattice\[Transpose])].PolEle, 1]];
   Ptot = If[coord == "Cartesian", 
             units lattice\[Transpose].PbcDiff[Mod[PolIon - Inverse[(lattice\[Transpose])].PolEle, 1]], 
@@ -240,7 +240,7 @@ BerryPol[vasprun_, coord_] := Module[{ZVAL, lattice, sites, pos, units, PolIon, 
 ]
 
 Rot2FFTGrid[NGrid_, k_] := Module[{},
-  If[#2 > #1/2, #2 - #1, #2] & @@@ ({NGrid, k}\[Transpose])
+  If[#2 >= #1/2, #2 - #1, #2] & @@@ ({NGrid, k}\[Transpose])
 ]
 
 GetBlochFunc[file_, is_, ik_, ib_, OptionsPattern[{"refine" -> 1}]] := Module[{Bohr2Ang, Ry2eV, EleKin, wavecar, LineRecord, NumSpin, ComplexTag, WFPrec, info, NumKPTs, NumBands, Ecut, lattice, NumGrid, Bands, PWCoeff, BinaryShift, temp, NumPW, icoeff, unkG, unkr, G, Rmesh1, Rmesh2, Rmesh, eikr, Ekin, kvec, En, fn, Phi, rR},
@@ -258,7 +258,7 @@ GetBlochFunc[file_, is_, ik_, ib_, OptionsPattern[{"refine" -> 1}]] := Module[{B
   {NumKPTs, NumBands} = Rationalize[info[[1 ;; 2]]];
   Ecut = info[[3]];
   lattice = Partition[info[[4 ;; 12]], 3];
-  NumGrid = OptionValue["refine"] (2 Ceiling[Norm[#]/(2 Pi Bohr2Ang) Sqrt[Ecut/Ry2eV]] + 1 & /@ lattice);
+  NumGrid = OptionValue["refine"] 2 Ceiling[Norm[#]/(2 Pi Bohr2Ang) Sqrt[Ecut/Ry2eV]] + 1 & /@ lattice;
 
   (* Read Bands *)
   BinaryShift = 2 + (is - 1) NumKPTs (NumBands + 1) + (ik - 1) (NumBands + 1);
@@ -276,7 +276,7 @@ GetBlochFunc[file_, is_, ik_, ib_, OptionsPattern[{"refine" -> 1}]] := Module[{B
   
   kvec = Bands[[2]];
   {En, fn} = Bands[[3, ib]];
-  Rmesh = Table[lattice\[Transpose].({i, j, k}/NumGrid), {i, 0, NumGrid[[1]] - 1}, {j, 0, NumGrid[[2]] - 1}, {k, 0, NumGrid[[3]] - 1}];
+  Rmesh = Table[Rot2FFTGrid[Norm[#] & /@ lattice, lattice\[Transpose].({i, j, k}/NumGrid)], {i, 0, NumGrid[[1]] - 1}, {j, 0, NumGrid[[2]] - 1}, {k, 0, NumGrid[[3]] - 1}];
   eikr = Table[Exp[I 2 Pi kvec.({i, j, k}/NumGrid)], {i, 0, NumGrid[[1]] - 1}, {j, 0, NumGrid[[2]] - 1}, {k, 0, NumGrid[[3]] - 1}];
   icoeff = 0;
   unkG = TensorTranspose[Table[G = Rot2FFTGrid[NumGrid, {i, j, k}];
@@ -288,12 +288,13 @@ GetBlochFunc[file_, is_, ik_, ib_, OptionsPattern[{"refine" -> 1}]] := Module[{B
   Return[{En, kvec, Phi, Rmesh, fn}]
 ]
 
-GetTDM[fwavecar_, poscar_, skb_, LatticePadding_:{0,0,0}, OptionsPattern[{"refine" -> 1}]] := Module[{is, ik, ib, iskb, site, Bohr2Ang, Ry2eV, EleKin, LineRecord, wavecar, pos, NumSpin, ComplexTag, WFPrec, info, NumKPTs, NumBands, Ecut, lattice, NumGrid, Bands, PWCoeff, BinaryShift, temp, NumPW, icoeff, unkG, unkr, G, eikr, Ekin, DeltaK={0,0,0}, kvec, En, fn, Phi, rR, tdm, i, j, k, Ri, Rj, Rk},
+GetTDM[fwavecar_, poscar_, skb_, LatticePadding_:{0,0,0}, OptionsPattern[{"refine" -> 1}]] := Module[{is, ik, ib, iskb, site, Bohr2Ang, Ry2eV, EleKin, LineRecord, wavecar, pos, NumSpin, ComplexTag, WFPrec, info, NumKPTs, NumBands, Ecut, lattice, NumGrid, Bands, PWCoeff, BinaryShift, temp, NumPW, icoeff, unkG, unkr, G, eikr, Ekin, DeltaK={0,0,0}, kvec, En, fn, Phi, rR, tdm, i, j, k, Ri, Rj, Rk, p1, p2, p3, singularR},
   Bohr2Ang = 0.529177249;
   Ry2eV = 13.605826;
   EleKin = 3.8100198740807945;
   wavecar = OpenRead[fwavecar, BinaryFormat -> True];
   pos = ImportPOSCAR[poscar];
+  {p1, p2, p3} = LatticePadding;
 
   (*Read info*)
   SetStreamPosition[wavecar, 0];
@@ -304,7 +305,8 @@ GetTDM[fwavecar_, poscar_, skb_, LatticePadding_:{0,0,0}, OptionsPattern[{"refin
   {NumKPTs, NumBands} = Rationalize[info[[1 ;; 2]]];
   Ecut = info[[3]];
   lattice = Partition[info[[4 ;; 12]], 3];
-  NumGrid = OptionValue["refine"] (2 Ceiling[Norm[#]/(2 Pi Bohr2Ang) Sqrt[Ecut/Ry2eV]] + 1 & /@ lattice);
+  NumGrid = OptionValue["refine"] 2 Ceiling[Norm[#]/(2 Pi Bohr2Ang) Sqrt[Ecut/Ry2eV]] + 1 & /@ lattice;
+  singularR=Min[lattice\[Transpose].({1, 1, 1}/NumGrid)]/1000;
 
   Phi = Table[
     {is, ik, ib} = skb[[iskb]];
@@ -329,10 +331,12 @@ GetTDM[fwavecar_, poscar_, skb_, LatticePadding_:{0,0,0}, OptionsPattern[{"refin
     unkr = InverseFourier[unkG, FourierParameters -> {0, -1}];
     eikr unkr, {iskb, 2}];
 
-    tdm = Sum[Sum[rR = lattice\[Transpose].({i, j, k}/NumGrid - #[[1]] + {Ri, Rj, Rk});
-                  Exp[I 2 Pi DeltaK.{Ri,Rj,Rk}] Phi[[1,i+1,j+1,k+1]]\[Conjugate] Phi[[2,i+1,j+1,k+1]] rR Exp[-Norm[rR]](*/Norm[rR]^3*), 
-                  {i, 0, NumGrid[[1]] - 1}, {j, 0, NumGrid[[2]] - 1}, {k, 0, NumGrid[[3]] - 1}], 
-              {Ri, 0, LatticePadding[[1]]}, {Rj, 0, LatticePadding[[2]]}, {Rk, 0, LatticePadding[[3]]}] &/@ (pos[[2]]);
+    tdm = Sum[Sum[rR = Rot2FFTGrid[Norm[#]&/@lattice, lattice\[Transpose].({i, j, k}/NumGrid)] 
+                     + lattice\[Transpose].{Ri, Rj, Rk} 
+                     - Rot2FFTGrid[Norm[#]&/@lattice, #[[1]]];
+                  Exp[I 2 Pi DeltaK.{Ri,Rj,Rk}] Phi[[1,i+1,j+1,k+1]]\[Conjugate] Phi[[2,i+1,j+1,k+1]] rR If[Norm[rR]<singularR,0,1/Norm[rR]^3], 
+                  {i, 0, NumGrid[[1]]-1}, {j, 0, NumGrid[[2]]-1}, {k, 0, NumGrid[[3]]-1}], 
+              {Ri, -p1, p1}, {Rj, -p2, p2}, {Rk, -p3, p3}] &/@ (pos[[2]]);
   Return[tdm]
 ]
 
