@@ -15,13 +15,16 @@ ImportKPATH                  ::usage "ImportKPATH[kpath]"
 VaspBSPlot                   ::usage "VaspBSPlot[bsxml, klabels]"
 BerryPol                     ::usage "BerryPol[vasprun]"
 Rot2FFTGrid                  ::usage "Rot2FFTGrid[NGrid, k]"
-GetBlochFunc                 ::usage "GetBlochFunc[file, is, ik, ib]"
+GetUnk                       ::usage "GetUnk[file, is, ik, ib]"
+Unk2Bloch                    ::usage "Unk2Bloch[unkr]"
 GetTDM                       ::usage "GetTDM[fwavecar, poscar, skb1, skb2]"
 WAVECAR2WANNIER              ::usage "WAVECAR2WANNIER[wavecar, vasprun]"
 GetBlochLink                 ::usage "GetBlochLink[file]"
 UoptPsik                     ::usage "UoptPsik[ik, iw, UmatOpt, ndimwin, lwindow, wavecar]"
 UPsik                        ::usage "UPsik[ik, iw, UmatOpt, Umat, lwindow, ndimwin, wavecar]"
 GetWannierFunc               ::usage "GetWannierFunc[iw, R, chk, wavecar_, vasprun]"
+BundleUp                     ::usage "BundleUp[x, f, l]"
+BundleDn                     ::usage "BundleUp[fx, l]"
 (*--------- Plot and Manipulate Crystal Structures -------------------- ----------------*)
 
 (*--------- Point and Space Group Information ---------------------------*)
@@ -243,7 +246,8 @@ Rot2FFTGrid[NGrid_, k_] := Module[{},
   If[#2 >= #1/2, #2 - #1, #2] & @@@ ({NGrid, k}\[Transpose])
 ]
 
-GetBlochFunc[file_, is_, ik_, ib_, OptionsPattern[{"refine" -> 1}]] := Module[{Bohr2Ang, Ry2eV, EleKin, wavecar, LineRecord, NumSpin, ComplexTag, WFPrec, info, NumKPTs, NumBands, Ecut, lattice, NumGrid, Bands, PWCoeff, BinaryShift, temp, NumPW, icoeff, unkG, unkr, G, Rmesh1, Rmesh2, Rmesh, eikr, Ekin, kvec, En, fn, Phi, rR},
+GetUnk[file_, is_, ik_, ib_, OptionsPattern[{"refine" -> 1, "sc"->{1,1,1}}]] := Module[{Bohr2Ang, Ry2eV, EleKin, wavecar, LineRecord, NumSpin, ComplexTag, WFPrec, info, NumKPTs, NumBands, Ecut, lattice, NumGrid, Bands, PWCoeff, BinaryShift, temp, NumPW, icoeff, unkG, unkr0, unkr, G, BaseSpace, eikr, Ekin, kvec, En, fn, Phi, rR, Ri, Rj, Rk, ii, jj, kk},
+  {Ri, Rj, Rk} = OptionValue["sc"];
   Bohr2Ang = 0.529177249;
   Ry2eV = 13.605826;
   EleKin = 3.8100198740807945;
@@ -276,16 +280,45 @@ GetBlochFunc[file_, is_, ik_, ib_, OptionsPattern[{"refine" -> 1}]] := Module[{B
   
   kvec = Bands[[2]];
   {En, fn} = Bands[[3, ib]];
-  Rmesh = Table[Rot2FFTGrid[Norm[#] & /@ lattice, lattice\[Transpose].({i, j, k}/NumGrid)], {i, 0, NumGrid[[1]] - 1}, {j, 0, NumGrid[[2]] - 1}, {k, 0, NumGrid[[3]] - 1}];
+  (*Rmesh = Table[Rot2FFTGrid[Norm[#] & /@ lattice, lattice\[Transpose].({i, j, k}/NumGrid)], {i, 0, NumGrid[[1]] - 1}, {j, 0, NumGrid[[2]] - 1}, {k, 0, NumGrid[[3]] - 1}];*)
+  (*Rmesh = Table[{i, j, k}/NumGrid, {i, 0, NumGrid[[1]] - 1}, {j, 0, NumGrid[[2]] - 1}, {k, 0, NumGrid[[3]] - 1}];*)
   eikr = Table[Exp[I 2 Pi kvec.({i, j, k}/NumGrid)], {i, 0, NumGrid[[1]] - 1}, {j, 0, NumGrid[[2]] - 1}, {k, 0, NumGrid[[3]] - 1}];
   icoeff = 0;
   unkG = TensorTranspose[Table[G = Rot2FFTGrid[NumGrid, {i, j, k}];
                Ekin = EleKin Norm[2 Pi Inverse[lattice].(kvec + G)]^2;
                If[Ekin < Ecut, icoeff = icoeff + 1; PWCoeff[[icoeff]], 0.0], 
                {k, 0, NumGrid[[3]] - 1}, {j, 0, NumGrid[[2]] - 1}, {i, 0, NumGrid[[1]] - 1}], {3,2,1}];
-  unkr = InverseFourier[unkG, FourierParameters -> {0, -1}];
-  Phi = eikr unkr;
-  Return[{En, kvec, Phi, Rmesh, fn}]
+  unkr0 = InverseFourier[unkG, FourierParameters -> {0, -1}];
+  (*Phi = eikr unkr;*)
+  BaseSpace = Table[N[{i, j, k}/NumGrid], {i, 0, NumGrid[[1]] Ri - 1}, {j, 0, NumGrid[[2]] Rj - 1}, {k, 0, NumGrid[[3]] Rk - 1}];
+  unkr = Table[{ii, jj, kk} = MapThread[Mod[#1, #2, 1] &, {{i+1, j+1, k+1}, NumGrid}];
+               unkr0[[ii,jj,kk]], {i, 0, NumGrid[[1]] Ri - 1}, {j, 0, NumGrid[[2]] Rj - 1}, {k, 0, NumGrid[[3]] Rk - 1}];
+  Return[{En, fn, lattice, kvec, BaseSpace, unkr}]
+]
+
+BundleUp[x_, f_, l_] := Module[{},
+  MapThread[Join[#1, {#2}] &, {x, f}, l]
+]
+
+BundleDn[fx_, l_] := Module[{},
+  {Map[#[[1;;3]]&, fx, {l}], Map[#[[4]]&, fx, {l}]}
+]
+
+Unk2Bloch[unkr_, OptionsPattern[{"coord" -> "Cartesian", "plot" -> False}]] := Module[{coord, plot, bloch, unk, latt, kvec, basespace, En, fn},
+  coord = OptionValue["coord"];
+  plot = OptionValue["plot"];
+  {En, fn, latt, kvec, basespace, unk} = unkr;
+  bloch = Which[
+    plot && coord === "Direct",
+    BundleUp[basespace, MapThread[Sign[Arg[Exp[I 2 Pi kvec.#1] #2]] Abs[Exp[I 2 Pi kvec.#1] #2] &, {basespace, unk}, 3], 3],
+    plot && coord === "Cartesian",
+    BundleUp[Map[latt\[Transpose].# &,basespace,{3}], MapThread[Sign[Arg[Exp[I 2 Pi kvec.#1] #2]] Abs[Exp[I 2 Pi kvec.#1] #2] &, {basespace, unk}, 3], 3],
+    Not@plot && coord === "Direct",
+    {basespace, MapThread[Exp[I 2 Pi kvec.#1] #2 &, {basespace, unk}, 3]},
+    Not@plot && coord === "Cartesian",
+    {Map[latt\[Transpose].# &,basespace,{3}], MapThread[Exp[I 2 Pi kvec.#1] #2 &, {basespace, unk}, 3]}
+  ];
+  Return[bloch]
 ]
 
 GetTDM[fwavecar_, poscar_, skb_, LatticePadding_:{0,0,0}, OptionsPattern[{"refine" -> 1}]] := Module[{is, ik, ib, iskb, site, Bohr2Ang, Ry2eV, EleKin, LineRecord, wavecar, pos, NumSpin, ComplexTag, WFPrec, info, NumKPTs, NumBands, Ecut, lattice, NumGrid, Bands, PWCoeff, BinaryShift, temp, NumPW, icoeff, unkG, unkr, G, eikr, Ekin, DeltaK={0,0,0}, kvec, En, fn, Phi, rR, tdm, i, j, k, Ri, Rj, Rk, p1, p2, p3, singularR},
@@ -373,8 +406,8 @@ GetBlochLink[file_] := Module[{BlochLink, wavecar, LineRecord, NumSpin, ComplexT
   {NumKPTs, NumBands} = Rationalize[info[[1 ;; 2]]];
   Close[wavecar];
 
-  OverlapMat = Table[Table[Table[ph1 = GetBlochFunc[dir0 <> "WAVECAR", is, ik-1, ib, "refine" -> 1][[4]];
-                                 ph2 = GetBlochFunc[dir0 <> "WAVECAR", is, ik, jb, "refine" -> 1][[4]];
+  OverlapMat = Table[Table[Table[ph1 = GetUnk[dir0 <> "WAVECAR", is, ik-1, ib, "refine" -> 1][[4]];
+                                 ph2 = GetUnk[dir0 <> "WAVECAR", is, ik, jb, "refine" -> 1][[4]];
                                  Norm[Total[ph1\[Conjugate] ph2, 3]], {jb, ib, NumBands}], {ib, NumBands}], {is, NumSpin}, {ik, 2, NumKPTS}];
   PermChain = Table[Table[First@First@Position[OverlapMat[[is, ik, ib]], Max[OverlapMat[[is, ik, ib]]]]+ib-1, {ib, NumBands}], {is, NumSpin}, {ik, NumKPTS-1}];
   BlochLink = Table[Prepend[PermuteThrough[PermChain], Range[NumBands]], {is, NumSpin}];
@@ -383,7 +416,7 @@ GetBlochLink[file_] := Module[{BlochLink, wavecar, LineRecord, NumSpin, ComplexT
 
 UoptPsik[ik_, iw_, UmatOpt_, ndimwin_, lwindow_, wavecar_, resolution_] := Module[{i, shift, Psik},
   shift = First@First@Position[lwindow[[ik]], 1] - 1;
-  Psik = Total@Table[If[Norm[UmatOpt[[ik, iw, i]]] == 0, ## &[], UmatOpt[[ik, iw, i]] GetBlochFunc[wavecar, 1, ik, i + shift, "refine" -> resolution][[3]]], {i, ndimwin[[ik]]}];
+  Psik = Total@Table[If[Norm[UmatOpt[[ik, iw, i]]] == 0, ## &[], UmatOpt[[ik, iw, i]] GetUnk[wavecar, 1, ik, i + shift, "refine" -> resolution][[3]]], {i, ndimwin[[ik]]}];
   Return[Psik]
 ]
 
