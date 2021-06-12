@@ -101,7 +101,7 @@ FC2Fi0Bonds[FC_, pos_, NSC_, OptionsPattern["tol" -> 0.1]] := Module[{latt, site
 GetDynamicMatrix[Fi0_, pos_, q_] := Module[{latt, sites, HermiteDM, dm, dmBlock, NumPos, mass, ele, amu, s, mfactor, Vasp2THz = 15.633302300230191, i, j},
   {latt, sites} = pos;
   NumPos = Length[sites];
-  mass = Table[amu=ToLowerCase[First@StringCases[i, RegularExpression["[[:upper:]]*[[:lower:]]*"]]]==="amu";
+  mass = Table[amu=ToLowerCase[StringJoin[StringCases[i, RegularExpression["[a,m,u,A,M,U]"]]]]==="amu";
                ele=If[amu, "C", First@StringCases[i, RegularExpression["[[:upper:]]*[[:lower:]]*"]]];
                s = StringCases[i, RegularExpression["\\d+"]];
                mfactor=If[s==={}, 1, ToExpression[First@s]] If[amu, 1/12, 1];
@@ -197,7 +197,7 @@ GetEwaldMatrix[NGrid_, tol_] := Module[{gcut, ix, iy, iz, NGridx, NGridy, NGridz
 
 Invariant2Fi0Bonds[InvList_, vars0_, CoeffStr_] := Module[{x, i, NeighbourList, varsijk, Fi0, vars, nn}, 
   NeighbourList = DeleteDuplicates[Level[#, {1}][[3 ;; 5]] & /@ Variables[If[ListQ[InvList], InvList /. Subscript[ToExpression@"\[Epsilon]0", ___] -> 1, InvList /. Subscript[ToExpression@"\[Epsilon]0", ___] -> 1 /. ToExpression[CoeffStr][___] -> 1]]];
-  vars = vars0 /. {Subscript[x_, i_, ___] -> Subscript[x, i]};
+  vars = vars0 /. {Subscript[x_, i_, ix_, iy_, iz_] -> Subscript[x, i]};
   Fi0 = Table[varsijk = vars /. {Subscript[x_, i_] -> (Subscript[x, i, #1, #2, #3] & @@ nn)};
               {nn, Table[D[If[ListQ[InvList], InvList.(ToExpression[CoeffStr][#] & /@ Range[Length@InvList]), InvList], v1, v2], {v1, vars0}, {v2, varsijk}]}, 
               {nn, NeighbourList}];

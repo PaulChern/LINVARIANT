@@ -8,8 +8,10 @@ ISODISTORT                   ::usage = "ISODISTORT[R0, pos0, pos, IsoMatrix, lab
 ImposeMode                   ::usage = "ImposeMode[Wyckoff0, IsoMatrix, modeset, s]"
 GetIRvector                  ::usage = "GetIRvector[id, pos]"
 GetBasisField                ::usage = "GetBasisField[id, BasisMatrix, pos]"
+ExportBasis                  ::usage = "ExportBasis[fname, BasisMatrix, BasisLabel, pos, ftype]"
 GetOpMatrix                  ::usage = "GetOpMatrix[SymOpFile, pos, IsoMatrix, Modes]"
 GetMatrixRep                 ::usage = "GetMatrixRep[SymOpFile, pos, IsoMatrix, Modes]"
+ExportMatrixRep              ::usage = "ExportMatrixRep[SymOpFile, pos, IsoMatrix, Modes]"
 SymmetryOpBasisField         ::usage = "SymmetryOpBasisField[grp, BasisField]"
 MonomialTransform            ::usage = "MonomialTransform[monomials, rules]"
 GetIsoVars                   ::usage = "GetIsoVars[IsoDispModes]"
@@ -152,6 +154,15 @@ GetBasisField[id_, BasisMatrix_, BasisLabels_, pos_, ftype_] := Module[{BasisLab
   Return[BasisField]
 ]
 
+ExportBasis[fname_, BasisMatrix_, BasisLabel_, pos_, ftype_] := Module[{data, basis, dim, i},
+  dim = Length[BasisLabel];
+  data = Flatten[Table[basis = GetBasisField[i, BasisMatrix, BasisLabel, pos, ftype];
+                       Join[{BasisLabel[[i]][[1 ;; 2]]}, {StringRiffle[ToString[NumberForm[N[#], {10, 8}]] & /@ #1], 
+                            StringRiffle[ToString[NumberForm[N[#], {6, 8}]] & /@ #2]} & @@@ (basis\[Transpose][[2]])], 
+                       {i, dim}], 1];
+  Export[fname, data]
+]
+
 GetOpMatrix[grp_, pos_, IsoMatrix_, Modes_, ftype_] := Module[{latt, sites, op2, ir1, ir2, mat, OpMatrix, AllIRvectors, AllTransformedIRvectors, NormFactor, IsoDim, i, vec},
   {latt, sites} = pos;
   IsoDim = Length@Modes;
@@ -202,12 +213,37 @@ GetMatrixRep[grp0_, grpt_, pos_, BasisMatrix_, BasisLabels_, ftype_] := Module[{
     ]
 ]
 
+ExportMatrixRep[grp0_, grpt_, ig_, g_, pos_, BasisMatrix_, BasisLabels_, ftype_, dir_:"~/"] := Module[{i, j, grp, xyz, op, op2, ir1, ir2, mat, OpMatrix, AllIRvectors, BasisField, TransformedBasisField, BasisDim, field, NormFactor, latt, slatt, sites, cell, basis, vecleft, vecright, val},
+  grp = {grpt, grp0};
+  {latt, sites} = pos;
+  (*slatt = Lattice2Symbolic[latt] /. {ToExpression["a"]->1, ToExpression["b"]->2, ToExpression["c"]->4};*)
+  slatt = Lattice2Symbolic[latt]\[Transpose];
+  BasisDim = Length@BasisMatrix;
+  cell = GetCellFromGrp[grpt];
+  xyz = Keys[grp[[ig]]];
+  {NormFactor, BasisField} = 
+     Table[basis=GetBasisField[i, BasisMatrix, BasisLabels, pos, ftype];
+           vecleft=basis\[Transpose][[2]]\[Transpose][[2]];
+           {If[ftype!="orbital",1/ComplexExpand@Norm[Flatten[slatt.# &/@ vecleft]],1/Norm[Flatten[vecleft]]], basis}, 
+           {i,BasisDim}]\[Transpose];
+  TransformedBasisField = Table[SymmetryOpBasisField[xyz[[g]], pos, cell, BasisField[[i]], ftype], {i, BasisDim}];
+  mat = Table[If[ftype!="orbital", 
+                 vecleft=Flatten[slatt.# &/@ (TransformedBasisField[[i]]\[Transpose][[2]]\[Transpose][[2]])];
+                 vecright=Flatten[slatt.# &/@ (BasisField[[j]]\[Transpose][[2]]\[Transpose][[2]])];,
+                 vecleft=Flatten[TransformedBasisField[[i]]\[Transpose][[2]]\[Transpose][[2]]];
+                 vecright=Flatten[BasisField[[j]]\[Transpose][[2]]\[Transpose][[2]]];];
+              Chop@Simplify@Expand[NormFactor[[i]] NormFactor[[j]] vecleft.vecright], {i, Range@BasisDim}, {j, Range@BasisDim}];
+  Export[dir<>"/OpDispMat-"<>ToString[ig]<>"."<>ToString[g]<>".dat", SparseArray[mat,{BasisDim,BasisDim}], "ExpressionML"];
+  Print["Saving: "<>"OpDispMat-"<>ToString[ig]<>"."<>ToString[g]<>".dat"];
+]
+
 MonomialTransform[monomials_, rules_] := Module[{P},
   P = (monomials /. #) & /@ rules;
   Return[P]
 ]
 
-SymmetryOpBasisField[grp_, pos_, cell_, BasisField_, ftype_] := Module[{latt, sites, site, i, trans, rot, rotL, su2, NewField, NewFieldup, NewFielddn, posvec, difftable, posmap, updn, basis, upbasis, dnbasis, tesseral, dim, dgQ},
+SymmetryOpBasisField[grp_, pos_, cell_, BasisField_, ftype_] := Module[{latt, sites, site, i, trans, rot, rotL, su2, NewField, NewFieldup, NewFielddn, posvec, difftable, posmap, updn, basis, upbasis, dnbasis, tesseral, dim, dgQ, originshift},
+  originshift = 0.0*{0.25, 0.25, 0.25};
   Which[
    AssociationQ[grp],
    SymmetryOpBasisField[#, pos, cell, BasisField, ftype] & /@ Keys[grp],
@@ -221,11 +257,11 @@ SymmetryOpBasisField[grp_, pos_, cell_, BasisField_, ftype_] := Module[{latt, si
    If[ftype=="disp"||ftype=="spin",
      Which[
        ftype=="disp",
-       posvec={ModCell[N[rot.(#2[[1]])+trans], cell], rot.(#2[[2]])} & @@@ BasisField,
+       posvec={ModCell[N[rot.(#2[[1]]+originshift)+trans], cell], rot.(#2[[2]])} & @@@ BasisField,
        ftype=="spin",
-       posvec={ModCell[N[rot.(#2[[1]])+trans], cell], Det[rot] rot.(#2[[2]])} & @@@ BasisField
+       posvec={ModCell[N[rot.(#2[[1]]+originshift)+trans], cell], Det[rot] rot.(#2[[2]])} & @@@ BasisField
        ];
-     difftable = DistMatrix[pos[[1]], BasisField\[Transpose][[2]]\[Transpose][[1]], posvec\[Transpose][[1]], cell];
+     difftable = DistMatrix[pos[[1]], #+originshift&/@(BasisField\[Transpose][[2]]\[Transpose][[1]]), posvec\[Transpose][[1]], cell];
      posmap = Position[difftable, x_ /; TrueQ[Chop[x] == 0]];
      NewField = {BasisField[[#1]][[1]], posvec[[#2]], BasisField[[#1]][[3]]} & @@@ posmap,
      (*ftype=="spinor"||"orbital"*)
@@ -303,17 +339,19 @@ GetTransformationRules[latt_, spg0_, OpMatrix_] := Module[{OpDispMatrix, OpSpinM
     GetIsoStrainTransformRules[latt, spg0]}\[Transpose])
 ]
 
-GetInvariants[TRules_, seeds_, order_, OptionsPattern[{"MustInclude"->{}, "Simplify"->True}]] := Module[{fixlist, monomials, invariant, n, i, j, ss, factor, out, factorLCM, factorGCD, OpDispMatrix, OpSpinMatrix, OpOrbitalMatrix, ReducedOut, mm},
+GetInvariants[TRules_, seeds_, order_, OptionsPattern[{"MustInclude"->{{{},{}}}, "Simplify"->True}]] := Module[{fixlist, monomials, invariant, n, i, j, ss, factor, out, factorLCM, factorGCD, OpDispMatrix, OpSpinMatrix, OpOrbitalMatrix, ReducedOut, mm, fixseeds},
   out = Table[
   monomials = If[
-    OptionValue["MustInclude"]=={}, 
+    OptionValue["MustInclude"]=={{{},{}}}, 
     MonomialList[Total[seeds]^n],
-    fixlist = Flatten[Table[MonomialList[Total[#1]^i], {i, #2}] &@@@ OptionValue["MustInclude"]];
-    Flatten[Table[# ss & /@ MonomialList[Total[seeds]^n], {ss, fixlist}]]];
+    fixlist = Flatten[Table[fixseeds=MonomialList[Total[#1]^i];
+                            If[i<n,{ConstantArray[i,Length@fixseeds],fixseeds}\[Transpose],{}], {i, #2}] &@@@ OptionValue["MustInclude"],2];
+    Flatten[Table[# ss[[2]] & /@ MonomialList[Total[seeds]^(n-ss[[1]])], {ss, fixlist}]]
+    ];
   invariant = DeleteDuplicates[DeleteCases[Chop[Union[Expand[Total[MonomialTransform[monomials, TRules]]]], 10^-5], i_/;i==0], (Chop[#1 -#2] == 0 || Chop[#1 + #2] == 0) &];
   If[OptionValue["Simplify"], SimplifyCommonFactor[invariant], invariant], {n, order}];
   ReducedOut = DeleteDuplicates[#, (#1 - #2 == 0 || #1 + #2 == 0 || Expand[#1 + I #2] == 0 || Expand[#1 - I #2] == 0) &] &/@ out;
-  Table[mm = PolynomialReduce[#, ReducedOut[[i]], seeds] & /@ (ReducedOut[[i]]);
+  Table[mm = PolynomialReduce[#, ReducedOut[[i]], Join[seeds,Flatten[OptionValue["MustInclude"]\[Transpose][[1]]]]] & /@ (ReducedOut[[i]]);
         If[! (DiagonalMatrixQ[Quiet[mm\[Transpose][[1]]]] || (ReducedOut[[i]] === {})), 
            Print["Warnning! ", ToString[i] <> "th order polynomial not independent: ", MatrixForm[mm]]], {i, Length[ReducedOut]}];
   Return[ReducedOut]
@@ -363,13 +401,15 @@ ImposeIsoStrainVariedDspMode[Wyckoff0_, IsoMatrix_, modeset_, LV_] := Module[{mo
   Return[pos]
 ]
 
-ShowInvariantTable[TableData_, param_, OptionsPattern[{"FontSize" -> 12}]] := Module[{bg, i, len, newparam},
+ShowInvariantTable[InvData_, param_, OptionsPattern[{"FontSize" -> 12}]] := Module[{bg, i, len, newparam, NumOrder, TableData, vars, order},
+  TableData=DeleteCases[InvData, {}];
   NumOrder= Length[TableData];
-  bg = Flatten[Table[len = Length[TableData[[i]]] + 1; 
-                     If[EvenQ[i], ConstantArray[Pink, len], ConstantArray[Gray, len]], {i, NumOrder}]];
+  bg = Flatten[Table[{Gray, ConstantArray[Pink, Length[TableData[[i]]]]}, {i, NumOrder}]];
   newparam = If[param===Null, Table[ConstantArray[0, Length[TableData[[i]]]], {i, NumOrder}], param];
-  Grid[Flatten[Table[Prepend[{newparam, TableData}\[Transpose][[i]]\[Transpose], 
-                             {"#", ToString[RomanNumeral[i]]<>" ("<>ToString[Length[TableData[[i]]]]<>")"}], {i, NumOrder}], 1], 
+  Grid[Flatten[Table[vars = Variables[TableData[[i]][[1, 1]]];
+                     order=Total@Exponent[TableData[[i]][[1, 1]], vars];
+                     Prepend[{newparam, TableData}\[Transpose][[i]]\[Transpose], 
+                             {"#", ToString[ToString["U"]^"("<>ToString[order]<>")",StandardForm]<>" contains "<>ToString[Length[TableData[[i]]]]<>" invariants"}], {i, NumOrder}], 1], 
        Background -> {{Yellow, White}, bg}, 
        Alignment -> Left, 
        Spacings -> {1, 0.5}, 
