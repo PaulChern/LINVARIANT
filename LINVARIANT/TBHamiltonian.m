@@ -2,6 +2,7 @@ BeginPackage["LINVARIANT`TBHamiltonian`", {"LINVARIANT`Structure`", "LINVARIANT`
 
 (*--------- Load, Save and Modify Crystal Structure Libraries ------------*)
 GetTi0Bonds                  ::usage "GetTi0Bonds[spg0, tij, latt, AllSites]"
+PeierlesSub                  ::usage "PeierlesSub[Ti0_, pos_, A_ : {0, 0, 0}]"
 ReadWannier90                ::usage "ReadWannier90[filename]"
 TBHk                         ::usage "TBHk[Ti0, pos, k]"
 TBBandsPlot                  ::usage "TBBandsPlot[Ti0, klist, kintv, OptionsPattern[{"range" -> All}]]"
@@ -30,11 +31,22 @@ Begin["`Private`"]
 (*--------------------------- Modules ----------------------------*)
 GetTi0Bonds[spg0_, tij_, pos_] := Module[{latt, AllSites, c1, c2, c3, sol, site, AllBonds, ReducedBonds}, 
   {latt, AllSites} = pos;
-  AllBonds = Flatten[Table[{GrpV[xyz, AllSites[[#1[[1]], 1]]], GrpV[xyz, AllSites[[#1[[2]], 1]] + #2], #3}, {xyz, Keys[spg0]}] & @@@ tij, 1];
+  AllBonds = Flatten[Table[{GrpV[latt, xyz, AllSites[[#1[[1]], 1]]], GrpV[latt, xyz, AllSites[[#1[[2]], 1]] + #2], #3}, {xyz, Keys[spg0]}] & @@@ tij, 1];
   ReducedBonds = Flatten[Table[sol = Rationalize@Chop@First@Values@Solve[site[[2]] + IdentityMatrix[3].{c1, c2, c3} == site[[1]]];If[AllTrue[sol, IntegerQ], {#1 - sol, #2 - sol, #3}, ## &[]], {site, Tuples[{{#1, #2}, AllSites\[Transpose][[1]]}]}] & @@@ AllBonds, 1];
   ReducedBonds = DeleteDuplicates[If[Rationalize[Chop[#1 - Mod[#1, 1]]] == {0, 0, 0}, {#1, #2, #3}, {#2, #1, #3\[Transpose]}] & @@@ ReducedBonds, Chop[#1[[1]] - #2[[1]]] == {0, 0, 0} && Chop[#1[[2]] - #2[[2]]] == {0, 0, 0} &];
-  ReducedBonds = {pos2index[AllSites, {#1, Mod[#2, 1]}], Rationalize[#2 - Mod[#2, 1]], 1, #3} & @@@ ReducedBonds;
+  ReducedBonds = {pos2index[latt, AllSites, {#1, Mod[#2, 1]}], Rationalize[#2 - Mod[#2, 1]], 1, #3} & @@@ ReducedBonds;
   Return[ReducedBonds]]
+
+PeierlesSub[Ti0_, pos_, A_ : {0, 0, 0}] := Module[{i, latt, sites, s0, s1, r, linesub},
+  {latt, sites} = pos;
+  Table[s0 = latt . (sites[[Ti0[[i]][[1, 1]]]][[1]]); 
+        s1 = latt . (sites[[Ti0[[i]][[1, 2]]]][[1]] + Ti0[[i]][[2]]);
+        linesub = Thread[{ToExpression["x"], ToExpression["y"], ToExpression["z"]} -> r (s1 - s0) + s0];
+        {Ti0[[i]][[1]], 
+         Ti0[[i]][[2]], 
+         Ti0[[i]][[3]], 
+         Ti0[[i]][[4]] Exp[I Integrate[(A . Normalize[Ti0[[i]][[2]]] /. linesub), {r, 0, 1}]]}, {i, Length[Ti0]}]
+]
 
 ReadWannier90[filename_] := Module[{Wannier90, SystemName, NBands, NumCells, WeightList, Ti0}, 
   Wannier90 = OpenRead[filename];
@@ -57,7 +69,7 @@ TBHk[Ti0_, pos_, k_] := Module[{latt, sites, i, j, TBBlock, NumPos},
 TBBandsPlot[Ti0_, pos_, klist_, kintv_, OptionsPattern[{"range" -> All}]] := Module[{pdata, k, TBHij, sol, kpath, xticks, BandsPlot},
   {kpath, xticks} = GetKpath[klist, kintv];
   pdata = Table[TBHij = TBHk[Ti0, pos, k[[2]]];
-                sol = Chop@Eigenvalues[TBHij];
+                sol = Re@Chop@Eigenvalues[TBHij];
                 {k[[1]], #} & /@ sol, {k, kpath}];
   BandsPlot = ListPlot[pdata\[Transpose],
                        PlotStyle -> Black,
@@ -79,7 +91,7 @@ TBBandsSpinCharacterPlot[Ti0_, pos_, klist_, kintv_, si_, OptionsPattern[{"range
   SpinOp = ArrayFlatten[PauliMatrix[#]\[TensorProduct]IdentityMatrix[TBDim/2]] & /@ Range[3];
   pdata = Table[TBHij = TBHk[Ti0, pos, k[[2]]];
                 sol = {ToString[Chop@#1] -> Chop[#2\[Conjugate].SpinOp[[3]].#2]} & @@@ (Eigensystem[TBHij]\[Transpose]);
-                {k[[1]], ToExpression[#1], Rescale[Chop[#2], {-1,1}]} & @@@ Normal[Merge[Flatten[sol], Total]], {k, kpath}];
+                {k[[1]], Re@ToExpression[#1], Rescale[Chop[#2], {-1,1}]} & @@@ Normal[Merge[Flatten[sol], Total]], {k, kpath}];
   (*SpinCharacterPlot = BubbleChart[Flatten[pdata, 1], 
                                   Frame -> True,
                                   PlotRange -> {All, OptionValue["range"]},
@@ -115,15 +127,15 @@ TBPlotSpinTextureSurface[Ti0_, pos_, E0_, klimit_, kintv_: 0.01, tol_: 0.1, si_,
   SpinOp = ArrayFlatten[PauliMatrix[#]\[TensorProduct]IdentityMatrix[TBDim/2]] & /@ Range[3];
   spindata = Table[TBHij = TBHk[Ti0, pos, {kx, ky, 0}];
                    sol = {ToString[Chop@#1] -> Chop[#2\[Conjugate].SpinOp[[si]].#2]} & @@@ (Eigensystem[TBHij]\[Transpose]);
-                   {ToExpression[#1], kx, ky, Rescale[Chop[#2], {-srange, srange}]} & @@@ Normal[Merge[Flatten[sol], Total]], {kx, -xlimit, xlimit, kintv}, {ky, -ylimit, ylimit, kintv}];
+                   {Re@ToExpression[#1], kx, ky, Rescale[Chop[#2], {-srange, srange}]} & @@@ Normal[Merge[Flatten[sol], Total]], {kx, -xlimit, xlimit, kintv}, {ky, -ylimit, ylimit, kintv}];
   SpinTexture = If[Chop[#1 - E0, tol] == 0, Join[2 Pi (Inverse[latt\[Transpose]].{#2, #3, 0})[[1 ;; 2]], {#4}], ## &[]] & @@@ Flatten[spindata, 2];
   TexturePlot = Graphics[{Blend[{Blue, White, Red}, #3], Opacity[#3], PointSize[0.01], Point[{#1, #2}]} & @@@ SpinTexture, Frame -> True, AspectRatio -> 1/(Divide @@ (Inverse[latt\[Transpose]].{xlimit, ylimit, 0})[[1 ;; 2]]), ImageSize -> Medium];
   Return[TexturePlot]
 ]
 
-BondsToTi0[Bonds_, ExtBonds_, Atoms_] := Module[{NumAtom, Ti0},
+BondsToTi0[latt_, Bonds_, ExtBonds_, Atoms_] := Module[{NumAtom, Ti0},
   NumAtom = Length[Atoms\[Transpose][[1]]];
-  Ti0 = {Rationalize[#2 - Mod[#2, 1]], 1, ArrayFlatten[#3\[TensorProduct]Normal[SparseArray[{pos2index[Atoms, #1], pos2index[Atoms, #2]} -> 1, {NumAtom, NumAtom}]]]} & @@@ Join[Bonds, ExtBonds];
+  Ti0 = {Rationalize[#2 - Mod[#2, 1]], 1, ArrayFlatten[#3\[TensorProduct]Normal[SparseArray[{pos2index[latt, Atoms, #1], pos2index[latt, Atoms, #2]} -> 1, {NumAtom, NumAtom}]]]} & @@@ Join[Bonds, ExtBonds];
   Return[Ti0]
 ]
 
