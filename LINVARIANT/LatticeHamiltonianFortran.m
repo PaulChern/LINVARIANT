@@ -1163,27 +1163,23 @@ HeadTailForces[FunctionName_?StringQ, ReturnVar_, nn_, OptionsPattern[{"AllSites
   head = Join[ 
       func,
       {{Fint[1]},
-       {Fint[1] <> "use Parameters"},
-       {Fint[1] <> "use Inputs"}},
-      If[OptionValue["AllSites"], {{Fint[1] <> "Use omp_lib"}}, {}],
-      {{Fint[1]},
        {Fint[1] <> "Implicit none"},
        {Fint[1] <> "Real*8,  Intent(in) :: Fields(FieldDim, NumField, NGridx, NGridy, NGridz)"}, 
        {Fint[1] <> "Real*8,  Intent(in) :: e0ij(3,3)"},
        {Fint[1] <> If[OptionValue["AllSites"], "Integer             :: ", "Integer, Intent(in) :: "] <> "x0, y0, z0"},
        {Fint[1] <> "Real*8              :: eij(3,3), euij(3,3)"}},
-       {Fint[1] <> "Real*8              :: " <> # <> If[OptionValue["AllSites"], "(FieldDim, NumField, NGridx, NGridy, NGridz)", "(Max(FieldDim, 6), NumField+1)"]} & /@ DeleteDuplicates[Join[{res}, reslist]],
+       {Fint[1] <> "Real*8              :: " <> # <> If[OptionValue["AllSites"], "(Max(FieldDim, 6), NumField+1, NGridx, NGridy, NGridz)", "(Max(FieldDim, 6), NumField+1)"]} & /@ DeleteDuplicates[Join[{res}, reslist]],
       {{Fint[1]}},
       HopingCodeBlock[nn][[2]],
       {{Fint[1]}},
+      {Fint[1] <> # <> " = 0.0D0"} & /@ DeleteDuplicates[Join[{res}, reslist]],
       If[OptionValue["AllSites"], 
          {{Fint[1] <> "!$OMP    PARALLEL DEFAULT(SHARED) PRIVATE(" <> StringJoin[Riffle[Join[{"eij,euij,x0","y0","z0"},HopingCodeBlock[nn][[1]]], ","]] <> ")"}, 
           {Fint[1] <> "!$OMP    DO COLLAPSE(3)"},
-          {Fint[1] <> "do x0 = 1, NGridz"},
+          {Fint[1] <> "do z0 = 1, NGridz"},
           {Fint[1] <> "do y0 = 1, NGridy"},
-          {Fint[1] <> "do z0 = 1, NGridx"}}, {}],
+          {Fint[1] <> "do x0 = 1, NGridx"}}, {}],
       {{Fint[2]}},
-      {Fint[1] <> # <> " = 0.0D0"} & /@ DeleteDuplicates[Join[{res}, reslist]],
       {{Fint[2] <> "euij = StrainFromu(x0, y0, z0, Fields)"},
        {Fint[2] <> "eij = e0ij + euij"},
        {Fint[2]}},
@@ -1241,10 +1237,6 @@ HeadTailEOnSite[FunctionName_?StringQ, ReturnVar_, nn_, OptionsPattern[{"AllSite
   head = Join[
       func,
       {{Fint[1]},
-       {Fint[1] <> "use Parameters"},
-       {Fint[1] <> "use Inputs"}},
-      If[OptionValue["AllSites"], {{Fint[1] <> "Use omp_lib"}}, {}],
-      {{Fint[1]},
        {Fint[1] <> "Implicit none"},
        {Fint[1] <> "Real*8,  Intent(in) :: Fields(FieldDim, NumField, NGridx, NGridy, NGridz)"},
        {Fint[1] <> "Real*8,  Intent(in) :: e0ij(3,3)"},
@@ -1259,12 +1251,12 @@ HeadTailEOnSite[FunctionName_?StringQ, ReturnVar_, nn_, OptionsPattern[{"AllSite
       If[OptionValue["AllSites"],
          {{Fint[1] <> "!$OMP    PARALLEL DEFAULT(SHARED) PRIVATE(" <> StringJoin[Riffle[Join[{"eij,euij,x0","y0","z0"},HopingCodeBlock[nn][[1]]], ","]] <> ")"},
           {Fint[1] <> "!$OMP    DO COLLAPSE(3)"},
-          {Fint[1] <> "do x0 = 1, NGridz"},
+          {Fint[1] <> "do z0 = 1, NGridz"},
           {Fint[1] <> "do y0 = 1, NGridy"},
-          {Fint[1] <> "do z0 = 1, NGridx"}}, {}],
+          {Fint[1] <> "do x0 = 1, NGridx"}}, {}],
       {{Fint[1]},
-       {Fint[1] <> "euij = StrainFromu(x0, y0, z0, Fields)"},
-       {Fint[1] <> "eij = e0ij + euij"},
+       {Fint[2] <> "euij = StrainFromu(x0, y0, z0, Fields)"},
+       {Fint[2] <> "eij = e0ij + euij"},
        {Fint[1]}},
       HopingCodeBlock[nn, "int" -> If[OptionValue["AllSites"], 2, 1]][[3]],
       {{Fint[1]}}];
@@ -1317,7 +1309,7 @@ WriteLatticeModelF90[F90dir_, FuncName_?StringQ, FuncType_?StringQ, InvariantLis
   (* HessianOnSite *)
     FuncType == "HessianOnSite",
     Fortran = Flatten[Table[MMA = Flatten[Table[FortranArrayVar = FortranVarStr[FuncType<>ham[[1]], {ToString[i], ToString[j]}];
-                                    {FortranArrayVar, Expand@D[ham[[2]], MMAVars[[i]], MMAVars[[j]]]}, {i, Length@MMAVars}, {j, Length@MMAVars}], 1];
+                                    {FortranArrayVar, Expand@D[ham[[2]], {MMAVars[[i]],1}, {MMAVars[[j]],1}]}, {i, Length@MMAVars}, {j, Length@MMAVars}], 1];
                             {#1, Expr2Fortran[#2, MMA2F90Vars]} & @@@ MMA, {ham, HamList}], 1];
     body = Flatten[FortranExprBlock[#1, #2, 1] & @@@ Fortran, 1];
     {head, tail} = HeadTailHessianOnSite[FuncName, If[Length@FortranVarList == 1, First@FortranVarList, {FuncType, FortranVarList}], 1]
