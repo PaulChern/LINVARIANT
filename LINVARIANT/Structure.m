@@ -27,9 +27,11 @@ LatticeFromLenAng            ::usage = "LatticeFromLenAng[VecAng]"
 SimplifyElementSymbol        ::usage = "SimplifyElementSymbol[ele]"
 PlotCrystal                  ::usage = "PlotGrid[latt, pos, dim]"
 DistMatrix                   ::usage = "DistMatrix[pos1, pos2]"
-pos2index                    ::usage = "pos2index[atoms, pos]"
+pos2index                    ::usage = "pos2index[latt, atoms, pos]"
 AtomicFormFactor             ::usage = "AtomicFormFactor[atom, q]"
 XRayDiffraction              ::usage = "XRayDiffraction[q, latt, Atoms]"
+SortPointsInSphere           ::usage = "SortPointsInSphere[Latt, pos, R]"
+XRDIndensity                 ::usage = "XRDIndensity[\[Lambda], poscar, range]"
 GetBZKList                   ::usage = "GetBZKList[spg0, kinv]"
 PlotStruct                   ::usage = "PlotStruct[pos]"
 
@@ -50,7 +52,7 @@ Begin["`Private`"]
 
 (*--------------------------- Modules ----------------------------*)
 pos2index[latt_, atoms_, pos_] := If[Length[Dimensions[pos]] > 1, 
-                              pos2index[atoms, #] &/@ pos,
+                              pos2index[latt, atoms, #] &/@ pos,
                               First@First@Position[Rationalize[Chop[Flatten[DistMatrix[latt, atoms\[Transpose][[1]], {pos}, {1,1,1}]]]], 0]]
 ModCell[xyz_, cell_] := Module[{},
   Mod[#1, #2] &@@@ ({xyz, cell}\[Transpose])
@@ -191,10 +193,14 @@ Lattice2Symbolic[latt_] := Module[{G, aa, bb, cc, \[Alpha], \[Beta], \[Gamma], L
   Return[LatticeVectors]
 ]
 
-ImportIsodistortCIF[file_,OptionsPattern[]] := Module[{CifData, CifFlags, xyzName, ElemSym, ElemName, SpgName, xyzStrData, xyzExpData, xyzTranslation, Atoms, EveryAtomPos, LatticeVectors, LatticeScales, sol, i, j, k, failed, x,y,z, SpgNumber, aa,bb,cc,alpha,beta,gamma,FracOutText,Wyckoff,IsoDim,IsoDispModeRow,IsoDispModeCol,IsoDispModeVal,IsoDispModeMatrix, IsoDispModesID,IsoDispModesNam,IsoDispModesAmp,IsoDispModes,IsoDispModeNormVal,IsoDeltaCoordID,IsoDeltaCoordLabel,IsoDeltaCoordVal,IsoDeltaCoord, IsoCoordLabel,IsoCoordFormula,IsoCoord, IsoStrainModesID,IsoStrainModesNam,IsoStrainModesAmp,IsoStrainModes, IsoStrainModeRow, IsoStrainModeCol, IsoStrainModeVal},
+ImportIsodistortCIF[file_,OptionsPattern[]] := Module[{CifData, CifFlags, xyzName, ElemSym, ElemName, SpgName, xyzStrData, xyzExpData, xyzTranslation, Atoms, EveryAtomPos, LatticeVectors, LatticeScales, sol, i, j, k, failed, x,y,z, SpgNumber,aa,bb,cc,alpha,beta,gamma,FracOutText,Wyckoff,IsoDim,IsoDispModeRow,IsoDispModeCol,IsoDispModeVal,IsoDispModeMatrix,IsoDispModesID,IsoDispModesNam,IsoDispModesAmp,IsoDispModes,IsoDispModeNormVal,IsoDeltaCoordID,IsoDeltaCoordLabel,IsoDeltaCoordVal,IsoDeltaCoord, IsoCoordLabel,IsoCoordFormula,IsoCoord, IsoStrainModesID,IsoStrainModesNam,IsoStrainModesAmp,IsoStrainModes, IsoStrainModeRow, IsoStrainModeCol, IsoStrainModeVal, origin, originstr},
 
     If[!FileExistsQ[file], Print["Error:" <> file <> " was not found in the working directory!"]; Abort[] ];
-	CifData = Import[file, "string"] <> "\n"; (*--- fix for some strange behaviour ---*)
+	CifData = Import[file, "string"] <> "\n";
+    originstr=StringCases[CifData,"origin=("~~Except[")"]..~~","~~Except[")"]..~~","~~Except[")"]..~~")"];
+    If[originstr=={},origin={0,0,0},
+       originstr=StringCases[First@originstr,"("~~Except[")"]..~~","~~Except[")"]..~~","~~Except[")"]..~~")"];
+       origin=ToExpression[StringReplace[First@originstr, {"(" -> "{", ")" -> "}"}]]];
     CifData = StringReplace[CifData,Thread[DeleteDuplicates[StringCases[CifData, RegularExpression[";"]]] -> ","]];
     CifData = StringReplace[CifData,Thread[DeleteDuplicates[StringCases[CifData,RegularExpression["[[:upper:]].{3,6}(\[)\\d,\\d,\\d(\])"]]] -> ""]];
     IsoDispModes = StringCases[CifData, RegularExpression["([[:upper:]][[:lower:]]*\\W*|[[:upper:]]*\\d*[[:lower:]]*)_\\d+"]]; 
@@ -246,7 +252,7 @@ ImportIsodistortCIF[file_,OptionsPattern[]] := Module[{CifData, CifFlags, xyzNam
 	LatticeScales = Table[ToExpression[FromCharacterCode[96+i]] -> Simplify@Norm[LatticeVectors[[i]]] ,{i,Length[LatticeVectors]}];
 	LatticeVectors = Table[ToExpression[FromCharacterCode[96+i]]* Simplify@Normalize[LatticeVectors[[i]]] ,{i,Length[LatticeVectors]}];
     If[Position[CifFlags,"_atom_site_fract_x" | "_atom_site_fract_y" |"_atom_site_fract_z"] != {},
-       Wyckoff = {ToExpression[#1], #2} &@@@ Transpose[{Transpose[({"_atom_site_fract_x","_atom_site_fract_y", "_atom_site_fract_z"} /. CifData)],"_atom_site_label" /. CifData}];,
+       Wyckoff = {Mod[ToExpression[#1]+origin,1], #2} &@@@ Transpose[{Transpose[({"_atom_site_fract_x","_atom_site_fract_y", "_atom_site_fract_z"} /. CifData)],"_atom_site_label" /. CifData}];,
        If[Position[CifFlags,"_atom_site_Cartn_x" | "_atom_site_Cartn_y" |"_atom_site_Cartn_z"] != {},
           Print["cartesian coords found, not implemented"];Abort[], 
           Print["no atom_side_fract"];Abort[]
@@ -423,6 +429,28 @@ AtomicFormFactor[atom_, q_] := Module[{data, f, i, a, b, c},
 
 XRayDiffraction[q_, latt_, Atoms_] := Module[{},
   Chop[1/Length[Atoms] Norm[Total[AtomicFormFactor[SimplifyElementSymbol[#2], Norm[2 Pi Inverse[latt].q]] Exp[-I 2 Pi q.#1] & @@@ Atoms]]^2]
+]
+
+SortPointsInSphere[Latt_, pos_, R_] := Module[{RecLatt, Nmax, cells, pts},
+  RecLatt = Inverse[Latt\[Transpose]];
+  Nmax = R [[2]] Norm[#] + 0.01 & /@ RecLatt;
+  cells = Flatten[CoordinateBoundsArray[{Floor[-Nmax], Ceiling[Nmax]}\[Transpose]], 2];
+  pts = Flatten[Table[If[R[[1]] <= Norm[Latt\[Transpose] . (# + pos[[i]])] <= R[[2]], {Norm[Latt\[Transpose] . (# + pos[[i]])], #, i}, ## &[]] & /@ cells, {i, Length@pos}], 1];
+  Return[SortBy[pts, {#[[1]] &, #[[2, 1]] &, #[[2, 2]] &, #[[2, 3]] &}]]
+]
+
+XRDIndensity[\[Lambda]_, poscar_, range_] := Module[{AtomicScatterParam, AtomicScatterFactor, ScatterIndensity, StructureFactor, LorentzFactor, atom, R1, R2, hkl, Latt, pos, i, q,d, \[Theta], data},
+  {Latt, pos} = poscar;
+  AtomicScatterParam = Association@Import["~/.Mathematica/Applications/LINVARIANT/dataset/atomic_scattering_params.json"];
+  {R1, R2} = 2/\[Lambda] Sin[#/2] & /@ range;
+  hkl = DeleteCases[SortPointsInSphere[Inverse[Latt\[Transpose]], {{0, 0, 0}}, {R1, R2}], {__, {0, 0, 0}, __}];
+  data = Table[q = hkl[[i, 2]]; d = hkl[[i, 1]]; \[Theta] = ArcSin[(\[Lambda] d)/2];
+               AtomicScatterFactor = Table[ElementData[atom, "AtomicNumber"] - 41.78214 (d/2)^2 Total@Table[{c1, c2} = AtomicScatterParam[atom][[i]]; c1 Exp[-c2 (d/2)^2], {i, 4}], {atom, SimplifyElementSymbol[pos\[Transpose][[2]]]}];
+               StructureFactor = Total@MapThread[#1 Exp[I 2 Pi q . #2] &, {AtomicScatterFactor, pos\[Transpose][[1]]}];
+               LorentzFactor = (1 + Cos[2 \[Theta]]^2)/(Sin[\[Theta]]^2 Cos[\[Theta]]);
+               ScatterIndensity = LorentzFactor Norm[StructureFactor]^2;
+               {2 \[Theta], (2 Sin[\[Theta]])/\[Lambda], q, ScatterIndensity}, {i, Length[hkl]}];
+  Return[Join[data\[Transpose][[1 ;; 3]], {100 data\[Transpose][[4]]/Total[data\[Transpose][[4]]]}]\[Transpose]]
 ]
 
 GetBZKList[spg0_, kinv_] := Module[{kstar, klist, kx, ky, kz, i},
