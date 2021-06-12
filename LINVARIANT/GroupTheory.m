@@ -3,6 +3,7 @@ BeginPackage["LINVARIANT`GroupTheory`", {"LINVARIANT`SphericalHarmonics`", "LINV
 (*--------- Load, Save and Modify Crystal Structure Libraries ------------*)
 GetWyckoffImages           ::usage = "GetWyckoffImages[grp, pos]"
 CifImportSpg               ::usage "CifImportSpg[file]"
+ExportGrp                  ::usage "ExportGrp[fname, grp]"
 GrpQ                       ::usage "GrpQ[grp]"
 GetGrpK                    ::usage "GetGrpK[grp0, vec0, lattice0]"
 GetStarK                   ::usage "GetStarK[grp0, k]"
@@ -176,6 +177,16 @@ xyz2Expr[xyzStrData_] := Module[{xyzRotTranData, xyzTranslation, xyzRotData, su2
   Return[{xyzRotData, xyzTranslation, su2}]
 ]
 
+ExportGrp[fname_, grp_] := Module[{rot, tran, i, ig, data},
+  data = Flatten[Table[rot = N[Values[grp][[ig, 1]][[1 ;; 3, 1 ;; 3]]];
+                       tran = N[Values[grp][[ig, 1]][[1 ;; 3, 4]]];
+                       Join[{{StringReplace[ToString[ig] <> "," <> Keys[grp][[ig]], "," -> "  "]}}, 
+                            Table[{StringRiffle[ToString[NumberForm[#, {3, 8}]] & /@ (rot[[i]])]}, {i, 3}], 
+                            {{StringRiffle[ToString[NumberForm[#, {10, 8}]] & /@ tran]}}], 
+                       {ig, Length[grp]}], 1];
+  Export[fname, data]
+]
+
 xyz2m4[xyzStrData_] := Module[{RT, rot, tran, su2},
   Which[AssociationQ[xyzStrData],
         xyz2m4[#] &/@ Keys[xyzStrData],
@@ -284,7 +295,7 @@ DoubleGrpQ[grp_] := Module[{dgQ},
 
 Expr2Rot[expr_, OptionsPattern[{"latt"->{}}]] := Module[{m, xyz, su2d},
   m = Which[Length[expr]==3,
-            Coefficient[#, {ToExpression["x"], ToExpression["y"], ToExpression["z"]}] &/@ expr,
+            (Coefficient[#, {ToExpression["x"], ToExpression["y"], ToExpression["z"]}] &/@ expr),
             Length[expr]==4,
             xyz = StringRiffle[ToString[#] &/@ expr[[1;;3]], ","];
             su2d = Coefficient[expr[[4]], ToExpression["d"]];
