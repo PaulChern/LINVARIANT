@@ -1,9 +1,9 @@
 #!/usr/bin/env wolframscript
-tmp = URLSave["https://github.com/PaulChern/LINVARIANT/archive/master.zip"];
+tmp = URLSave["https://github.com/PaulChern/LINVARIANT/archive/mast.zip"];
 dest = FileNameJoin[{$UserBaseDirectory, "Applications", "LINVARIANT"}];
 tmpExpanded = CreateDirectory[];
 ExtractArchive[tmp, tmpExpanded];
-CopyDirectory[FileNameJoin[{tmpExpanded, "LINVARIANT-master", "LINVARIANT"}], dest];
+CopyDirectory[FileNameJoin[{tmpExpanded, "master", "LINVARIANT"}], dest];
 DeleteFile[tmp];
 DeleteDirectory[tmpExpanded, DeleteContents -> True];
 Print["LINVARIANT at current stage preserve all the rights to Peng Chen!"]
