@@ -3,6 +3,7 @@ BeginPackage["LINVARIANT`Vasp`", {"LINVARIANT`INVARIANT`", "LINVARIANT`Structure
 (*--------- Load, Save and Modify Crystal Structure Libraries ------------*)
 ImportPOSCAR                 ::usage "ImportPOSCAR[f]"
 ExportPOSCAR                 ::usage "ExportPOSCAR[dir, fname, f]"
+ExportCHG                    ::usage "ExportCHG[dir, poscar, chg]"
 ParseXML                     ::usage "ParseXML[xml, tag, label, level]"
 ParseXMLData                 ::usage "ParseXMLData[xml, DataType]"
 ParseVasprunBands            ::usage "ParseVasprunBands[xml]"
@@ -17,11 +18,13 @@ BerryPol                     ::usage "BerryPol[vasprun]"
 Rot2FFTGrid                  ::usage "Rot2FFTGrid[NGrid, k]"
 GetUnk                       ::usage "GetUnk[file, is, ik, ib]"
 Unk2Bloch                    ::usage "Unk2Bloch[unkr]"
+FunctionInherited            ::usage "FunctionInherited[latt, BaseSpace, fiber, func]"
 GetTDM                       ::usage "GetTDM[fwavecar, poscar, skb1, skb2]"
 WAVECAR2WANNIER              ::usage "WAVECAR2WANNIER[wavecar, vasprun]"
 GetBlochLink                 ::usage "GetBlochLink[file]"
 UoptPsik                     ::usage "UoptPsik[ik, iw, UmatOpt, ndimwin, lwindow, wavecar]"
 UPsik                        ::usage "UPsik[ik, iw, UmatOpt, Umat, lwindow, ndimwin, wavecar]"
+ReadVpot                     ::usage "ReadVpot[file]"
 GetWannierFunc               ::usage "GetWannierFunc[iw, R, chk, wavecar_, vasprun]"
 BundleUp                     ::usage "BundleUp[x, f, l]"
 BundleDn                     ::usage "BundleUp[fx, l]"
@@ -108,6 +111,15 @@ ExportPOSCAR[dir_, fname_, f_] := Module[{i, pos, EleList, POSCAR},
                            {{"Direct"}}, 
                            {Table[ToString[NumberForm[DecimalForm[N@i], {17, 16}]], {i, #[[1]]}], #[[2]]} & /@ (pos[[2]])];
   Export[dir <> "/" <> fname, POSCAR, "Table", "FieldSeparators" -> "    "]
+]
+
+ExportCHG[dir_, poscar_, chg_] := Module[{CGrid, rowdata, data, latt, pos, head},
+  {latt, pos} = ImportPOSCAR[poscar];
+  head = Join[{{"From Mathematica"}, {"1.0"}}, latt, {DeleteDuplicates[pos\[Transpose][[2]]]}, {Count[pos\[Transpose][[2]], #] & /@ DeleteDuplicates[pos\[Transpose][[2]]]}, {{"Direct"}}, pos\[Transpose][[1]], {{"  "}}];
+  CGrid = Dimensions[chg];
+  rowdata = Flatten[TensorTranspose[chg, {3, 2, 1}]];
+  data = Join[head, {CGrid}, Partition[rowdata, 5], {rowdata[[-Mod[Length[rowdata], 5] ;; -1]]}];
+  Export[dir, data, "Table", "FieldSeparators" -> "    "]
 ]
 
 PlotGrid[latt_, pos_, dim_, OptionsPattern[{"vec" -> {}, "AtomSize" -> 0.02, "ImageSize" -> 500}]] := Module[{Nx, Ny, Nz, ExtVec, PointList, PosSymbols, PosTypes, PosColorCode, PosColorRange, PosColorList, PosList}, 
@@ -242,12 +254,20 @@ BerryPol[vasprun_, coord_] := Module[{ZVAL, lattice, sites, pos, units, PolIon, 
   Return[Chop[Ptot, 10^-4]]
 ]
 
+ReadVpot[file_] := Module[{data, pot, Nx, Ny, Nz, i, j, k},
+  data = ReadList[file, Real];
+  {Nx, Ny, Nz} = Rationalize[data[[1 ;; 3]]];
+  pot = TensorTranspose[ArrayReshape[data[[4 ;;]], {Nz, Ny, Nx}], {3, 2, 1}];
+  Return[pot]
+]
+
 Rot2FFTGrid[NGrid_, k_] := Module[{},
   If[#2 >= #1/2, #2 - #1, #2] & @@@ ({NGrid, k}\[Transpose])
 ]
 
-GetUnk[file_, is_, ik_, ib_, OptionsPattern[{"refine" -> 1, "sc"->{1,1,1}}]] := Module[{Bohr2Ang, Ry2eV, EleKin, wavecar, LineRecord, NumSpin, ComplexTag, WFPrec, info, NumKPTs, NumBands, Ecut, lattice, NumGrid, Bands, PWCoeff, BinaryShift, temp, NumPW, icoeff, unkG, unkr0, unkr, G, BaseSpace, eikr, Ekin, kvec, En, fn, Phi, rR, Ri, Rj, Rk, ii, jj, kk},
+GetUnk[file_, is_, ik_, ib_, OptionsPattern[{"refine" -> 1, "sc"->{1,1,1}, "shift"->{0,0,0}}]] := Module[{Bohr2Ang, Ry2eV, EleKin, wavecar, LineRecord, NumSpin, ComplexTag, WFPrec, info, NumKPTs, NumBands, Ecut, lattice, NumGrid, Bands, PWCoeff, BinaryShift, temp, NumPW, icoeff, unkG, unkr0, unkr, G, BaseSpace, eikr, Ekin, kvec, En, fn, Phi, rR, Ri, Rj, Rk, ii, jj, kk, shift},
   {Ri, Rj, Rk} = OptionValue["sc"];
+  shift = OptionValue["shift"];
   Bohr2Ang = 0.529177249;
   Ry2eV = 13.605826;
   EleKin = 3.8100198740807945;
@@ -290,7 +310,7 @@ GetUnk[file_, is_, ik_, ib_, OptionsPattern[{"refine" -> 1, "sc"->{1,1,1}}]] := 
                {k, 0, NumGrid[[3]] - 1}, {j, 0, NumGrid[[2]] - 1}, {i, 0, NumGrid[[1]] - 1}], {3,2,1}];
   unkr0 = InverseFourier[unkG, FourierParameters -> {0, -1}];
   (*Phi = eikr unkr;*)
-  BaseSpace = Table[N[{i, j, k}/NumGrid], {i, 0, NumGrid[[1]] Ri - 1}, {j, 0, NumGrid[[2]] Rj - 1}, {k, 0, NumGrid[[3]] Rk - 1}];
+  BaseSpace = Table[N[Mod[{i, j, k}/NumGrid+shift,1]], {i, 0, NumGrid[[1]] Ri - 1}, {j, 0, NumGrid[[2]] Rj - 1}, {k, 0, NumGrid[[3]] Rk - 1}];
   unkr = Table[{ii, jj, kk} = MapThread[Mod[#1, #2, 1] &, {{i+1, j+1, k+1}, NumGrid}];
                unkr0[[ii,jj,kk]], {i, 0, NumGrid[[1]] Ri - 1}, {j, 0, NumGrid[[2]] Rj - 1}, {k, 0, NumGrid[[3]] Rk - 1}];
   Return[{En, fn, lattice, kvec, BaseSpace, unkr}]
@@ -319,6 +339,13 @@ Unk2Bloch[unkr_, OptionsPattern[{"coord" -> "Cartesian", "plot" -> False}]] := M
     {Map[latt\[Transpose].# &,basespace,{3}], MapThread[Exp[I 2 Pi kvec.#1] #2 &, {basespace, unk}, 3]}
   ];
   Return[bloch]
+]
+
+FunctionInherited[latt_, BaseSpace_, fiber_, func_] := Module[{f, x, ndim},
+  ndim = Length[Dimensions[BaseSpace]];
+  x = Map[latt\[Transpose] . # &, BaseSpace, {ndim}];
+  f = MapThread[func, {x, fiber}, ndim];
+  Return[f]
 ]
 
 GetTDM[fwavecar_, poscar_, skb_, LatticePadding_:{0,0,0}, OptionsPattern[{"refine" -> 1}]] := Module[{is, ik, ib, iskb, site, Bohr2Ang, Ry2eV, EleKin, LineRecord, wavecar, pos, NumSpin, ComplexTag, WFPrec, info, NumKPTs, NumBands, Ecut, lattice, NumGrid, Bands, PWCoeff, BinaryShift, temp, NumPW, icoeff, unkG, unkr, G, eikr, Ekin, DeltaK={0,0,0}, kvec, En, fn, Phi, rR, tdm, i, j, k, Ri, Rj, Rk, p1, p2, p3, singularR},
