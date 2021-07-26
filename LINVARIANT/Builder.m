@@ -1,8 +1,11 @@
-BeginPackage["LINVARIANT`Builder`"]
+BeginPackage["LINVARIANT`Builder`", {"LINVARIANT`Structure`", "LINVARIANT`Vasp`"}]
 
 (*--------- Load, Save and Modify Crystal Structure Libraries ------------*)
 FitTrainingSet      ::usage "FitTrainingSet[goalfunction]"
 GenRandTrainSet     ::usage "GenRandTrainSet[ref, gs, basis, BasisLabel, modes, NTS, range]"
+GetTrainingSet      ::usage "GetTrainingSet[ref, phases, spg, rho]"
+WeightTrainSet      ::usage "WeightTrainSet[data, tau]"
+ExportTrainingSet   ::usage "ExportTrainingSet[dir, data, tau]"
 
 (*--------- Plot and Manipulate Crystal Structures -------------------- ----------------*)
 
@@ -48,7 +51,7 @@ FitTrainingSet[ham_, ts_, OptionsPattern[{"plot"->True}]] := Module[{gf, t, x, v
 
 GenRandTrainSet[ref_, gs_, basis_, BasisLabel_, id_, NTS_, range_] := Module[{v, i, j, NModes, dist, phonon, modes, pos, tsrand},
   NModes = Length@id;
-  dist = ISODISTORT[gs[[1]], ref[[2]], {PosMatchTo[ref[[2]]\[Transpose][[1]], gs[[2]]\[Transpose][[1]]][[2]] ref[[2]]\[Transpose][[2]]}\[Transpose], basis, BasisLabel\[Transpose][[2]]];
+  dist = ISODISTORT[gs[[1]], ref[[2]], {PosMatchTo[ref[[1]], ref[[2]]\[Transpose][[1]], gs[[2]]\[Transpose][[1]]][[2]], ref[[2]]\[Transpose][[2]]}\[Transpose], basis, BasisLabel\[Transpose][[2]]];
   modes = Table[dist[[#]] & /@ (id[[i]]), {i, NModes}];
   tsrand = Table[v = RandomReal[range[[1]] {-1, 1}, NModes];
                  phonon = Table[{#1, #2, #3, If[#4 == 0, range[[2]] v[[i]], #4  v[[i]] - #4]} & @@@ (modes[[i]]), {i, NModes}];
@@ -56,6 +59,24 @@ GenRandTrainSet[ref_, gs_, basis_, BasisLabel_, id_, NTS_, range_] := Module[{v,
                  Chop@{gs[[1]], pos}, {NTS-1}];
   Join[{Chop@gs}, tsrand]                 
 ]
+
+GetTrainingSet[ref_, phases_, spg_, rho_] := Module[{v, i, j, NModes, dist, phonon, modes, pos, tsrand, DomainSet, TrainingSet},
+  DomainSet = Flatten[Table[DeleteDuplicates[GetDomains[ref, pos, #] & /@ Keys[spg],StructDist[#1, #2] < 10^-3 &], {pos, phases}], 1];
+  TrainingSet = Flatten[StructInterpolation[#1, #2, rho] & @@@ Tuples[DomainSet, {2}],1];
+  Return[{DomainSet, TrainingSet}]
+]
+
+WeightTrainSet[data_, tau_] := Module[{ts, d},
+  ts = Flatten[data, 1];
+  Table[Sum[d = StructDist[data[[1, i]], ts[[j]]]; tau/(d^2 + tau^2), {i, Length[data[[1]]]}], {j, Length@ts}]
+]
+
+ExportTrainingSet[dir_, data_, tau_] := Module[{ts, weight},
+  ts = Flatten[data, 1];
+  weight = WeightTrainSet[data, tau];
+  Do[ExportPOSCAR[dir <> "/", "POSCAR." <> ToString[i] <> ".vasp", ts[[i]], "head" -> ToString[weight[[i]]]], {i, Length@ts}]
+]
+
 (*-------------------------- Attributes ------------------------------*)
 
 (*Attributes[]={Protected, ReadProtected}*)

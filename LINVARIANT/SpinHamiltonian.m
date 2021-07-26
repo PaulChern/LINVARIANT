@@ -1,4 +1,4 @@
-BeginPackage["LINVARIANT`SpinHamiltonian`", {"LINVARIANT`Structure`", "LINVARIANT`GroupTheory`"}]
+BeginPackage["LINVARIANT`SpinHamiltonian`", {"LINVARIANT`Structure`", "LINVARIANT`GroupTheory`", "LINVARIANT`GreenFunctions`", "LINVARIANT`TBHamiltonian`", "LINVARIANT`MathematicaPlus`"}]
 
 (*--------- Load, Save and Modify Crystal Structure Libraries ------------*)
 GetJi0Bonds          ::usage "GetJi0Bonds[spg0, tij, latt, AllSites]"
@@ -7,6 +7,8 @@ PlotSpinField        ::usage "PlotSpinField[latt, dim]"
 SpecificHeat         ::usage "SpecificHeat[T, EOnSiteList]"
 MagnonHk             ::usage "SpinHk[Ji0, k]"
 MagnonBandsPlot      ::usage "MagnonBandsPlot[Ji0, klist, kintv]"
+GreenJij             ::usage "GreenJij[Ti0, spg, pos, orb, path, efermi, R, kmesh]"
+
 (*--------- Plot and Manipulate Crystal Structures -------------------- ----------------*)
 
 (*--------- Point and Space Group Information ---------------------------*)
@@ -120,34 +122,20 @@ MagnonBandsPlot[Ji0_, pos_, klist_, kintv_, OptionsPattern[{"range" -> All}]] :=
   Return[BandsPlot]
 ]
 
-GreenIntersites[spg0_, Ti0_, pos_, \[Epsilon]_, RShift_, Ef_: 0, OptionsPattern[{"kinv" -> 0.1}]] := Module[{Greens1s2ijmn, sites, latt, NumSites, NumOrbitals, GreenBlock, klist, k, i0, j0, Ri, Rj, ii, jj, m, n, \[Sigma]1, \[Sigma]2},
-  {latt, sites} = pos;
-  NumOrbitals = Length[First[Ti0][[4]]]/2;
-  NumSites = Length[sites];
-  {ii, jj} = RShift;
-  klist = GetBZKList[spg0, OptionValue["kinv"]];
-  (* GreenBlock[[\[Sigma]1,\[Sigma]2,i0,j0,m,n]] *)
-  Greens1s2ijmn = 1/Length[klist] Sum[GreenBlock = Partition[Partition[k[[2]] Inverse[(\[Epsilon] + Ef) IdentityMatrix[2 NumSites] - TBHk[Ti0, pos, k[[1]]]], {NumOrbitals, NumOrbitals}], {NumSites, NumSites}]; GreenBlock Exp[I 2 Pi k[[1]].(ii - jj)], {k, klist}];
-  Return[Chop[Greens1s2ijmn]]
-]
-
-DeltaOnSiteSpin[spg0_, Ti0_, pos_, OptionsPattern[{"kinv" -> 0.1}]] := Module[{latt, sites, NumOrbitals, NumSites, klist, Deltaijmn, HBlock},
-  {latt, sites} = pos;
-  NumOrbitals = Length[First[Ti0][[4]]]/2;
-  NumSites = Length[sites];
-  klist = GetBZKList[spg0, OptionValue["kinv"]];
-  (* Deltaijmn[[i0,j0,m,n]] *)
-  Deltaijmn = Sum[HBlock = Partition[Partition[k[[2]] TBHk[Ti0, pos, k[[1]]], {NumOrbitals, NumOrbitals}], {NumSites, NumSites}]; HBlock[[1, 1]] - HBlock[[2, 2]], {k, klist}];
-  Return[Deltaijmn]
-]
-
-GreenJij[spg0_, Ti0_, pos_, RShift_, Ef_: 0, OptionsPattern[{"kinv" -> 0.1}]] := Module[{latt, sites, NumOrbitals, NumSites, i, j, m, n, p, q, Delta, G, Jij, \[Epsilon]},
-  {latt, sites} = pos;
-  NumOrbitals = Length[First[Ti0][[4]]]/2;
-  NumSites = Length[sites];
-  Delta = DeltaOnSiteSpin[spg0, Ti0, pos, "kinv" -> OptionValue["kinv"]];
-  Jij = -(1/(2 Pi)) Sum[G = GreenIntersites[spg0, Ti0, pos, \[Epsilon], RShift, Ef, "kinv" -> OptionValue["kinv"]]; Im@Table[Sum[Delta[[i, i, m, n]] G[[2, 2, i, j, n, p]] Delta[[j, j, p, q]] G[[1, 1, j, i, q, m]], {m, NumOrbitals}, {n, NumOrbitals}, {p, NumOrbitals}, {q, NumOrbitals}], {i, NumSites}, {j, NumSites}], {\[Epsilon], -10, Ef}];
-  Return[Chop[Jij]]
+GreenJij[Ti0_, spg_, pos_, orb_, path_, efermi_, R_, kmesh_] := Module[{Aij, i, j, J0, a, b},
+  Aij=SimpsonIntegrate[VGVG[Ti0, pos, orb, #, efermi, R, kmesh] &, path];
+  Print[Aij];
+  Jij = If[Length@Ti0==2,
+           Table[Im@Aij[[i,j]] IdentityMatrix[3] ,{i, Length@orb}, {j, Length@orb}],
+           Table[J0=Im@Total[(Aij[[4,4]] - Aij[[1,1]] - Aij[[2,2]] - Aij[[3,3]])[[i,j]],2];
+              Ja=Table[Im@Total[(Aij[[a,b]]+Aij[[b,a]])[[i,j]],2], {a,3}, {b,3}];
+              D3=Table[Re@Total[(Aij[[4,a]]-Aij[[a,4]])[[i,j]],2], {a,3}];
+              J0 IdentityMatrix[3] + Ja + {{0, D3[[3]], -D3[[2]]}, 
+                                           {-D3[[3]], 0, D3[[1]]}, 
+                                           {D3[[2]], -D3[[1]], 0}}, {i, Length@orb}, {j, Length@orb}]
+  ];
+  Ji0 = Table[GetJi0Bonds[spg, {{{orb[[i, 1]], orb[[j, 1]]}, R, Jij[[i, j]]}}, pos], {i, Length@orb}, {j, Length@orb}];
+  Return[Ji0]
 ]
 
 (*-------------------------- Attributes ------------------------------*)

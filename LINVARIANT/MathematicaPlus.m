@@ -1,16 +1,19 @@
 BeginPackage["LINVARIANT`MathematicaPlus`"]
 
 (*--------- Load, Save and Modify Crystal Structure Libraries ------------*)
-NOrderResponse       ::usage "NOrderResponse[eqn, var, n]"
-GetVariationVar      ::usage "GetVariationVar[var]"
-Complex2Exp          ::usage "Complex2Exp[exp]"
-Exp2Complex          ::usage "Exp2Complex[exp]"
-GetSubscriptInfo     ::usage "GetSubscriptInfo[atom]"
-ReadNonEmptyLine     ::usage "ReadNonEmptyLine[stream]"
-PermuteThrough       ::usage "PermuteThrough[tab]"
-Var2Var              ::usage "Var2Var[var1, var2, dir]"
-ParseFortranNumber   ::usage "ParseFortranNumber[stream]"
-MakeMatrixBlock      ::usage "MakeMatrixBlock[mat, dim]"
+NOrderResponse         ::usage "NOrderResponse[eqn, var, n]"
+GetVariationVar        ::usage "GetVariationVar[var]"
+Complex2Exp            ::usage "Complex2Exp[exp]"
+Exp2Complex            ::usage "Exp2Complex[exp]"
+GetSubscriptInfo       ::usage "GetSubscriptInfo[atom]"
+ReadNonEmptyLine       ::usage "ReadNonEmptyLine[stream]"
+PermuteThrough         ::usage "PermuteThrough[tab]"
+Var2Var                ::usage "Var2Var[var1, var2, dir]"
+ParseFortranNumber     ::usage "ParseFortranNumber[stream]"
+MakeMatrixBlock        ::usage "MakeMatrixBlock[mat, dim]"
+SimpsonIntegrate       ::usage "SimpsonIntegrate[f, x]"
+RectangleIntPath       ::usage "ComplexIntegratePath[spt, ept, npt, ratio]"
+
 (*--------- Plot and Manipulate Crystal Structures -------------------- ----------------*)
 
 (*--------- Point and Space Group Information ---------------------------*)
@@ -87,6 +90,19 @@ MakeMatrixBlock[mat_, dim_] := Module[{MBlocked, col, row},
   {col, row} = dim;
   MBlocked = (Partition[#, col] & /@ ((Partition[#, row] & /@ mat)\[Transpose]))\[Transpose];
   Return[MBlocked]
+]
+
+SimpsonIntegrate[f_, x_] := Module[{npt, a, b, m},
+  npt = Length[x];
+  ParallelSum[a = x[[i]]; b = x[[i + 1]]; m = (a + b)/2;
+   1/6 (b - a) (f[a] + 4 f[m] + f[b]), {i, npt - 1}]
+]
+
+RectangleIntPath[spt_, ept_, npt_, ratio_] := Module[{de, je, path},
+  de = (ept - spt)/npt;
+  je = ratio (ept - spt);
+  path = {{spt + I #} & /@ Range[de/2, je, je/20], spt + # + I je & /@ Range[de/2, ept - spt, de], {ept + I #} & /@ Range[je - je/20/2, 0, -je/20]};
+  Return[Flatten[path]]
 ]
 
 (*-------------------------- Attributes ------------------------------*)

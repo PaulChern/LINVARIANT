@@ -52,12 +52,14 @@ ParseXMLData[xml_, DataType_] := Module[{xmldata},
   Flatten[Cases[#, XMLElement[DataType, {}, x_] :> ParseFortranNumber[x]], 1] & /@ xml
 ]
 
-ParseVasprunBands[xml_, OptionsPattern[{"fermi"->None}]] := Module[{is, ik, klist, NumKpoint, spinupdn=<||>, fermi, ISPIN},
+ParseVasprunBands[xml_, OptionsPattern[{"fermi"->None}]] := Module[{latt, is, ik, klist, NumKpoint, spinupdn=<||>, fermi, ISPIN},
+  latt = Last@ParseXMLData[ParseXML[xml, "varray", {"name", "basis"}], "v"];
   klist = Flatten[ParseXMLData[ParseXML[xml, "varray", {"name", "kpointlist"}], "v"], 1];
   fermi = If[OptionValue["fermi"]===None, ParseFortranNumber@First@First@ParseXML[xml, "i", {"name", "efermi"}], OptionValue["fermi"]];
   NumKpoint = Length[klist];
   ISPIN = ParseFortranNumber@First@First@ParseXML[xml, "i", {{"type", "int"}, {"name", "ISPIN"}}];
 
+  spinupdn["latt"] = latt;
   spinupdn["k"] = klist;
   spinupdn["fermi"] = fermi;
   Do[spinupdn[If[is==1, "up", is==2, "dn"]] = Table[{#1-fermi,#2}&@@@Flatten[ParseXMLData[ParseXML[ParseXML[ParseXML[ParseXML[xml, "projected",  {}], "eigenvalues", {}], "set", {"comment", "spin "<>ToString[is]}], "set", {"comment", "kpoint " <> ToString[ik]}], "r"], 1], {ik, NumKpoint}], {is, ISPIN}];
@@ -65,7 +67,8 @@ ParseVasprunBands[xml_, OptionsPattern[{"fermi"->None}]] := Module[{is, ik, klis
   Return[spinupdn]
 ]
 
-ParseVasprunFatBands[xml_, OptionsPattern[{"fermi"->None, "FatBandRange"->None}]] := Module[{is, ik, ib, klist, NumKpoint, spinupdn=<||>, character=<||>, fermi, NBANDS, ISPIN, fat, orbits, ifat0, ifat1},
+ParseVasprunFatBands[xml_, OptionsPattern[{"fermi"->None, "FatBandRange"->None}]] := Module[{latt, is, ik, ib, klist, NumKpoint, spinupdn=<||>, character=<||>, fermi, NBANDS, ISPIN, fat, orbits, ifat0, ifat1},
+  latt = Last@ParseXMLData[ParseXML[xml, "varray", {"name", "basis"}], "v"];
   klist = Flatten[ParseXMLData[ParseXML[xml, "varray", {"name", "kpointlist"}], "v"], 1];
   fermi = If[OptionValue["fermi"]===None, ParseFortranNumber@First@First@ParseXML[xml, "i", {"name", "efermi"}], OptionValue["fermi"]];
   NumKpoint = Length[klist];
@@ -102,10 +105,11 @@ ImportPOSCAR[f_] := Module[{inp, Latt, xyz, xyzType, EleType, EleNum, TotalNum},
   Return[{Latt, xyz}]
 ]
 
-ExportPOSCAR[dir_, fname_, f_] := Module[{i, pos, EleList, POSCAR},
+ExportPOSCAR[dir_, fname_, f_, OptionsPattern[{"head"->"From Mathematica"}]] := Module[{i, pos, EleList, POSCAR, head},
+  head = OptionValue["head"];
   EleList = SimplifyElementSymbol[#] & /@ (f[[2]]\[Transpose][[2]]);
   pos = {f[[1]], {f[[2]]\[Transpose][[1]], EleList}\[Transpose]};
-  POSCAR = Flatten /@ Join[{{"From Mathematica"}, {1}}, 
+  POSCAR = Flatten /@ Join[{{head}, {1}}, 
                            Table[ToString[NumberForm[DecimalForm[N@i], {16, 15}]], {i, #}] & /@ pos[[1]], 
                            Through[{Keys, Values}[Counts[pos[[2]]\[Transpose][[-1]]]]], 
                            {{"Direct"}}, 
@@ -141,8 +145,12 @@ PlotGrid[latt_, pos_, dim_, OptionsPattern[{"vec" -> {}, "AtomSize" -> 0.02, "Im
                    ViewPoint -> {0, 0, 100}]];
 ]
 
-Kpoints2Kpath[kp_] := Module[{},
-  {Accumulate[Join[{0}, Norm[#] & /@ Differences[kp]]], kp}\[Transpose]
+Kpoints2Kpath[kp_, latt_] := Module[{},
+  Which[Depth[kp]==3,
+        {kp, Accumulate[Join[{0}, Norm[latt\[Transpose].#] & /@ Differences[kp]]]}\[Transpose],
+        Depth[kp]==4,
+        Join[Kpoints2Kpath[kp\[Transpose][[1]], latt]\[Transpose],{kp\[Transpose][[2]]}]\[Transpose]
+        ]
 ]
 
 VaspKLabel[kpt_] := Module[{},
@@ -187,17 +195,20 @@ ImportWannierCHK[chk_] := Module[{wchkfile, NumBands, NumExcludeBands, Lattice, 
   If[DisentanglementQ, Return[{UMatOpt, UMat, lwindow, ndimwin, Mmat, WannCenters}], Return[{UMat, lwindow, ndimwin, Mmat, WannCenters}]]
 ]
 
-VaspBSPlot[bsxml_, klabels_, OptionsPattern[{"PlotRange" -> {All, All}, "FigRatio"->1/GoldenRatio}]] := Module[{kpath, updata, dndata, upplot, dnplot},
-  kpath = {Accumulate[Join[{0}, Norm[#] & /@ Differences[bsxml["k"]]]], bsxml["k"]}\[Transpose];
+VaspBSPlot[bsxml_, hkpts_, OptionsPattern[{"PlotRange" -> {All, All}, "AspectRatio"->1/GoldenRatio}]] := Module[{latt, blatt, kpath, updata, dndata, upplot, dnplot, klabels},
+  latt = bsxml["latt"];
+  blatt = 1/(2*Pi)*Inverse[latt]\[Transpose];
+  klabels = Kpoints2Kpath[hkpts,blatt];
+  kpath = {Accumulate[Join[{0}, Norm[blatt.#] & /@ Differences[bsxml["k"]]]], bsxml["k"]}\[Transpose];
   updata = {kpath\[Transpose][[1]], #\[Transpose][[1]]}\[Transpose] & /@ (bsxml["up"]\[Transpose]);
   upplot = ListLinePlot[updata, 
                         PlotStyle -> {{Black, Thick}}, 
                         Joined -> True, 
                         PlotRange -> OptionValue["PlotRange"], 
-                        AspectRatio -> OptionValue["FigRatio"], 
+                        AspectRatio -> OptionValue["AspectRatio"], 
                         Frame -> True, 
-                        GridLines -> {{klabels\[Transpose][[1]], ConstantArray[Thick, Length[klabels]]}\[Transpose], Automatic},
-                        FrameTicks -> {{Automatic, None}, {klabels, None}},
+                        GridLines -> {{klabels\[Transpose][[2]], ConstantArray[Thick, Length[klabels]]}\[Transpose], Automatic},
+                        FrameTicks -> {{Automatic, None}, {klabels[[;;,2;;3]], None}},
                         ImageSize -> Medium];
   If[MemberQ[Keys[bsxml], "dn"], 
      dndata = {kpath\[Transpose][[1]], #\[Transpose][[1]]}\[Transpose] & /@ (bsxml["dn"]\[Transpose]);

@@ -8,7 +8,8 @@ SymmetryOpOrigin             ::usage = "SymmetryOpOrigin[file, set]"
 SymmetryOpVectorField        ::usage = "SymmetryOpVectorField[file, set]"
 GetLatticeVectors            ::usage = "GetLatticeVectors[dat]"
 Lattice2Symbolic             ::usage = "Lattice2Symbolic[latt]"
-ImportIsodistortCIF          ::usage = "ImportIsodistortCIF[\*StyleBox[\"filename\",\"TI\"]] opens .cif file and imports relevant data."
+ImportIsodistortCIF          ::usage = "ImportIsodistortCIF[cif]"
+FixCif                       ::usage = "FixCif[str]"
 PosMatchTo                   ::usage = "PosMatchTo[spos, dpos, tol]"
 GetStrainTensor              ::usage = "GetStrainTensor[parent, sub]"
 GridPbc                      ::usage = "GridPbc[ixyz, Lxyz]"
@@ -34,6 +35,10 @@ SortPointsInSphere           ::usage = "SortPointsInSphere[Latt, pos, R]"
 XRDIndensity                 ::usage = "XRDIndensity[\[Lambda], poscar, range]"
 GetBZKList                   ::usage = "GetBZKList[spg0, kinv]"
 PlotStruct                   ::usage = "PlotStruct[pos]"
+GetDomains                   ::usage = "GetDomains[latt, pos, xyz]"
+StructDist                   ::usage = "StructDist[pos1, pos2]"
+StructInterpolation          ::usage = "interpolation[pos1, pos2, rho]"
+GetBonds                     ::usage = "GetBonds[spg0, tij, pos]"
 
 (*--------- Plot and Manipulate Crystal Structures -------------------- ----------------*)
 
@@ -74,8 +79,8 @@ GetIRvector[id_, IsoMatrix_, pos_] := Module[{IRvector},
 
 cif2mcif[file_, id_, IsoMatrix_, pos0_] := Module[{CifTagVec, mcif, cif, vectors},
   CifTagVec = {{}, {"loop_"}, {"_atom_site_moment.label"}, {"_atom_site_moment.crystalaxis_x"}, {"_atom_site_moment.crystalaxis_y"}, {"_atom_site_moment.crystalaxis_z"}, {"_atom_site_moment.symmform"}};
-  cif = Import[file, "Table"];
-  vectors = {First@StringCases[#2, RegularExpression["[[:upper:]][[:lower:]]*"]] <> If[dd = StringCases[#2, RegularExpression["\\d+"]]; dd === {}, Unevaluated[Sequence[]], dd], #1[[1]], #1[[2]], #1[[3]], "mx,my,mz"} & @@@ GetIRvector[id, IsoMatrix, pos0];
+  cif = ImportString[FixCif[Import[file, "string"]<>"\n"],"Table"];
+  vectors = {#2, #1[[1]], #1[[2]], #1[[3]], "mx,my,mz"} & @@@ GetIRvector[id, IsoMatrix, pos0];
   mcif = Join[cif, CifTagVec, vectors];
   Return[mcif]
   ]
@@ -111,7 +116,7 @@ DistMatrix = Compile[{{latt, _Real, 2}, {pos1, _Real, 2}, {pos2, _Real, 2}, {cel
 PosMatchTo[latt_, spos_, dpos_, OptionsPattern["shift"->False]] := Module[{difftable, posmap, i, newpos},
   difftable = DistMatrix[latt, spos, dpos, {1,1,1}];
   posmap = First@First@Position[#, x_ /; TrueQ[x == Min[#]]] & /@ difftable;
-  newpos = If[OptionValue["shift"], PbcDiff[#]&/@(Table[dpos[[posmap[[i]]]], {i, Length@spos}] - spos) + spos,Table[dpos[[posmap[[i]]]], {i, Length@spos}]];
+  newpos = If[OptionValue["shift"], PbcDiff[#]&/@(Table[dpos[[posmap[[i]]]], {i, Length@spos}] - spos) + spos,Table[Mod[dpos[[posmap[[i]]]],1], {i, Length@spos}]];
   Return[{posmap, newpos}]
 ]
 
@@ -190,21 +195,26 @@ Lattice2Symbolic[latt_] := Module[{G, aa, bb, cc, \[Alpha], \[Beta], \[Gamma], L
   If[PossibleZeroQ[x - y], LatticeScales = Delete[LatticeScales, 2];LatticeVectors = LatticeVectors /. {ToExpression["b"] -> ToExpression["a"]}];
   Clear[x, y, z];
   (*LatticeVectors= LatticeVectors /. {ToExpression["a"] -> ToExpression["a1"], ToExpression["b"] -> ToExpression["a2"], ToExpression["c"] -> ToExpression["a3"]};*)
-  Return[LatticeVectors]
+  Return[{LatticeVectors, N@{aa,bb,cc}}]
+]
+
+FixCif[str_] := Module[{CifData, temp},
+  CifData = StringReplace[str, Thread[DeleteDuplicates[StringCases[str, RegularExpression[";"]]] -> "|"]];
+  temp = StringCases[CifData, RegularExpression["([[:upper:]][[:lower:]]*\\W*|[[:upper:]]*\\d*[[:lower:]]*)_\\d+"]];
+  CifData = StringReplace[CifData, Thread[temp -> StringReplace[temp, {"*" -> "[ast]", "'" -> "[prime]", "_" -> "."}]]];
+  Return[CifData]
 ]
 
 ImportIsodistortCIF[file_,OptionsPattern[]] := Module[{CifData, CifFlags, xyzName, ElemSym, ElemName, SpgName, xyzStrData, xyzExpData, xyzTranslation, Atoms, EveryAtomPos, LatticeVectors, LatticeScales, sol, i, j, k, failed, x,y,z, SpgNumber,aa,bb,cc,alpha,beta,gamma,FracOutText,Wyckoff,IsoDim,IsoDispModeRow,IsoDispModeCol,IsoDispModeVal,IsoDispModeMatrix,IsoDispModesID,IsoDispModesNam,IsoDispModesAmp,IsoDispModes,IsoDispModeNormVal,IsoDeltaCoordID,IsoDeltaCoordLabel,IsoDeltaCoordVal,IsoDeltaCoord, IsoCoordLabel,IsoCoordFormula,IsoCoord, IsoStrainModesID,IsoStrainModesNam,IsoStrainModesAmp,IsoStrainModes, IsoStrainModeRow, IsoStrainModeCol, IsoStrainModeVal, origin, originstr},
 
-    If[!FileExistsQ[file], Print["Error:" <> file <> " was not found in the working directory!"]; Abort[] ];
-	CifData = Import[file, "string"] <> "\n";
+    If[!FileExistsQ[file], Print["Error:" <> file <> " was not found in the working directory!"]; Abort[] ];	
+    CifData = Import[file, "string"] <> "\n";
     originstr=StringCases[CifData,"origin=("~~Except[")"]..~~","~~Except[")"]..~~","~~Except[")"]..~~")"];
     If[originstr=={},origin={0,0,0},
        originstr=StringCases[First@originstr,"("~~Except[")"]..~~","~~Except[")"]..~~","~~Except[")"]..~~")"];
        origin=ToExpression[StringReplace[First@originstr, {"(" -> "{", ")" -> "}"}]]];
-    CifData = StringReplace[CifData,Thread[DeleteDuplicates[StringCases[CifData, RegularExpression[";"]]] -> ","]];
-    CifData = StringReplace[CifData,Thread[DeleteDuplicates[StringCases[CifData,RegularExpression["[[:upper:]].{3,6}(\[)\\d,\\d,\\d(\])"]]] -> ""]];
-    IsoDispModes = StringCases[CifData, RegularExpression["([[:upper:]][[:lower:]]*\\W*|[[:upper:]]*\\d*[[:lower:]]*)_\\d+"]]; 
-    CifData = StringReplace[CifData, Thread[IsoDispModes -> StringReplace[IsoDispModes, {"*" -> "conj", "'" -> "Prime", "_" -> ""}]]];
+
+    CifData = FixCif[CifData];
 
 	CifData = ImportString[CifData, "CIF"];
 	CifFlags = Table[Level[CifData[[i]], 1][[1]], {i, Length[CifData]}];
@@ -255,7 +265,7 @@ ImportIsodistortCIF[file_,OptionsPattern[]] := Module[{CifData, CifFlags, xyzNam
        Wyckoff = {Mod[ToExpression[#1]+origin,1], #2} &@@@ Transpose[{Transpose[({"_atom_site_fract_x","_atom_site_fract_y", "_atom_site_fract_z"} /. CifData)],"_atom_site_label" /. CifData}];,
        If[Position[CifFlags,"_atom_site_Cartn_x" | "_atom_site_Cartn_y" |"_atom_site_Cartn_z"] != {},
           Print["cartesian coords found, not implemented"];Abort[], 
-          Print["no atom_side_fract"];Abort[]
+          Print["no atom_site_fract"];Abort[]
        ];
     ];
 	(*--- get multiplicity and transform to cartesian ---*)
@@ -374,9 +384,10 @@ PlotVectorField[latt_, field_, OptionsPattern[{"PointSize"->0.01, "PointColor" -
 xright[x0_, nn_, NN_] := (x0 + nn) - Floor[N[x0 + nn - 1]/N[NN]] NN
 xleft[x0_, nn_, NN_] := (x0 - nn) - Floor[N[x0 - nn - 1]/N[NN]] NN  
 
-GetKpath[klist_, div_] := Module[{kpath, qpoints, label, distance, xticks, dk, i},
+GetKpath[latt_, klist_, div_] := Module[{btlatt, kpath, qpoints, label, distance, xticks, dk, i},
+  btlatt = (1/2*Pi)*Inverse[latt];
   {qpoints, label} = klist\[Transpose];
-  {dk, kpath} = Join[{{0., First@qpoints}}, Flatten[Table[{Norm[N[1/div #2]], N[#1 + i/div #2]}, {i, div}] & @@@ ({qpoints[[1 ;; -   2]], Differences[qpoints]}\[Transpose]), 1]]\[Transpose];
+  {dk, kpath} = Join[{{0., First@qpoints}}, Flatten[Table[{Norm[btlatt.N[1/div #2]], N[#1 + i/div #2]}, {i, div}] & @@@ ({qpoints[[1 ;; - 2]], Differences[qpoints]}\[Transpose]), 1]]\[Transpose];
   distance = Accumulate[dk];
   xticks = {Table[distance[[div (i - 1) + 1]], {i, Length[qpoints]}], label}\[Transpose];
   Return[{{distance, kpath}\[Transpose], xticks}]
@@ -453,10 +464,18 @@ XRDIndensity[\[Lambda]_, poscar_, range_] := Module[{AtomicScatterParam, AtomicS
   Return[Join[data\[Transpose][[1 ;; 3]], {100 data\[Transpose][[4]]/Total[data\[Transpose][[4]]]}]\[Transpose]]
 ]
 
-GetBZKList[spg0_, kinv_] := Module[{kstar, klist, kx, ky, kz, i},
-  kstar = DeleteDuplicates[Sort[DeleteDuplicates[Table[Mod[Values[spg0][[i]].#, 1][[1 ;; 3]], {i, Length[spg0]}]]] & /@ Flatten[Table[{kx, ky, kz, 0}, {kx, -0.5, 0.5, kinv}, {ky, -0.5, 0.5, kinv}, {kz, -0.5, 0.5, kinv}], 2], #1 == #2 &];
-  klist = {PbcDiff[First[#]], Length[#]/(N@Length@Flatten[kstar, 1])} & /@ kstar;
-  Return[klist]
+GetBZKList[spg0_, kmesh_] := Module[{Nkx, Nky, Nkz, kstar, klist, kbz, kx, ky, kz, i},
+  {Nkx, Nky, Nkz} = kmesh;
+  klist = DeleteDuplicates@Flatten[Table[PbcDiff[{kx, ky, kz}], {kx, 0, 1, 1/Nkx}, {ky, 0, 1, 1/Nky}, {kz, 0, 1, 1/Nkz}], 2];
+  If[AssociationQ[spg0],
+     kbz = {};
+     While[klist != {},
+           kstar = DeleteDuplicates[Table[PbcDiff[Values[spg0][[i, 1]][[1 ;; 3, 1 ;; 3]] . First[klist]], {i, Length[spg0]}]];
+           AppendTo[kbz, {First[klist], Length[kstar]}];
+           klist = SortBy[Complement[klist, kstar], Position[klist, #] &];
+         ],
+     kbz = {#, 1} &/@ klist];
+  Return[{N@#1, #2/N@Total[kbz\[Transpose][[2]]]} & @@@ kbz]
 ]
 
 PlotStruct[pos_] := Module[{latt, sites, SiteData, BondData, LabelData, tt, HoppingPairs},
@@ -467,6 +486,46 @@ PlotStruct[pos_] := Module[{latt, sites, SiteData, BondData, LabelData, tt, Hopp
                      ImageSize -> 500, Axes -> True,
                      AxesLabel -> (Style[#, Bold, 64] & /@ {"a", "b", "c"}),
                      ViewPoint -> {0, 0, \[Infinity]}]
+]
+
+GetDomains[ref_, pos_, xyz_] := Module[{latt, sites, latt0, sites0, newlatt, newsites, strain, strainnew, m4, rot, tran},
+  {latt0, sites0} = ref;
+  {latt, sites} = pos;
+  {rot, tran} = xyz2RotT[xyz];
+  strain = GetStrainTensor[latt0, latt, "iso" -> False];
+  strainnew = GetStrainTensor[rot.latt0, rot.latt, "iso" -> False];
+  m4 = xyz2m4[xyz];
+  newlatt = (strainnew + IdentityMatrix[3]).latt0;
+  newsites = Mod[(m4.Join[#[[1]], {1}])[[1 ;; 3]], 1] & /@ sites;
+  newsites = {PosMatchTo[latt0, sites0\[Transpose][[1]], newsites][[2]], sites0\[Transpose][[2]]}\[Transpose];
+  Return[{newlatt, newsites}]
+]
+
+StructDist[pos1_, pos2_] := Module[{latt1, latt2, site1, site2, dist},
+  {latt1, site1} = pos1;
+  site2 = PosMatchTo[latt1, site1\[Transpose][[1]], pos2[[2]]\[Transpose][[1]]][[2]];
+  latt2 = pos2[[1]];
+  dist = Norm[Flatten[(latt1\[Transpose].# &/@ (site1\[Transpose][[1]])) - (latt2\[Transpose].# &/@ site2)]];
+  Return[dist]
+]
+
+StructInterpolation[pos1_, pos2_, rho_] := Module[{latt, sites, dist, NPT},
+  dist = StructDist[pos1, pos2];
+  NPT = Ceiling[dist/rho];
+  If[EvenQ[NPT], NPT = NPT + 1];
+  If[dist==0,##&[],
+     Table[latt = pos1[[1]] + i/(NPT + 1) (pos2[[1]] - pos1[[1]]);
+           sites = pos1[[2]]\[Transpose][[1]]+i/(NPT+1)(pos2[[2]]\[Transpose][[1]]-pos1[[2]]\[Transpose][[1]]); 
+           {latt, {sites, pos1[[2]]\[Transpose][[2]]}\[Transpose]}, {i, NPT}]]
+]
+
+GetBonds[spg0_, tij_, pos_] := Module[{latt, AllSites, c1, c2, c3, sol, site, AllBonds, ReducedBonds},
+  {latt, AllSites} = pos;
+  AllBonds = Flatten[Table[{GrpV[latt, xyz, AllSites[[#1[[1]], 1]]], GrpV[latt, xyz, AllSites[[#1[[2]], 1]] + #2]}, {xyz, Keys[spg0]}] & @@@ tij, 1];
+  ReducedBonds = Flatten[Table[sol = Rationalize@Chop@First@Values@Solve[site[[2]] + IdentityMatrix[3].{c1, c2, c3} == site[[1]]]; If[AllTrue[sol, IntegerQ], {#1 - sol, #2 - sol}, ## &[]], {site, Tuples[{{#1, #2}, AllSites\[Transpose][[1]]}]}] & @@@ AllBonds, 1];
+  ReducedBonds = DeleteDuplicates[If[Rationalize[Chop[#1 - Mod[#1, 1]]] == {0, 0, 0}, {#1, #2}, {#2, #1}] & @@@ ReducedBonds, Chop[#1[[1]] - #2[[1]]] == {0, 0, 0} && Chop[#1[[2]] - #2[[2]]] == {0, 0, 0} &];
+  ReducedBonds = {pos2index[latt, AllSites, {#1, Mod[#2, 1]}], Rationalize[#2 - Mod[#2, 1]]} & @@@ ReducedBonds;
+  Return[ReducedBonds]
 ]
 
 (*-------------------------- Attributes ------------------------------*)

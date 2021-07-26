@@ -14,6 +14,9 @@ ShowQNumberList             ::usage "ShowQNumberList[]"
 CommutatorDefinition        ::usage "CommutatorDefinition"
 AntiCommutatorDefinition    ::usage "AntiCommutatorDefinition"
 getOccNumRepresentation     ::usage "getOccNumRepresentation[siteNum, particleNum]"
+PauliNormDecompose          ::usage "PauliNormDecompose[M]"
+PauliDecompose              ::usage "PauliDecompose[M]"
+
 (*--------- Plot and Manipulate Crystal Structures -------------------- ----------------*)
 
 (*--------- Point and Space Group Information ---------------------------*)
@@ -71,6 +74,20 @@ ShowQNumberList[] := Module[{},
 ]
 
 getOccNumRepresentation[siteNum_, particleNum_] := ReverseSort@Join[Permutations[PadRight[#, siteNum]] & /@ IntegerPartitions[particleNum, siteNum]]
+
+PauliDecompose[M_] := Module[{MI, Mx, My, Mz},
+  MI = (M[[1 ;; ;; 2, 1 ;; ;; 2]] + M[[2 ;; ;; 2, 2 ;; ;; 2]])/2;
+  Mz = (M[[1 ;; ;; 2, 1 ;; ;; 2]] - M[[2 ;; ;; 2, 2 ;; ;; 2]])/2;
+  Mx = (M[[1 ;; ;; 2, 2 ;; ;; 2]] + M[[2 ;; ;; 2, 1 ;; ;; 2]])/2;
+  My = (M[[1 ;; ;; 2, 2 ;; ;; 2]] - M[[2 ;; ;; 2, 1 ;; ;; 2]])/(-2 I);
+  Return[{Mx, My, Mz, MI}]
+]
+
+PauliNormDecompose[M_] := Module[{MI, Mx, My, Mz, evec},
+  {Mx, My, Mz, MI} = PauliDecompose[M];
+  evec = Normalize[Tr[#] & /@ {Mx, My, Mz}];
+  Return[Total[evec {Mx, My, Mz}]]
+]
 
 (*-------------------------- Attributes ------------------------------*)
 

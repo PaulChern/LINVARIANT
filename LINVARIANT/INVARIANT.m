@@ -188,7 +188,7 @@ GetMatrixRep[grp0_, grpt_, pos_, BasisMatrix_, BasisLabels_, ftype_] := Module[{
   grp = {grpt, grp0};
   {latt, sites} = pos;
   (*slatt = Lattice2Symbolic[latt] /. {ToExpression["a"]->1, ToExpression["b"]->2, ToExpression["c"]->4};*)
-  slatt = Lattice2Symbolic[latt];
+  slatt = Lattice2Symbolic[latt][[1]];
   BasisDim = Length@BasisMatrix;
   cell = GetCellFromGrp[grpt];
   OpMatrix =
@@ -217,7 +217,7 @@ ExportMatrixRep[grp0_, grpt_, ig_, g_, pos_, BasisMatrix_, BasisLabels_, ftype_,
   grp = {grpt, grp0};
   {latt, sites} = pos;
   (*slatt = Lattice2Symbolic[latt] /. {ToExpression["a"]->1, ToExpression["b"]->2, ToExpression["c"]->4};*)
-  slatt = Lattice2Symbolic[latt]\[Transpose];
+  slatt = Lattice2Symbolic[latt][[1]]\[Transpose];
   BasisDim = Length@BasisMatrix;
   cell = GetCellFromGrp[grpt];
   xyz = Keys[grp[[ig]]];
@@ -321,7 +321,7 @@ GetIsoStrainTransformRulesOld[latt_, spg0_] := Module[{StrainRules},
 
 GetIsoStrainTransformRules[latt_, spg0_] := Module[{slatt, i, j, ig, g, strain0, strain, q, rot, tran, v1, v2},
   g= Length[spg0];
-  slatt = Lattice2Symbolic[latt];
+  slatt = Lattice2Symbolic[latt][[1]];
   strain0 = Normal@SparseArray[{{i_, j_} /; i == j -> Subscript[Epsilon, i, j], {i_, j_} /; i < j -> Subscript[Epsilon, i, j], {i_, j_} /; i > j -> Subscript[Epsilon, j, i]}, {3, 3}];
   Table[{rot, tran}=xyz2RotT[Keys[spg0][[ig]]];
         q = Table[v1 = (rot.slatt)[[i]]; 
