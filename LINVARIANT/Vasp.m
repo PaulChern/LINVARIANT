@@ -1,14 +1,11 @@
-BeginPackage["LINVARIANT`Vasp`", {"LINVARIANT`INVARIANT`", "LINVARIANT`Structure`", "LINVARIANT`MathematicaPlus`"}]
+BeginPackage["LINVARIANT`Vasp`", {"LINVARIANT`INVARIANT`", "LINVARIANT`Structure`", "LINVARIANT`MathematicaPlus`", "LINVARIANT`Parser`"}]
 
 (*--------- Load, Save and Modify Crystal Structure Libraries ------------*)
 ImportPOSCAR                 ::usage "ImportPOSCAR[f]"
 ExportPOSCAR                 ::usage "ExportPOSCAR[dir, fname, f]"
 ExportCHG                    ::usage "ExportCHG[dir, poscar, chg]"
-ParseXML                     ::usage "ParseXML[xml, tag, label, level]"
-ParseXMLData                 ::usage "ParseXMLData[xml, DataType]"
 ParseVasprunBands            ::usage "ParseVasprunBands[xml]"
 ParseVasprunFatBands         ::usage "ParseVasprunFatBands[xml]"
-Kpoints2Kpath                ::usage "Kpoints2Kpath[kp]"
 VaspKLabel                   ::usage "VaspKLabel[kpt]"
 ImportWannierCHK             ::usage "ImportWannierCHK[chk]"
 ParsePROCAR                  ::usage "ParsePROCAR[file]"
@@ -43,15 +40,6 @@ BundleDn                     ::usage "BundleUp[fx, l]"
 Begin["`Private`"]
 
 (*--------------------------- Modules ----------------------------*)
-ParseXML[xml_, tag_, label_, level_: Infinity] := Module[{xmldata, DataType, x},
-  xmldata = Cases[xml, XMLElement[tag, Flatten[#1 -> #2 & @@@ If[label==={},label,If[Length@Dimensions[label]==1, {label}, label]]], x_] :> x, level];
-  Return[xmldata]
-]
-
-ParseXMLData[xml_, DataType_] := Module[{xmldata},
-  Flatten[Cases[#, XMLElement[DataType, {}, x_] :> ParseFortranNumber[x]], 1] & /@ xml
-]
-
 ParseVasprunBands[xml_, OptionsPattern[{"fermi"->None}]] := Module[{latt, is, ik, klist, NumKpoint, spinupdn=<||>, fermi, ISPIN},
   latt = Last@ParseXMLData[ParseXML[xml, "varray", {"name", "basis"}], "v"];
   klist = Flatten[ParseXMLData[ParseXML[xml, "varray", {"name", "kpointlist"}], "v"], 1];
@@ -143,14 +131,6 @@ PlotGrid[latt_, pos_, dim_, OptionsPattern[{"vec" -> {}, "AtomSize" -> 0.02, "Im
                          {Black, FontSize -> 10, Table[Text[StringJoin[Riffle[ToString[#] & /@ {ix, iy}, ","]], latt.{ix, iy, iz} + latt.{0.2, 0.2, 0.0}], {ix, -Nx, Nx}, {iy, -Ny, Ny}, {iz, -Nz, Nz}]}}],
                    ImageSize -> OptionValue["ImageSize"],
                    ViewPoint -> {0, 0, 100}]];
-]
-
-Kpoints2Kpath[kp_, latt_] := Module[{},
-  Which[Depth[kp]==3,
-        {kp, Accumulate[Join[{0}, Norm[latt\[Transpose].#] & /@ Differences[kp]]]}\[Transpose],
-        Depth[kp]==4,
-        Join[Kpoints2Kpath[kp\[Transpose][[1]], latt]\[Transpose],{kp\[Transpose][[2]]}]\[Transpose]
-        ]
 ]
 
 VaspKLabel[kpt_] := Module[{},

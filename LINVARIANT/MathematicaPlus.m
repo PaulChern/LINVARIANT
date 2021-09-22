@@ -98,10 +98,11 @@ SimpsonIntegrate[f_, x_] := Module[{npt, a, b, m},
    1/6 (b - a) (f[a] + 4 f[m] + f[b]), {i, npt - 1}]
 ]
 
-RectangleIntPath[spt_, ept_, npt_, ratio_] := Module[{de, je, path},
+RectangleIntPath[dir_, spt_, ept_, npt_, ratio_] := Module[{de, je, path},
   de = (ept - spt)/npt;
   je = ratio (ept - spt);
   path = {{spt + I #} & /@ Range[de/2, je, je/20], spt + # + I je & /@ Range[de/2, ept - spt, de], {ept + I #} & /@ Range[je - je/20/2, 0, -je/20]};
+  Export[dir<>"/epath.dat", Join[{{Length[path]}}, {NumberForm[Re[#], {25, 15}], NumberForm[Im[#], {25, 15}]} & /@ path] // MatrixForm];
   Return[Flatten[path]]
 ]
 

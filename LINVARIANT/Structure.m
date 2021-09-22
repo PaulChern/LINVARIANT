@@ -39,6 +39,7 @@ GetDomains                   ::usage = "GetDomains[latt, pos, xyz]"
 StructDist                   ::usage = "StructDist[pos1, pos2]"
 StructInterpolation          ::usage = "interpolation[pos1, pos2, rho]"
 GetBonds                     ::usage = "GetBonds[spg0, tij, pos]"
+ImportXSF                    ::usage = "ShiftXSF[dir, fname, shift : {0, 0, 0}]"
 
 (*--------- Plot and Manipulate Crystal Structures -------------------- ----------------*)
 
@@ -390,6 +391,7 @@ GetKpath[latt_, klist_, div_] := Module[{btlatt, kpath, qpoints, label, distance
   {dk, kpath} = Join[{{0., First@qpoints}}, Flatten[Table[{Norm[btlatt.N[1/div #2]], N[#1 + i/div #2]}, {i, div}] & @@@ ({qpoints[[1 ;; - 2]], Differences[qpoints]}\[Transpose]), 1]]\[Transpose];
   distance = Accumulate[dk];
   xticks = {Table[distance[[div (i - 1) + 1]], {i, Length[qpoints]}], label}\[Transpose];
+  Export["KPATH.dat", Join[{{Length[kpath]}}, {NumberForm[#1, {20, 10}],NumberForm[#2, {20, 10}], NumberForm[#3, {20, 10}],NumberForm[1., {10, 5}]} & @@@ kpath]];
   Return[{{distance, kpath}\[Transpose], xticks}]
 ]
 
@@ -526,6 +528,31 @@ GetBonds[spg0_, tij_, pos_] := Module[{latt, AllSites, c1, c2, c3, sol, site, Al
   ReducedBonds = DeleteDuplicates[If[Rationalize[Chop[#1 - Mod[#1, 1]]] == {0, 0, 0}, {#1, #2}, {#2, #1}] & @@@ ReducedBonds, Chop[#1[[1]] - #2[[1]]] == {0, 0, 0} && Chop[#1[[2]] - #2[[2]]] == {0, 0, 0} &];
   ReducedBonds = {pos2index[latt, AllSites, {#1, Mod[#2, 1]}], Rationalize[#2 - Mod[#2, 1]]} & @@@ ReducedBonds;
   Return[ReducedBonds]
+]
+
+ImportXSF[dir_, fname_, shift_ : {0, 0, 0}] := Module[{xsf, latt, data, header, footer, body, ngx, ngy, ngz, line1, line2, lineatom, data1, data2, out, ix, iy, iz, tx, ty, tz, natom, pos, ushift},
+  xsf = OpenRead[dir <> fname <> ".xsf"];
+  {tx, ty, tz} = shift;
+  data = ReadList[xsf, Record, NullRecords -> True, RecordLists -> True];
+  line1 = First@First@Position[data, "BEGIN_BLOCK_DATAGRID_3D"] + 8;
+  line2 = First@First@Position[data, "END_BLOCK_DATAGRID_3D"] - 2;
+  lineatom = First@First@Position[data, "PRIMCOORD"] + 1;
+  {ngx, ngy, ngz} = ToExpression[First@StringSplit[data[[line1 - 5]]]];
+  ushift = ToExpression[First@StringSplit[data[[line1 - 4]]]];
+  latt = ToExpression[First[StringSplit[#]] & /@ (data[[line1 - 3 ;; line1 - 1]])];
+  natom = ToExpression[First@StringSplit[data[[lineatom]]]][[1]];
+  pos = {#[[2 ;; 4]] + ushift, #[[1]]} & /@ (ToExpression[First[StringSplit[#]] & /@ (data[[lineatom + 1 ;; lineatom + natom]])]);
+  header = data[[1 ;; line1 - 1]];
+  footer = data[[line2 + 1 ;;]];
+  body = Flatten[ToExpression[StringSplit[StringReplace[#, {"E" -> "*^"}]]] & /@ (data[[line1 ;; line2]])];
+  data1 = Table[body[[ix + (iy - 1) ngx + (iz - 1) ngx ngy]], {iz, ngz}, {iy,ngy}, {ix, ngx}];
+  If[Norm[shift] == 0, 
+     data2 = data1,
+     data2 = Table[data1[[Mod[iz - tz, ngz, 1], Mod[iy - ty, ngy, 1], Mod[ix - tx, ngx, 1]]], {iz, ngz}, {iy, ngy}, {ix, ngx}];
+     out = Join[header, Partition[Flatten[data2], 6], footer];
+     Export[dir <> fname <> "_" <> ToString[tx] <> "_" <> ToString[ty] <> "_" <> ToString[tz] <> ".xsf", out, "Table"]];
+  Close[xsf];
+  Return[{{latt, pos}, {ngz, ngy, ngx}, data2}]
 ]
 
 (*-------------------------- Attributes ------------------------------*)
