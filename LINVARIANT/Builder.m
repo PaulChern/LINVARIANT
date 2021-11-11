@@ -7,7 +7,11 @@ GetTrainingSet      ::usage "GetTrainingSet[ref, phases, spg, rho]"
 WeightTrainSet      ::usage "WeightTrainSet[data, tau]"
 ExportTrainingSet   ::usage "ExportTrainingSet[dir, data, tau]"
 BoundHighOrderTerm  ::usage "BoundHighOrderTerm[invariants, expr, vars, cuts]"
-
+PlanFitting         ::usage "PlanFitting[invariants, vars, spgmat, ts, seeds]"
+LinvariantFit       ::usage "LinvariantFit[invariants, vars, order, ts, spgmat]"
+SampleAround        ::usage "SampleAround[pos0, dir, fname, spgmat0, Basis, npt, potim]"
+ImposePhase         ::usage "ImposePhase[pos0, dir, fname, phase, Basis]"
+RoundPhase          ::usage "RoundPhase[phase]"
 (*--------- Plot and Manipulate Crystal Structures -------------------- ----------------*)
 
 (*--------- Point and Space Group Information ---------------------------*)
@@ -141,6 +145,27 @@ LinvariantFit[invariants_, vars_, order_, ts_, spgmat_, ws_ : None, OptionsPatte
   log = Style[# /. x_Real :> Chop[x, OptionValue["round"]]] &@ Grid[{{"Length", "BestFit", "AICc", "BIC", "\!\(\*SuperscriptBox[\(R\), \(2\)]\)", "\!\(\*SuperscriptBox[\(R0\), \(2\)]\)", "trainingset", "Minimums", "distances"}, ## & @@ TopModels}, Dividers -> All];
   Print[log];
   Return[out]
+]
+
+SampleAround[pos0_, dir_, fname_, spgmat0_, Basis_, npt_, potim_, OptionsPattern[{"round" -> 10^-8}]] := Module[{BasisDim, NumBasis, modesets, samples, modes, pos, pos1, phase, m, i, spgmat},
+  {BasisDim, NumBasis} = Dimensions[Basis];
+  pos = ImportPOSCAR[dir <> "/" <> fname];
+  phase = ISODISTORT[pos0[[1]], pos0[[2]], pos[[2]], Basis, Range[NumBasis], "round" -> OptionValue["round"]]\[Transpose][[4]];
+  spgmat = Table[If[Chop[Norm[m . Sign[phase] - Sign[phase]], OptionValue["round"]] == 0, m, ## &[]], {m, spgmat0}];
+  
+  modesets = DeleteDuplicates[Flatten[Table[SortBy[Tuples[{0, -i, i}, {NumBasis}], Norm[N@#] &], {i, Range[0, npt]}], 1]];
+  samples = Round[DeleteDuplicates[Table[{i, # . modesets[[i]] & /@ spgmat}, {i, Length[modesets]}], Complement[#1[[2]], #2[[2]]] == {} &]\[Transpose][[2]]\[Transpose][[1]]];
+  Print["Number of samples: " <> ToString[Length[samples]]];
+  Do[modes = Table[{m, "modes", 1, potim[[m]] samples[[i, m]]}, {m, NumBasis}];
+     pos1 = {pos[[1]], ImposeMode[pos[[1]], pos[[2]], Basis, modes, 1.0]}; 
+     ExportPOSCAR[dir, "sample" <> ToString[i] <> ".vasp", pos1], {i, Length@samples}]
+]
+
+ImposePhase[pos0_, dir_, fname_, phase_, Basis_] := Module[{m, modes, BasisDim, NumBasis, pos},
+  {BasisDim, NumBasis} = Dimensions[Basis];
+  modes = Table[{m, "modes", 1, phase[[m]]}, {m, NumBasis}];
+  pos = {pos0[[1]], ImposeMode[pos0[[1]], pos0[[2]], Basis, modes, 1.0]}; 
+  ExportPOSCAR[dir, fname, pos]
 ]
 
 (*-------------------------- Attributes ------------------------------*)
