@@ -13,6 +13,7 @@ ParseFortranNumber     ::usage "ParseFortranNumber[stream]"
 MakeMatrixBlock        ::usage "MakeMatrixBlock[mat, dim]"
 SimpsonIntegrate       ::usage "SimpsonIntegrate[f, x]"
 RectangleIntPath       ::usage "ComplexIntegratePath[spt, ept, npt, ratio]"
+partitionBy            ::usage "partitionBy[l, p]"
 
 (*--------- Plot and Manipulate Crystal Structures -------------------- ----------------*)
 
@@ -38,9 +39,11 @@ Exp2Complex[exp_] := Module[{},
 ]
 
 GetVariationVar[var_] := Module[{\[Delta]var, varnew},
+  Which[ListQ[var], GetVariationVar[#] &/@ var,
+  True,
   \[Delta]var = ToString[#] & /@ Level[var, 1];
   varnew = "\!\(\*SubscriptBox[\(" <> "\[Delta]" <> \[Delta]var[[1]] <> "\),\(" <> StringJoin[Riffle[\[Delta]var[[2 ;;]], ","]] <> "\)]\)";
-  Return[varnew]
+  Return[varnew]]
 ]
 
 NOrderResponse[eqn_, var_, n_] := Module[{\[Epsilon], exp, varnew},
@@ -105,6 +108,9 @@ RectangleIntPath[dir_, spt_, ept_, npt_, ratio_] := Module[{de, je, path},
   Export[dir<>"/epath.dat", Join[{{Length[path]}}, {NumberForm[Re[#], {25, 15}], NumberForm[Im[#], {25, 15}]} & /@ path] // MatrixForm];
   Return[Flatten[path]]
 ]
+
+partitionBy[l_, p_] := 
+  MapThread[l[[# ;; #2]] &, {{0}~Join~Most@# + 1, #} &@Accumulate@p]
 
 (*-------------------------- Attributes ------------------------------*)
 

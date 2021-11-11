@@ -35,6 +35,7 @@ BeginPackage["LINVARIANT`",
 	         "LINVARIANT`Fortran`",
 	         "LINVARIANT`Vasp`",
 	         "LINVARIANT`QE`",
+	         "LINVARIANT`OpenMX`",
 	         "LINVARIANT`Mollweide`",
              "LINVARIANT`Builder`"}]
 

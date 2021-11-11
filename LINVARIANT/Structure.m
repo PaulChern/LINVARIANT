@@ -121,24 +121,29 @@ PosMatchTo[latt_, spos_, dpos_, OptionsPattern["shift"->False]] := Module[{difft
   Return[{posmap, newpos}]
 ]
 
-SymmetryOpVectorField[grp_, pos_, vec_, ftype_] := Block[{originshift, xyzStrData, xyzRotTranData, xyzTranslation, xyzRotData, field, newpos, newvec, difftable, diff, posmap, i, j},
-  originshift = {0., 0., 0.};
-  xyzStrData = Keys[grp];
-  xyzRotTranData = Table[ToExpression["{" <> xyzStrData[[i]] <> "}"], {i, Length[xyzStrData]}];
-  xyzTranslation = xyzRotTranData  /. {ToExpression["x"] -> 0, ToExpression["y"] -> 0, ToExpression["z"] -> 0} ;
-  xyzRotData = xyzRotTranData - xyzTranslation;
+SymmetryOpVectorField[grp_, pos_, vec_, ftype_] := Block[{latt, sites, originshift, xyzStrData, rt, tran, rot, field, newpos, newvec, difftable, diff, posmap, i, j},
+  Which[
+    AssociationQ[grp],
+    SymmetryOpVectorField[#, pos, vec, ftype] & /@ Keys[grp],
+    ListQ[grp],
+    SymmetryOpVectorField[#, pos, vec, ftype] & /@ grp,
+    StringQ[grp],
+    originshift = {0., 0., 0.};
+    {latt, sites} = pos;
+    rt = ToExpression["{" <> grp <> "}"];
+    tran = rt  /. {ToExpression["x"] -> 0, ToExpression["y"] -> 0, ToExpression["z"] -> 0} ;
+    rot = rt - tran;
 
-  newvec = Which[ftype=="disp",
-                 Table[{Det[Expr2Rot[op]]^2*(op /. Thread[ToExpression[{"x", "y", "z"}] -> #1]), #2} & @@@ vec, {op, xyzRotData}],
-                 ftype=="spin",
-                 Table[{Det[Expr2Rot[op]]*(op /. Thread[ToExpression[{"x", "y", "z"}] -> #1]), #2} & @@@ vec, {op, xyzRotData}]];
-  newpos = Table[{(op /. Thread[ToExpression[{"x", "y", "z"}] -> (pos[[i]][[1]]+originshift)]), i}, {op, xyzRotTranData}, {i, Length@pos}];
-  
-  (*difftable = ParallelTable[DistMatrix[#+originshift&/@(pos\[Transpose][[1]]), newpos[[op]]\[Transpose][[1]]], {op, Length@xyzRotTranData}, DistributedContexts -> {"LINVARIANT`Structure`Private`"}];*)
-  difftable = Table[DistMatrix[#+originshift&/@(pos\[Transpose][[1]]), newpos[[op]]\[Transpose][[1]], {1,1,1}], {op, Length@xyzRotTranData}];
-  posmap = Table[Position[difftable[[op]], x_ /; TrueQ[x == 0]], {op, Length@xyzRotTranData}];
-  field = Table[Table[{newvec[[i]][[posmap[[i]][[j]][[2]]]][[1]], pos\[Transpose][[2]][[j]]}, {j, Length@pos}], {i, Length@posmap}];
-  Return[field]
+    newvec = Which[ftype=="disp",
+                   Det[Expr2Rot[rot]]^2*(rot /. Thread[ToExpression[{"x", "y", "z"}] -> #]) &/@ vec,
+                   ftype=="spin",
+                   Det[Expr2Rot[rot]]*(rot /. Thread[ToExpression[{"x", "y", "z"}] -> #]) &/@ vec];
+    newpos = Table[{(rt /. Thread[ToExpression[{"x", "y", "z"}] -> (sites[[i]][[1]]+originshift)]), i}, {i, Length@sites}];
+    
+    difftable = DistMatrix[latt, #+originshift&/@(sites\[Transpose][[1]]), newpos\[Transpose][[1]], {1,1,1}];
+    posmap = Position[difftable, x_ /; TrueQ[x == 0]];
+    field = Table[newvec[[posmap[[i]][[2]]]], {i, Length@sites}];
+    Return[field]]
 ]
 
 SymmetryOpVectorFieldCif[file_, pos_, vec_, OptionsPattern["spin" -> False]] := Block[{originshift, xyzStrData, xyzRotTranData, xyzTranslation, xyzRotData, field, newpos, newvec, difftable, diff, posmap, i, j, axial},
