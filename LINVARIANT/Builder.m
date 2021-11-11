@@ -12,6 +12,8 @@ LinvariantFit       ::usage "LinvariantFit[invariants, vars, order, ts, spgmat]"
 SampleAround        ::usage "SampleAround[pos0, dir, fname, spgmat0, Basis, npt, potim]"
 ImposePhase         ::usage "ImposePhase[pos0, dir, fname, phase, Basis]"
 RoundPhase          ::usage "RoundPhase[phase]"
+LoadTraningset      ::usage "LoadTraningset[pos0, dir, Basis, spgmat, numts, Ecubic]"
+
 (*--------- Plot and Manipulate Crystal Structures -------------------- ----------------*)
 
 (*--------- Point and Space Group Information ---------------------------*)
@@ -166,6 +168,19 @@ ImposePhase[pos0_, dir_, fname_, phase_, Basis_] := Module[{m, modes, BasisDim, 
   modes = Table[{m, "modes", 1, phase[[m]]}, {m, NumBasis}];
   pos = {pos0[[1]], ImposeMode[pos0[[1]], pos0[[2]], Basis, modes, 1.0]}; 
   ExportPOSCAR[dir, fname, pos]
+]
+
+LoadTraningset[pos0_, dir_, Basis_, spgmat_, numts_, Ecubic_ : 0.0, OptionsPattern[{"round" -> 10^-8, "dat" -> None}]] := Module[{i, BasisDim, NumBasis, ene, dictene, pos, mode0, vasprun, mode},
+  {BasisDim, NumBasis} = Dimensions[Basis];
+  pos = ImportPOSCAR[dir <> "sample1/POSCAR"];
+  mode0 = ISODISTORT[pos0[[1]], pos0[[2]], pos[[2]], Basis, Range[NumBasis], "round" -> OptionValue["round"]]\[Transpose][[4]];
+  If[StringQ[OptionValue["dat"]], dictene = Association[#1 -> #2 & @@@ Import[dir <> "/" <> OptionValue["dat"], "Table"]]];
+  DeleteDuplicates[Table[pos = ImportPOSCAR[dir <> "sample" <> ToString[i] <> "/POSCAR"];
+       ene = If[OptionValue["dat"] === None,
+                vasprun = Import[dir <> "sample" <> ToString[i] <> "/vasprun.xml"];
+                ToExpression[ParseXML[ParseXML[vasprun, "energy", {}], "i", {"name", "e_fr_energy"}][[-1, 1]]], dictene[i]];
+       mode = ISODISTORT[pos0[[1]], pos0[[2]], pos[[2]], Basis, Range[NumBasis], "round" -> OptionValue["round"]]\[Transpose][[4]];
+       {i, ene - Ecubic, mode0, mode - mode0, Norm[mode], # . mode & /@ spgmat}, {i, numts}], Chop[Norm[Sort[#1[[6]]][[1]] - Sort[#2[[6]]][[1]]], OptionValue["round"]] == 0 &]\[Transpose][[1 ;; 4]]\[Transpose]
 ]
 
 (*-------------------------- Attributes ------------------------------*)
