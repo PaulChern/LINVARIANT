@@ -19,7 +19,7 @@
 - (1) Finite Element Method (FEM), (2) Minimization, (3) molecular dynamics (MD), (4) Monte Carlo (MC), and (5) Finite Differences nonlinear solver on large scale continuous model
 - Parallel tempering algorithm is available with both MC and MD
 ### Auxiliary:
-- Generate Fortran source code from mathematica
+- Write Fortran using mathematica
 - interface to VASP, Quantum Espresso, and OpenMX
 - interface to WANNIER90
 - mpi and openmp parallelization
