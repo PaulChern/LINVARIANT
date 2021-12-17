@@ -6,7 +6,7 @@
 - LINVARIANT generates symmetry adapted microscopic or phenomenological models.
 - LINVARIANT creates DFT training sets for the model fitting.
 - LINVARIANT has numerical solvers running on the model, such as MC, MD, Exact diagnalization, Minimization, and et al..
-- For large scale calculations, LINVARIANT exports the symbolic models into FORTRAN/C++ modules together with FORTRAN/C++ solvers, buiding files.
+- For large scale calculations, LINVARIANT exports the symbolic models into FORTRAN modules.
 ## Features:
 ### models:
 - Displacement and magnetic modes analysis
@@ -20,12 +20,12 @@
 - Parallel tempering algorithm is available with both MC and MD
 ### Auxiliary:
 - Generate Fortran source code from mathematica
-- interface to VASP
+- interface to VASP, Quantum Espresso, and OpenMX
 - interface to WANNIER90
 - mpi and openmp parallelization
 - dynamics under external electric field
-- Jij of Heisenberg model from DFT, in Liechtenstein manner
-- Unfolding
+- Jij of Heisenberg model from DFT by Liechtenstein formalism
+- Electron/phonon bands unfolding
 - phonon/magnon calculations from DFT input
 - X ray diffraction simulation
 - Nudged Elastic Bands (NEB) and Growing String Method (GSM) to explore the phase transition, dynamics, and domain wall structures
