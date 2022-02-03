@@ -1,0 +1,26 @@
+NameSim         = KNbO3
+Temp            = 30
+Solver          = CG                  # MCMC, MD, PTMC, PTMD, CG
+CGType          = FLETCHER-REEVES     # POLAK-RIBIERE
+ReplicaT0       = 1
+ReplicaTN       = 900
+seed            = 0
+RestartFields   = InitConfig
+RestartVelocity = InitVelocity
+DipoleQ         = .true.
+EfieldQ         = .true.
+EfieldType      = GaussianPulse
+Mesh            = 10 10 10
+DeltaT          = 0.1
+CoolingSteps    = 0
+NumSteps        = 6000
+ThermoSteps     = 0
+TapeRate        = 200 
+SwapRate        = 1
+damp            = 0.001
+NVE             = .false.
+DampRatio       = 1.5
+AcceptRatio     = 0.3
+epstol          = 0.000001
+CoeffFile       = Coefficients.dat
+

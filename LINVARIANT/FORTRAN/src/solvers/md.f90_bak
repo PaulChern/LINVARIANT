@@ -1,0 +1,218 @@
+Subroutine TikTok(Fields, dFieldsdt, e0ij, de0ijdt, T0, gm, TimeNow)
+  
+  Use omp_lib
+  Use LINVARIANT
+  Use Force
+  Use Parameters
+  Use Constants
+  Use Aux
+  
+  Implicit none
+  Real*8,  Intent(in)    :: T0
+  Real*8,  Intent(inout) :: gm(NumField+1)
+  Real*8,  Intent(inout) :: Fields(FieldDim, NumField, NGridx, NGridy, NGridz)
+  Real*8,  Intent(inout) :: dFieldsdt(FieldDim, NumField, NGridx, NGridy, NGridz)
+  Real*8,  Intent(inout) :: de0ijdt(3,3)
+  Real*8,  Intent(inout) :: e0ij(3,3), TimeNow
+  Real*8                 :: Fields0(FieldDim, NumField, NGridx, NGridy, NGridz)
+  Real*8                 :: e0ij0(3,3) 
+  Real*8                 :: Forces(Max(FieldDim, 6),NumField+1,NGridx,NGridy,NGridz)
+  Real*8                 :: Friction(FieldDim,NumField,NGridx,NGridy,NGridz)
+  Real*8                 :: ForcesEta(6), FrictionEta(6),VolumeForce(3,3)
+  Integer                :: i, ifield, fi, ix, iy, iz
+
+  Fields0 = Fields
+  e0ij0 = e0ij
+
+  Forces = 0.0D0
+  If(DipoleQ) then
+    Forces(1:3,:,:,:,:) = GetEwaldForces(Fields0)
+  End If
+  If(EfieldQ) then
+    Call ApplyEfield(TimeNow, Forces)
+  End If
+  Forces = Forces + GetForces(Fields0,e0ij0)
+  Do i = 1, NumField
+    Forces(:,i,:,:,:) = Forces(:,i,:,:,:)/mass(i)/(7.464D0)**2
+  End do
+  If(CLAMPQ) then 
+    ForcesEta = 0.0D0
+  Else
+    Do i = 1, 6
+      ForcesEta(i) = Sum(Forces(i,4,:,:,:))/(NGridx*NGridy*NGridz)/mass(NumField+1)
+    End do
+  End If
+!  Call ThermoState(gm, dFieldsdt, de0ijdt, Friction, FricetionEta)
+  Call BaroState(e0ij, VolumeForce)
+
+  ! v(t+dt/2)
+  Do i = 1, NumField
+    dFieldsdt(:,i,:,:,:) = dFieldsdt(:,i,:,:,:) &
+                         + 0.5d0*DeltaT*(Forces(1:FieldDim,i,:,:,:)-gm(i)*dFieldsdt(:,i,:,:,:))
+  End do
+  de0ijdt = de0ijdt + 0.5d0*DeltaT*(eta2eij(ForcesEta)-gm(NumField+1)*de0ijdt+VolumeForce)
+  ! r(t+dt)
+  Fields = Fields0+dFieldsdt*DeltaT
+  e0ij = e0ij + de0ijdt*DeltaT
+
+  Call RemoveGridDrifts(Fields)
+  Call RemoveGridDrifts(dFieldsdt)
+  Call NoseHooverUpdate(gm, T0, dFieldsdt, de0ijdt)
+
+  TimeNow = TimeNow + DeltaT/2
+
+  Forces = 0.0D0
+  If(DipoleQ) then
+    Forces(1:3,:,:,:,:) = GetEwaldForces(Fields)
+  End If
+  If(EfieldQ) then
+    Call ApplyEfield(TimeNow, Forces)
+  End If
+  Forces = Forces + GetForces(Fields,e0ij)
+  Do i = 1, NumField
+    Forces(:,i,:,:,:) = Forces(:,i,:,:,:)/mass(i)/(7.464D0)**2
+  End do
+
+  If(CLAMPQ) then 
+    ForcesEta = 0.0D0
+  Else
+    Do i = 1, 6
+      ForcesEta(i) = Sum(Forces(i,4,:,:,:))/(NGridx*NGridy*NGridz)/mass(NumField+1)
+    End do
+  End If
+  Call BaroState(e0ij, VolumeForce)
+
+  ! v(t+dt/2+dt/2)
+  Do i = 1, NumField
+    dFieldsdt(:,i,:,:,:) = (dFieldsdt(:,i,:,:,:)+0.5d0*DeltaT*Forces(:,i,:,:,:))/(1.0D0 + 0.5D0*gm(i)*DeltaT)
+  End do
+  de0ijdt = (de0ijdt + 0.5d0*DeltaT*(eta2eij(ForcesEta)+VolumeForce))/(1.0D0+0.5D0*gm(NumField+1)*DeltaT)
+
+  TimeNow = TimeNow + DeltaT/2
+
+End Subroutine TikTok
+
+Subroutine GetFriction(gm, dFieldsdt, de0ijdt, Friction, FrictionEij)
+  Use Parameters
+  Implicit none
+  Real*8,  Intent(in)     :: dFieldsdt(FieldDim, NumField, NGridx, NGridy,NGridz)
+  Real*8,  Intent(in)     :: de0ijdt(3,3)
+  Real*8,  Intent(in)     :: gm(NumField+1)
+  Real*8,  Intent(out)    :: Friction(FieldDim,NumField,NGridx,NGridy,NGridz)
+  Real*8,  Intent(out)    :: FrictionEij(3,3)
+  Integer                 :: i
+  
+  Do i = 1, NumField
+    Friction(:,i,:,:,:) = -gm(i)*dFieldsdt(:,i,:,:,:)
+  End do
+
+  FrictionEij = -gm(NumField+1)*de0ijdt
+
+End Subroutine GetFriction
+
+Subroutine NoseHooverUpdate(gm, T0, dFieldsdt, de0ijdt)
+  Use Energy
+  Implicit none
+  Real*8,  Intent(in)     :: dFieldsdt(FieldDim, NumField, NGridx, NGridy, NGridz)
+  Real*8,  Intent(in)     :: de0ijdt(3,3), T0
+  Real*8,  Intent(inout)  :: gm(NumField+1)
+  Real*8                  :: Ekin(2)
+  Integer                 :: TotalDim, i
+
+  If(NVE) then
+    gm = 0.0D0
+  else
+    TotalDim = NGridx*NGridy*NGridz*OnSiteDim
+    Ekin = GetEkin(dFieldsdt, de0ijdt)
+    Do i = 1, NumField
+      gm(i) = gm(i) + (Ekin(1) - 0.5D0*TotalDim*k_bolt_ev*T0/Hartree)*DeltaT/NoseMass(i)
+    End do
+    i = NumField+1
+    If(CLAMPQ) then
+      gm(i) = 0.0D0
+    else
+      gm(i) = gm(i) + (Ekin(2) - 0.5D0*6*k_bolt_ev*T0/Hartree)*DeltaT/NoseMass(i)
+    end if
+  End if
+
+End Subroutine NoseHooverUpdate
+
+Subroutine BaroState(e0ij, VolumeForce)
+  Use Parameters
+  Implicit none
+  Real*8,  Intent(in)     :: e0ij(3,3) 
+  Real*8,  Intent(out)    :: VolumeForce(3,3)
+  Real*8                  :: delta, L
+  Integer                 :: i
+
+  L = 1.0D0/(NGridx*NGridy*NGridz)/mass(NumField+1)
+  VolumeForce = 0.0D0
+  If((NVE.or.NVT).and.(.not.ClampQ)) then
+    delta = (e0ij(1,1)+1)*(e0ij(2,2)+1)*(e0ij(3,3)+1)
+    Do i = 1, 3
+      VolumeForce(i,i) = -L*delta*(delta-1)/(1+e0ij(i,i))
+    End do
+  End If
+  
+End Subroutine BaroState
+
+Subroutine ApplyEfield(TimeNow, Forces)
+  Use Parameters
+  Use Constants
+  Use Fileparser
+
+  Implicit none
+  character(20)          :: keyword
+  Real*8,  Intent(in)    :: TimeNow
+  Real*8,  Intent(inout) :: Forces(Max(FieldDim, 6),NumField+1,NGridx,NGridy,NGridz)
+  Real*8                 :: EE(3), Ex, Ey, Ez, omega, mu, sigma, t
+  Integer                :: ix, iy, iz
+
+  t = TimeNow*time_fs
+
+  keyword=trim(EfieldType)
+  call caps2small(keyword)
+  Select case(keyword)
+    case('gaussian')
+      omega = EfieldParam(1)/1.0D3
+      sigma = (1.0D0/omega)*40
+      mu    = sigma*5.0D0
+      
+      Ex = EfieldParam(2)*Exp(-(t-mu)**2/(2*sigma**2))*Cos(2*pi*omega*t)
+      Ey = EfieldParam(3)*Exp(-(t-mu)**2/(2*sigma**2))*Cos(2*pi*omega*t)
+      Ez = EfieldParam(4)*Exp(-(t-mu)**2/(2*sigma**2))*Cos(2*pi*omega*t)
+    case('neuromorphic')
+      mu = 50
+
+      Ex = EfieldParam(2)*Exp(-0.05D0*(t-mu))*(-0.1D0+1.0D0/Cosh(0.5D0*(t-mu))**2-0.1D0*Tanh(0.5D0*(t-mu)))
+      Ey = EfieldParam(3)*Exp(-0.05D0*(t-mu))*(-0.1D0+1.0D0/Cosh(0.5D0*(t-mu))**2-0.1D0*Tanh(0.5D0*(t-mu)))
+      Ez = EfieldParam(4)*Exp(-0.05D0*(t-mu))*(-0.1D0+1.0D0/Cosh(0.5D0*(t-mu))**2-0.1D0*Tanh(0.5D0*(t-mu)))
+    case('sin')
+      omega = EfieldParam(1)/1.0D3
+
+      Ex = EfieldParam(2)*DSin(2*pi*omega*t)
+      Ey = EfieldParam(3)*DSin(2*pi*omega*t)
+      Ez = EfieldParam(4)*DSin(2*pi*omega*t)
+    case('dc')
+      Ex = EfieldParam(2)
+      Ey = EfieldParam(3)
+      Ez = EfieldParam(4)
+    case default
+      write(*,*) "Unknown type of electric field!"
+      call abort
+
+  End Select
+
+  EE = (/Ex, Ey, Ez/)
+  If(All(abs(EE) .lt. 1.0D-20)) EE = 0.0D0
+
+  Do ix = 1, NGridx
+  Do iy = 1, NGridy
+  Do iz = 1, NGridz
+    Forces(1:3,1,ix,iy,iz) = Forces(1:3,1,ix,iy,iz) + EE*11.1697*7.464D0
+    Forces(1:3,2,ix,iy,iz) = Forces(1:3,2,ix,iy,iz) + EE*(-3.9183)*7.464D0
+  End do
+  End do
+  End do
+
+End Subroutine ApplyEfield

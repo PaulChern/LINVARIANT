@@ -1,0 +1,42 @@
+Function GetEwaldForces(Fields) Result(EwaldForce)
+  
+  implicit none
+  real*8,  intent(in)           :: Fields(FieldDim, NumField, NGridx, NGridy, NGridz)
+  integer                       :: i, ifield
+  integer                       :: j, jfield, jx, jy, jz
+  integer                       :: ix, iy, iz
+  integer                       :: x, y, z
+  real*8                        :: EwaldForce(Max(FieldDim, 6),NumField+1, NGridx, NGridy, NGridz)
+  real*8                        :: force(3,NumField - 1)
+  
+  EwaldForce = 0.0D0
+
+  do iz = 1, NGridz
+  do iy = 1, NGridy
+  do ix = 1, NGridx
+ 
+  force = 0.0D0
+  do jz = 1, NGridz
+  do jy = 1, NGridy
+  do jx = 1, NGridx
+    Call Pbc(jx-ix, jy-iy, jz-iz, x, y, z)
+    do jfield = 1, NumField - 1
+    call dgemv( 'N', 3, 3, FieldCharge(jfield)*FieldCharge(jfield), EwaldMat(:,:,x,y,z), &
+         3, Fields(1:3,jfield,jx,jy,jz), 1, 1.0D0, force(:,jfield), 1 )
+!    do j = 1, FieldDimList(jfield)
+!    do i = 1, FieldDimList(jfield) ! ifield -> jfield
+!      force = FieldCharge(jfield)*FieldCharge(jfield)*EwaldMat(i,j,x,y,z)*Fields(j,jfield,jx,jy,jz)
+!      EwaldForce(i, jfield, ix, iy, iz) = EwaldForce(i, jfield, ix, iy, iz) - force
+!    end do
+!    end do
+    end do
+  end do
+  end do
+  end do
+  EwaldForce(:, :, ix, iy, iz) = force
+
+  end do
+  end do
+  end do
+  
+End Function GetEwaldForces

@@ -1,0 +1,32 @@
+Subroutine UpdateEwaldField(ix, iy, iz, EwaldField, idelta, delta)
+  Use omp_lib
+  use Parameters
+  
+  Implicit none
+  integer, intent(in)     :: ix, iy, iz, idelta
+  real*8,  intent(inout)  :: EwaldField(FieldDim, NumField, NGridx, NGridy, NGridz)
+  real*8,  intent(in)     :: delta(FieldDimList(idelta))
+  integer                 :: i, j, ifield, jfield, jx, jy, jz, x, y, z
+  
+  !$OMP    PARALLEL  DEFAULT(SHARED) PRIVATE(x,y,z)
+    do i = 1, FieldDimList(idelta)
+  !$OMP    DO COLLAPSE(1)
+    do jz = 1, NGridz
+    do jy = 1, NGridy
+    do jx = 1, NGridx
+    do j = 1, FieldDimList(idelta) ! jfield -> idelta
+      x = (jx-ix+1)-floor(real(jx-ix)/real(NGridx))*NGridx
+      y = (jy-iy+1)-floor(real(jy-iy)/real(NGridy))*NGridy
+      z = (jz-iz+1)-floor(real(jz-iz)/real(NGridz))*NGridz
+      ! jfield -> idelta
+      EwaldField(j,idelta,jx,jy,jz) = &
+      EwaldField(j,idelta,jx,jy,jz) + FieldCharge(idelta)*FieldCharge(idelta)*EwaldMat(j,i,x,y,z)*delta(i)
+    end do
+    end do
+    end do
+    end do
+  !$OMP    END DO
+    end do
+  !$OMP    END PARALLEL
+  
+End Subroutine UpdateEwaldField
