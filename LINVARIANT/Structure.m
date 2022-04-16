@@ -11,6 +11,9 @@ Lattice2Symbolic             ::usage = "Lattice2Symbolic[latt]"
 ImportIsodistortCIF          ::usage = "ImportIsodistortCIF[cif]"
 FixCif                       ::usage = "FixCif[str]"
 PosMatchTo                   ::usage = "PosMatchTo[spos, dpos, tol]"
+SortByPOSCAR                 ::usage = "SortByPOSCAR[pos0, pos]"
+SortIR2POSCAR                ::usage = "SortIR2POSCAR[latt, pos, wyckoff, Basis]"
+StructureSymmetrization      ::usage = "StructureSymmetrization[pos0, pos, spg0]"
 GetStrainTensor              ::usage = "GetStrainTensor[parent, sub]"
 GridPbc                      ::usage = "GridPbc[ixyz, Lxyz]"
 GridNeighbors                ::usage = "GridNeighbors[r0, MeshDim]"
@@ -40,6 +43,8 @@ StructDist                   ::usage = "StructDist[pos1, pos2]"
 StructInterpolation          ::usage = "interpolation[pos1, pos2, rho]"
 GetBonds                     ::usage = "GetBonds[spg0, tij, pos]"
 ImportXSF                    ::usage = "ShiftXSF[dir, fname, shift : {0, 0, 0}]"
+eta2eij                      ::usage = "eta2eij[eta]"
+eij2eta                      ::usage = "eij2eta[eij]"
 
 (*--------- Plot and Manipulate Crystal Structures -------------------- ----------------*)
 
@@ -78,13 +83,16 @@ GetIRvector[id_, IsoMatrix_, pos_] := Module[{IRvector},
   Return[IRvector]
 ]
 
-cif2mcif[file_, id_, IsoMatrix_, pos0_] := Module[{CifTagVec, mcif, cif, vectors},
+cif2mcif[file_, id_, IsoMatrix_, pos0_] := Module[{CifTagVec, mcif, cif, vectors, i, v},
+  v = ConstantArray[{0, 0, 0}, Length[pos0]];
   CifTagVec = {{}, {"loop_"}, {"_atom_site_moment.label"}, {"_atom_site_moment.crystalaxis_x"}, {"_atom_site_moment.crystalaxis_y"}, {"_atom_site_moment.crystalaxis_z"}, {"_atom_site_moment.symmform"}};
-  cif = ImportString[FixCif[Import[file, "string"]<>"\n"],"Table"];
-  vectors = {#2, #1[[1]], #1[[2]], #1[[3]], "mx,my,mz"} & @@@ GetIRvector[id, IsoMatrix, pos0];
+  cif = ImportString[FixCif[Import[file, "string"] <> "\n"], "Table"];
+  vectors = If[NumberQ[id], {#2, #1[[1]], #1[[2]], #1[[3]], "mx,my,mz"} & @@@ GetIRvector[id, IsoMatrix, pos0], 
+                            Do[v = v + (id[[i, 1]] {#1[[1]], #1[[2]], #1[[3]]} & @@@ GetIRvector[id[[i, 2]], IsoMatrix, pos0]), {i, Length[id]}];
+                            Table[{pos0[[i, 2]], v[[i, 1]], v[[i, 2]], v[[i, 3]], "mx,my,mz"}, {i, Length[pos0]}]];
   mcif = Join[cif, CifTagVec, vectors];
   Return[mcif]
-  ]
+]
 
 SymmetryOpOrigin[file_, set_] := Module[{xyzStrData, xyzExpData, newsets, op, posmap, diff, i, j},
   xyzStrData = CifImportOperators[file];
@@ -119,6 +127,23 @@ PosMatchTo[latt_, spos_, dpos_, OptionsPattern["shift"->False]] := Module[{difft
   posmap = First@First@Position[#, x_ /; TrueQ[x == Min[#]]] & /@ difftable;
   newpos = If[OptionValue["shift"], PbcDiff[#]&/@(Table[dpos[[posmap[[i]]]], {i, Length@spos}] - spos) + spos,Table[Mod[dpos[[posmap[[i]]]],1], {i, Length@spos}]];
   Return[{posmap, newpos}]
+]
+
+SortByPOSCAR[pos0_, sites_] := Module[{map},
+  map = PosMatchTo[pos0[[1]], pos0[[2]]\[Transpose][[1]], sites][[1]];
+  {Extract[sites, {#} & /@ map],pos0[[2]]\[Transpose][[2]]}\[Transpose]
+]
+
+SortIR2POSCAR[latt_, pos_, wyckoff_, Basis_] := Module[{map},
+  Which[Length[Dimensions[Basis]] > 1, SortIR2POSCAR[latt, pos, wyckoff, #] & /@ Basis,
+        True, map = PosMatchTo[latt, pos\[Transpose][[1]], wyckoff\[Transpose][[1]]][[1]];
+        Flatten[Extract[Partition[Basis, 3], {#} & /@ map]]
+        ]
+]
+
+StructureSymmetrization[pos0_, pos_, spg0_] := Module[{sites, p},
+  sites = Total[SortByPOSCAR[pos0, Table[Mod[(#1 . Append[p, 1])[[1 ;; 3]], 1], {p, pos[[2]]\[Transpose][[1]]}]]\[Transpose][[1]] & @@@ (Values[spg0])]/Length[spg0];
+  Return[{pos0[[1]], {sites, pos0[[2]]\[Transpose][[2]]}\[Transpose]}]
 ]
 
 SymmetryOpVectorField[grp_, pos_, vec_, ftype_] := Block[{latt, sites, originshift, xyzStrData, rt, tran, rot, field, newpos, newvec, difftable, diff, posmap, i, j},
@@ -549,7 +574,7 @@ ImportXSF[dir_, fname_, shift_ : {0, 0, 0}] := Module[{xsf, latt, data, header, 
   pos = {#[[2 ;; 4]] + ushift, #[[1]]} & /@ (ToExpression[First[StringSplit[#]] & /@ (data[[lineatom + 1 ;; lineatom + natom]])]);
   header = data[[1 ;; line1 - 1]];
   footer = data[[line2 + 1 ;;]];
-  body = Flatten[ToExpression[StringSplit[StringReplace[#, {"E" -> "*^"}]]] & /@ (data[[line1 ;; line2]])];
+  body = Flatten[ToExpression[StringSplit[StringReplace[#, {"E" -> "*^", "e" -> "*^"}]]] & /@ (data[[line1 ;; line2]])];
   data1 = Table[body[[ix + (iy - 1) ngx + (iz - 1) ngx ngy]], {iz, ngz}, {iy,ngy}, {ix, ngx}];
   If[Norm[shift] == 0, 
      data2 = data1,
@@ -558,6 +583,25 @@ ImportXSF[dir_, fname_, shift_ : {0, 0, 0}] := Module[{xsf, latt, data, header, 
      Export[dir <> fname <> "_" <> ToString[tx] <> "_" <> ToString[ty] <> "_" <> ToString[tz] <> ".xsf", out, "Table"]];
   Close[xsf];
   Return[{{latt, pos}, {ngz, ngy, ngx}, data2}]
+]
+
+eta2eij[eta_] := Module[{eij},
+  eij=ConstantArray[0,{3,3}];
+  eij[[1,1]] = eta[[1]];
+  eij[[2,2]] = eta[[2]];
+  eij[[3,3]] = eta[[3]];
+  eij[[2,3]] = eta[[4]];
+  eij[[3,1]] = eta[[5]];
+  eij[[1,2]] = eta[[6]];
+  eij[[3,2]] = eij[[2,3]];
+  eij[[1,3]] = eij[[3,1]];
+  eij[[2,1]] = eij[[1,2]];
+  Return[eij]
+]
+
+eij2eta[eij_] := Module[{eta},
+  eta = {eij[[1,1]], eij[[2,2]], eij[[3,3]], eij[[2,3]], eij[[1,3]], eij[[1,2]]};
+  Return[eta]
 ]
 
 (*-------------------------- Attributes ------------------------------*)

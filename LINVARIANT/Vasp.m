@@ -3,6 +3,7 @@ BeginPackage["LINVARIANT`Vasp`", {"LINVARIANT`INVARIANT`", "LINVARIANT`Structure
 (*--------- Load, Save and Modify Crystal Structure Libraries ------------*)
 ImportPOSCAR                 ::usage "ImportPOSCAR[f]"
 ExportPOSCAR                 ::usage "ExportPOSCAR[dir, fname, f]"
+ExportOPTCELL                ::usage "ExportOPTCELL[fname, character]"
 ExportCHG                    ::usage "ExportCHG[dir, poscar, chg]"
 ParseVasprunBands            ::usage "ParseVasprunBands[xml]"
 ParseVasprunFatBands         ::usage "ParseVasprunFatBands[xml]"
@@ -25,6 +26,10 @@ ReadVpot                     ::usage "ReadVpot[file]"
 GetWannierFunc               ::usage "GetWannierFunc[iw, R, chk, wavecar_, vasprun]"
 BundleUp                     ::usage "BundleUp[x, f, l]"
 BundleDn                     ::usage "BundleUp[fx, l]"
+GetElasticModuli             ::usage "GetElasticModuli[file, vol]"
+GetDielectricTensor          ::usage "GetDielectricTensor[file]"
+ReadForceConstants           ::usage "ReadForceConstants[file]"
+
 (*--------- Plot and Manipulate Crystal Structures -------------------- ----------------*)
 
 (*--------- Point and Space Group Information ---------------------------*)
@@ -88,7 +93,7 @@ ImportPOSCAR[f_] := Module[{inp, Latt, xyz, xyzType, EleType, EleNum, TotalNum},
   TotalNum = Total[EleNum];
   xyzType = ToLowerCase[Read[inp, String]];
   xyz = ReadList[inp, String, RecordLists -> True][[1 ;; TotalNum]];
-  xyz = {ParseFortranNumber[First[StringSplit[#1]][[1 ;; 3]]], #2} & @@@ ({xyz, Flatten[ConstantArray @@@ ({EleType, EleNum}\[Transpose])]}\[Transpose]);
+  xyz = {ParseFortranNumber[First[StringSplit[#1]][[1 ;; 3]]], #2} & @@@ ({xyz, Flatten[Table[#1 <> ToString[i], {i, #2}] & @@@ ({EleType, EleNum}\[Transpose])]}\[Transpose]);
   Close[inp];
   Return[{Latt, xyz}]
 ]
@@ -103,6 +108,13 @@ ExportPOSCAR[dir_, fname_, f_, OptionsPattern[{"head"->"From Mathematica"}]] := 
                            {{"Direct"}}, 
                            {Table[ToString[NumberForm[DecimalForm[N@i], {17, 16}]], {i, #[[1]]}], #[[2]]} & /@ (pos[[2]])];
   Export[dir <> "/" <> fname, POSCAR, "Table", "FieldSeparators" -> "    "]
+]
+
+ExportOPTCELL[fname_, character_] := Module[{eta, n, i, j, e, sub, optcell},
+  eta = eta2eij[character];
+  optcell = Flatten[Riffle[Table[sub = Thread[Table[Subscript[e, i, j], {i, 3}, {j, 3}] . (eta[[n, ;;]]) -> (eta[[n, ;;]])];
+                                 Table[Subscript[e, i, j], {i, 3}, {j, 3}] /. sub /. Subscript[e, __] -> 0, {n, 3}], {{}}], 1];
+  Export[fname, optcell, "Table", "FieldSeparators" -> " "];
 ]
 
 ExportCHG[dir_, poscar_, chg_] := Module[{CGrid, rowdata, data, latt, pos, head},
@@ -452,6 +464,44 @@ GetWannierFunc[iw_, R_, chk_, wavecar_, vasprun_, OptionsPattern[{"refine" -> 1}
   Wann = Sum[Exp[-I 2 Pi klist[[ik]].R] UPsik[ik,iw,UmatOpt,Umat,lwindow,ndimwin,wavecar,OptionValue["refine"]], {ik, NumKpoints}]/NumKpoints;
   Return[Wann]
 ]
+
+GetElasticModuli[file_, vol_] := Module[{KBar2eV, mat, out, outcar, tmp, Cijkl},
+  KBar2eV = 0.1 vol/160.21766208;
+  mat = {};
+  outcar = OpenRead[file];
+  Find[outcar, "TOTAL ELASTIC MODULI (kBar)"];
+  tmp = ReadLine[outcar];
+  tmp = ReadLine[outcar];
+  Do[AppendTo[mat, ParseFortranNumber[outcar][[2 ;; 7]]], {6}];
+  Cijkl = SparseArray[{{i_, i_, i_, i_} -> ToExpression["C1111"], 
+                       {i_, i_, j_, j_} /; i != j -> ToExpression["C1122"], 
+                       {i_, j_, i_, j_} /; i != j -> ToExpression["C1212"]}, {3, 3, 3, 3}];
+  out = DeleteDuplicates@Flatten[Table[Which[i == j && k == l,
+                                             Cijkl[[i, j, k, l]] -> mat[[i, k]] KBar2eV,
+                                             i == k && j == l && i != j,
+                                             Cijkl[[i, j, k, l]] -> mat[[i + 3, i + 3]] KBar2eV,
+                                             True, ## &[]], {i, 3}, {j, 3}, {k, 3}, {l, 3}]];
+  Return[out]
+]
+
+GetDielectricTensor[file_] := Module[{KBar2eV, mat, out, outcar, tmp},
+  mat = {};
+  outcar = OpenRead[file];
+  Find[outcar, "MACROSCOPIC STATIC DIELECTRIC TENSOR (including local field effects in RPA (Hartree))"];
+  tmp = ReadLine[outcar];
+  Do[AppendTo[mat, ParseFortranNumber[outcar]], {3}];
+  Return[mat]
+]
+
+ReadForceConstants[file_] := Module[{data, NumAtom0, NumAtom, FC},
+  data = ReadList[file, Number, RecordLists -> True];
+  {NumAtom0, NumAtom} = data[[1]];
+  FC = Association[#1 -> {#2, #3, #4} & @@@
+     Partition[data[[2 ;;]], 4]];
+  FC = Table[FC[{i, j}], {i, NumAtom0}, {j, NumAtom}];
+  Return[FC]
+]
+
 (*-------------------------- Attributes ------------------------------*)
 
 (*Attributes[]={Protected, ReadProtected}*)

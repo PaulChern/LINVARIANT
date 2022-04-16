@@ -49,7 +49,7 @@ GetVariationVar[var_] := Module[{\[Delta]var, varnew},
 NOrderResponse[eqn_, var_, n_] := Module[{\[Epsilon], exp, varnew},
   varnew = ToExpression[GetVariationVar[#]] &/@ var;
   exp = Normal[Series[eqn /. Thread[var -> (var + \[Epsilon] varnew)], {\[Epsilon], 0, n}]];
-  Expand[(exp /. {\[Epsilon] -> 1}) - (exp /. {\[Epsilon] -> 0})]
+  Expand[(exp /. {\[Epsilon] -> 1}) - (exp /. {\[Epsilon] -> 0})] /.{0.->0}
 ]
 
 GetSubscriptInfo[atom_] := Module[{},

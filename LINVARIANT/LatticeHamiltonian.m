@@ -4,8 +4,8 @@ BeginPackage["LINVARIANT`LatticeHamiltonian`",{"LINVARIANT`Structure`","LINVARIA
 ReadQpoint                   ::usage "ReadQpoint[filename]"
 ReadBands                    ::usage "ReadBands[filename]"
 ModesSum                     ::usage "ModesSum[list, Modes]"
-ReadForceConstants           ::usage "ReadForceConstants[file]"
 ImposeTranslationalSymmetry  ::usage "ImposeTranslationalSymmetry[FC]"
+FCSymmetrization             ::usage "FCSymmetrization[pos0, spg0, tgrp, FC]"
 FC2Fi0Bonds                  ::usage "FC2Fi0Bonds[FC, pos, NSC]"
 GetHessianOnSite             ::usage "GetHessianOnSite[InvList, vars, CoeffStr]"
 Invariant2Fi0Bonds           ::usage "Invariant2Fi0Bonds[InvList, vars, CoeffStr]"
@@ -46,23 +46,27 @@ ModesSum[list_, Modes_] := Module[{modes, i},
   Return[Sum[i[[2]] #\[Transpose][[1]] & /@ Modes[[i[[1]]]][[2]], {i, list}]];
 ]
 
-ReadForceConstants[file_] := Module[{data, NumPos, FC},
-  data = ReadList[file, Number, RecordLists -> True];
-  NumPos = First@data[[1]];
-  FC = Association[#1 -> {#2, #3, #4} & @@@ 
-     Partition[data[[2 ;;]], 4]];
-  FC = Table[FC[{i, j}], {i, NumPos}, {j, NumPos}];
-  Return[FC]
+FCSymmetrization[pos0_, spg0_, tgrp_, FC_, OptionsPattern[{"round" -> 10^-4, "iter" -> 3}]] := Module[{latt, sites, atomics, label, op, ni, nj, na, nb, dim, SymFC},
+  {latt, sites} = pos0;
+  atomics = IdentityMatrix[3 Length[sites]];
+  label = Flatten[Table[# <> \[Alpha], {\[Alpha], {"x", "y", "z"}}] & /@ (pos0[[2]]\[Transpose][[2]])];
+  op = Chop[GetMatrixRep[spg0, tgrp, pos0, atomics, label, "disp"], OptionValue["round"]];
+  {ni, nj, na, nb} = Dimensions[FC];
+  dim = ni na;
+  SymFC = ArrayFlatten[FC];
+  Do[SymFC = (# - Total[#]/dim) & /@ SymFC;
+     SymFC = ((# - Total[#]/dim) & /@ (SymFC\[Transpose]))\[Transpose];
+     SymFC = Chop[Total[# . SymFC . (#\[Transpose]) & /@ op]/Length[op]], {OptionValue["iter"]}];
+  SymFC = (Partition[#, 3] & /@ ((Partition[#, 3] & /@ SymFC)\[Transpose]))\[Transpose];
+  Return[SymFC]
 ]
 
 ImposeTranslationalSymmetry[FC_] := Module[{ni, nj, na, nb, dim, SymFC},
   {ni, nj, na, nb} = Dimensions[FC];
   dim = ni na;
-  SymFC = (# - Total[#]/dim) & /@ ArrayFlatten[FC];
-  SymFC = ((# - Total[#]/dim) & /@ (SymFC\[Transpose]))\[Transpose];
-  SymFC = (Partition[#,
-        3] & /@ ((Partition[#, 3] & /@
-          SymFC)\[Transpose]))\[Transpose];
+  Do[SymFC = (# - Total[#]/dim) & /@ ArrayFlatten[FC];
+     SymFC = ((# - Total[#]/dim) & /@ (SymFC\[Transpose]))\[Transpose], {3}];
+  SymFC = (Partition[#,3] & /@ ((Partition[#, 3] & /@ SymFC)\[Transpose]))\[Transpose];
   Return[SymFC]
 ]
 
@@ -84,19 +88,32 @@ GetDynamicMatrixOld[FC_, pos_, q_, NSC_, OptionsPattern["tol" -> 0.1]] := Module
   Return[{HermiteDM, ppos}]
 ]
 
-FC2Fi0Bonds[FC_, pos_, NSC_, OptionsPattern["tol" -> 0.1]] := Module[{latt, sites, p2s, Fi0, Nij, ppos, spos, NumPpos, NumSpos, NeighborList, shift, imagevec, ImageVectorList, vectors, multi, Nx, Ny, Nz, i, j, s1, s2, s3},
+FC2Fi0Bonds[FC_, pos_, NSC_, OptionsPattern["tol" -> 0.1]] := Module[{latt, sites, p2s, Fi0, Nij, ppos, spos, poscar, NumPpos, NumSpos, NeighborList, shift, imagevec, ImageVectorList, vectors, multi, Nx, Ny, Nz, i, j, s1, s2, s3, bonds},
   Nij = DiagonalMatrix[NSC];
   {latt, sites} = pos;
   {Nx, Ny, Nz} = NSC;
   NeighborList = Flatten[Table[{i, j, k} - {1, 1, 1}, {i, Nx}, {j, Ny}, {k, Nz}], 2];
-  spos = Join[{latt}, {{Rationalize@Chop[Inverse[latt].Nij.latt.#1], #2} & @@@ sites}];
-  ppos = Join[{Inverse[Nij].spos[[1]]}, {DeleteDuplicates[{Rationalize@Mod[Chop[Inverse[latt].Nij.latt.#1], 1], #2} & @@@ sites, ((Norm[#1[[1]] - #2[[1]]] < OptionValue["tol"])&&(#1[[2]]===#2[[2]])) &]}];
+
+  If[Det[Nij] < 0,
+     spos = Join[{latt}, {{Rationalize@Chop[Inverse[latt].Inverse[Nij].latt.#1], #2} & @@@ sites}];
+     ppos = Join[{Nij.latt}, {DeleteDuplicates[{Rationalize@Mod[Chop[Inverse[latt].Inverse[Nij].latt.#1], 1], #2} & @@@ sites, ((Norm[#1[[1]] - #2[[1]]] < OptionValue["tol"])&&(#1[[2]]===#2[[2]])) &]}];
+     poscar = ppos,
+     ppos=pos;
+     spos = {Nij.latt, Flatten[Table[{#[[1]] + {i - 1, j - 1, k - 1}, #[[2]]}, {i, Nx}, {j, Ny}, {k, Nz}] &/@ sites, 3]};
+     poscar = spos
+  ];
+
   NumPpos = Length[ppos[[2]]];
   NumSpos = Length[spos[[2]]];
-  p2s = Association[Thread[NeighborList -> Table[Association[Table[i -> First@First@Position[Rationalize[Norm[ppos[[2]][[i]][[1]] + shift - #1]] & @@@ spos[[2]], 0], {i, NumPpos}]], {shift, NeighborList}]]];
-  ImageVectorList = Table[vectors = {Norm[ppos[[1]]\[Transpose].#1], #1, #2} & @@@ Flatten[Table[{spos[[2]][[j, 1]] + NSC {s1, s2, s3} - spos[[2]][[i, 1]], NSC {s1, s2, s3}}, {s1, {-1, 0, 1}}, {s2, {-1, 0, 1}}, {s3, {-1, 0, 1}}], 2]; Association[GroupBy[vectors, First]][Min[vectors\[Transpose][[1]]]], {i, NumSpos}, {j, NumSpos}];
-  Fi0 = Flatten[Table[multi = Length[ImageVectorList[[p2s[{0, 0, 0}][i], p2s[shift][j]]]]; Table[{{i, j}, shift + imagevec[[3]], multi, FC[[p2s[{0, 0, 0}][i], p2s[shift][j]]]}, {imagevec, ImageVectorList[[p2s[{0, 0, 0}][i], p2s[shift][j]]]}], {shift, Keys@p2s}, {i, NumPpos}, {j, NumPpos}], 3];
-  Return[{Fi0, ppos}]]
+  p2s = Association[Thread[NeighborList -> Table[Association[Table[i -> First@First@Position[Rationalize[Norm[ppos[[2]][[i]][[1]] + shift - #1]] & @@@ (spos[[2]]), 0], {i, NumPpos}]], {shift, NeighborList}]]];
+
+  ImageVectorList = Table[bonds = PbcDiff[spos[[2]][[j, 1]] - ppos[[2]][[i, 1]], NSC];
+                          Flatten[Table[If[Chop[Norm[bonds] - Norm[bonds + NSC {s1, s2, s3}]] == 0., {Norm[bonds], bonds, NSC {s1, s2, s3}}, ## &[]], {s1, {-1, 0, 1}}, {s2, {-1, 0, 1}}, {s3, {-1, 0, 1}}], 2], {i, NumPpos}, {j, NumSpos}];
+
+  Fi0 = Flatten[SortBy[#, #[[1]] &] & /@ Values@GroupBy[Flatten[Table[multi = Length[ImageVectorList[[i, p2s[shift][j]]]];
+        Table[{{i, j}, PbcDiff[shift,NSC] + imagevec[[3]], multi, FC[[p2s[{0,0,0}][i], p2s[shift][j]]]}, {imagevec, ImageVectorList[[i, p2s[shift][j]]]}], {shift, Keys@p2s}, {i, NumPpos}, {j, NumPpos}], 3], #[[2]] &], 1];
+
+  Return[{Fi0, poscar}]]
 
 GetDynamicMatrix[Fi0_, pos_, q_] := Module[{latt, sites, HermiteDM, dm, dmBlock, NumPos, mass, ele, amu, s, mfactor, Vasp2THz = 15.633302300230191, i, j},
   {latt, sites} = pos;
@@ -114,7 +131,7 @@ GetDynamicMatrix[Fi0_, pos_, q_] := Module[{latt, sites, HermiteDM, dm, dmBlock,
 
 PhononBandsPlot[Fi0_, pos_, klist_, kintv_, OptionsPattern[{"range" -> All}]] := Module[{latt, sites, pdata, q, DM, sol, kpath, xticks, BandsPlot},
   {latt, sites} = pos;
-  {kpath, xticks} = GetKpath[klist, kintv];
+  {kpath, xticks} = GetKpath[latt, klist, kintv];
   pdata = Table[DM = GetDynamicMatrix[Fi0, pos, q[[2]]];
                 sol = Eigenvalues[DM];
                 Sort[{q[[1]], ReIm[Sqrt[#]].{1,-1}} &/@ sol], {q, kpath}]; 

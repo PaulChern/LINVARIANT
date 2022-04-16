@@ -1,4 +1,4 @@
-BeginPackage["LINVARIANT`Parser`"]
+BeginPackage["LINVARIANT`Parser`", {"LINVARIANT`MathematicaPlus`"}]
 
 (*--------- Load, Save and Modify Crystal Structure Libraries ------------*)
 ParseXML                     ::usage "ParseXML[xml, tag, label, level]"

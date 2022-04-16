@@ -7,7 +7,6 @@ GetStrain          ::usage = "GetStrain[parent, sub]"
 GenTraningSets     ::usage = "GenTraningSets[AllModes, num, PhaseName, type]"
 GenStrainSets      ::usage = "GenStrainSets[LatticeVector, type, num]"
 GoalFunction       ::usage = "GoalFunctionEnergy[func, volume, trainingset, coeff]"
-GetElasticModuli   ::usage = "GetElasticModuli[file, volume]"
 ReadInvariant      ::usage = "ReadInvariant[invariants_, \[CapitalGamma]4_]"
 GetTensor          ::usage = "GetTensor[IvariantTerm]"
 LandauInvariant    ::usage = "LandauInvariant[]"
@@ -180,15 +179,6 @@ GenStrainSets[LatticeVector_, PhaseName_, type_, num_] := Module[{i, N, R, DirNa
 GoalFunction[func_, volume_, ts_, coe_] := Module[{},
   Total[((func /. coe /. Thread[{aa, AA, bb, BB, CC, cc, Subscript[P, 1], Subscript[P, 2], Subscript[P, 3], Subscript[\[Epsilon], 1, 1], Subscript[\[Epsilon], 2, 2], Subscript[\[Epsilon], 3, 3], Subscript[\[Epsilon], 1, 2], Subscript[\[Epsilon], 2, 3], Subscript[\[Epsilon], 1, 3]} -> #[[3]]]) - #[[2]]/volume)^2 & /@ ts]
 ]
-
-GetElasticModuli[file_, volume_] := Module[{KBar, KBar2meV, Cijkl},
-  KBar2meV = 0.1*1000/160.21766208;
-  KBar = Select[Import[file, {"Data"}], UnsameQ[#, {}] &];
-  Cijkl = SparseArray[{{i_, i_, i_, i_} -> Subscript[C, 1111],
-                       {i_, i_, j_, j_} /; i != j -> Subscript[C, 1122],
-                       {i_, j_, i_, j_} /; i != j -> Subscript[C, 1212]}, {3, 3, 3, 3}];
-  DeleteDuplicates@Flatten[Table[Which[i == j && k == l, Cijkl[[i, j, k, l]] -> KBar[[i, k]] KBar2meV, i == k && j == l && i != j, Cijkl[[i, j, k, l]] -> KBar[[i + 3, i + 3]] KBar2meV, True, ## &[]], {i, 3}, {j, 3}, {k, 3}, {l, 3}]]
-]   
 
 ReadInvariant[invariants_, \[CapitalGamma]4_] := Module[{R, X5, ops, IsoVarsX5, IsoVars\[CapitalGamma]4, IsoInvOrder, InvariantTerms},
   R = {x, y, z};
