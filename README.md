@@ -18,6 +18,12 @@
 ### solvers:
 - (1) Finite Element Method (FEM), (2) Minimization, (3) molecular dynamics (MD), (4) Monte Carlo (MC), and (5) Finite Differences nonlinear solver on large scale continuous model
 - Parallel tempering algorithm is available with both MC and MD
+### fitting:
+- Basis (ionic): phonon/irreducible representation/atomistic basis
+- Basis (electronic): pesudo-atomic/Wannier basis
+- structures searching by energy invariants
+- machine learning of energy invariants and their energy potential surfaces
+- supervised model fitting
 ### Auxiliary:
 - Write Fortran using mathematica
 - interface to VASP, Quantum Espresso, and OpenMX
@@ -25,6 +31,7 @@
 - mpi and openmp parallelization
 - dynamics under external electric field
 - Jij of Heisenberg model from DFT by Liechtenstein formalism
+- Fij (force constants) from tight-binding models
 - Electron/phonon bands unfolding
 - phonon/magnon calculations from DFT input
 - X ray diffraction simulation
@@ -42,6 +49,6 @@
 ## Authors
 * **Peng Chen** - peng.chen.iphy@gmail.com
 * **Hongjian Zhao** - solidstatezhao@gmail.com
-* **Sergey Artyukhin** - sergey.artyukhin@iit.it  <br />
-
+* **Sergey Artyukhin** - sergey.artyukhin@iit.it
+* **Laurent Bellaiche** - laurent@uark.edu   <br />
 See also the list of [contributors](https://github.com/PaulChern/LINVARIANT/contributors) who participated in this project.
