@@ -16,6 +16,7 @@ Unfolding                    ::usage "Unfolding[PhononNK, G, DMPos, SPCPos, NSC]
 UnfoldingPW                  ::usage "UnfoldingPW[PhononNK, Gsc, DMPos, SPCPos, NSC]"
 PhononUnfolding              ::usage "PhononUnfolding[Fi0, DMPos, StdPos, q, Qbz, unfoldDim]"
 GetEwaldMatrix               ::usage "GetEwaldMatrix[NGrid, tol]"
+ArrayFold2D                  ::usage "ArrayFold2D[list, n]"
 (*--------- Plot and Manipulate Crystal Structures -------------------- ----------------*)
 
 (*--------- Point and Space Group Information ---------------------------*)
@@ -68,6 +69,10 @@ ImposeTranslationalSymmetry[FC_] := Module[{ni, nj, na, nb, dim, SymFC},
      SymFC = ((# - Total[#]/dim) & /@ (SymFC\[Transpose]))\[Transpose], {3}];
   SymFC = (Partition[#,3] & /@ ((Partition[#, 3] & /@ SymFC)\[Transpose]))\[Transpose];
   Return[SymFC]
+]
+
+ArrayFold2D[list_, n_] := Module[{},
+    (Partition[#,n] & /@ ((Partition[#, n] & /@ list)\[Transpose]))\[Transpose]
 ]
 
 GetDynamicMatrixOld[FC_, pos_, q_, NSC_, OptionsPattern["tol" -> 0.1]] := Module[{latt, sites, p2s, Nij, HermiteDM, dm, ppos, spos, NumPpos, NumSpos, mass, NeighborList, ImageVectorList, vectors, multi, Nx, Ny, Nz, i, j, \[Alpha], \[Beta], s1, s2, s3, posdiff, Vasp2THz = 15.633302300230191},

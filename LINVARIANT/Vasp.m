@@ -110,10 +110,12 @@ ExportPOSCAR[dir_, fname_, f_, OptionsPattern[{"head"->"From Mathematica"}]] := 
   Export[dir <> "/" <> fname, POSCAR, "Table", "FieldSeparators" -> "    "]
 ]
 
-ExportOPTCELL[fname_, character_] := Module[{eta, n, i, j, e, sub, optcell},
-  eta = eta2eij[character];
-  optcell = Flatten[Riffle[Table[sub = Thread[Table[Subscript[e, i, j], {i, 3}, {j, 3}] . (eta[[n, ;;]]) -> (eta[[n, ;;]])];
-                                 Table[Subscript[e, i, j], {i, 3}, {j, 3}] /. sub /. Subscript[e, __] -> 0, {n, 3}], {{}}], 1];
+ExportOPTCELL[fname_, character_, OptionsPattern[{"constrain"->True}]] := Module[{eta, n, i, j, e, sub, optcell},
+  optcell = If[OptionValue["constrain"],
+               eta = eta2eij[character];
+               Flatten[Riffle[Table[sub = Thread[Table[Subscript[e, i, j], {i, 3}, {j, 3}] . (eta[[n, ;;]]) -> (eta[[n, ;;]])];
+                                 Table[Subscript[e, i, j], {i, 3}, {j, 3}] /. sub /. Subscript[e, __] -> 0, {n, 3}], {{}}], 1],
+               Flatten[If[Norm[character]==0, Table[0, {3}, {3}, {3}], Table[IdentityMatrix[3], {3}]], 1]];
   Export[fname, optcell, "Table", "FieldSeparators" -> " "];
 ]
 
@@ -481,6 +483,7 @@ GetElasticModuli[file_, vol_] := Module[{KBar2eV, mat, out, outcar, tmp, Cijkl},
                                              i == k && j == l && i != j,
                                              Cijkl[[i, j, k, l]] -> mat[[i + 3, i + 3]] KBar2eV,
                                              True, ## &[]], {i, 3}, {j, 3}, {k, 3}, {l, 3}]];
+  Close[outcar];
   Return[out]
 ]
 
@@ -490,6 +493,7 @@ GetDielectricTensor[file_] := Module[{KBar2eV, mat, out, outcar, tmp},
   Find[outcar, "MACROSCOPIC STATIC DIELECTRIC TENSOR (including local field effects in RPA (Hartree))"];
   tmp = ReadLine[outcar];
   Do[AppendTo[mat, ParseFortranNumber[outcar]], {3}];
+  Close[outcar]
   Return[mat]
 ]
 

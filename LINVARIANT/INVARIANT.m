@@ -60,7 +60,7 @@ Epsilon
 Begin["`Private`"]
 
 (*--------------------------- Modules ----------------------------*)
-ShowIsoModes[PosVec_] := Module[{StructData},
+ShowIsoModes[PosVec_, OptionsPattern[{"imagesize"->300}]] := Module[{StructData, ArrowData},
   StructData = Table[{ElementData[i[[3]], "IconColor"], 
                       Sphere[i[[1]], QuantityMagnitude[ElementData[i[[3]], "AtomicRadius"], "Angstroms"]/2], 
                       Black, 
@@ -72,15 +72,18 @@ ShowIsoModes[PosVec_] := Module[{StructData},
                      Arrow@Tube[{i[[1]], 
                      i[[1]] + i[[2]]}]}, {i, PosVec}];
 
-  Print[Graphics3D[{StructData, ArrowData}, 
-                   ImageSize -> 500, 
-                   Axes -> True, 
-                   AxesLabel -> (Style[#, Bold, 64]&/@{"a", "b", "c"}), 
-                   ViewPoint -> {0, 0, \[Infinity]}]];
+  Graphics3D[{StructData, ArrowData},
+              ImagePadding -> {{75, 75}, {75, 75}},
+              ImageSize -> OptionValue["imagesize"], 
+              Axes -> True, 
+              AxesLabel -> (Style[#, Bold, 32]&/@{"a", "b", "c"}), 
+              ViewPoint -> {0, 0, \[Infinity]}]
 ]
 
-ISODISTORT[Lattice_, pos0_, pos_, IsoMatrix_, label_, OptionsPattern[{"round"->10.0^-6}]] := Module[{imode, Amp, NN, posmatched, phonon, basis, origin, posshifted},
-  posmatched = Transpose[{PosMatchTo[Lattice, pos0\[Transpose][[1]], pos\[Transpose][[1]]][[2]], Transpose[pos0][[2]]}];
+ISODISTORT[Lattice_, pos0_, pos_, IsoMatrix_, label_, OptionsPattern[{"round"->10.0^-6, "match"->True}]] := Module[{imode, Amp, NN, posmatched, phonon, basis, origin, posshifted},
+  posmatched = If[OptionValue["match"], 
+                  Transpose[{PosMatchTo[Lattice, pos0\[Transpose][[1]], pos\[Transpose][[1]]][[2]], Transpose[pos0][[2]]}],
+                  pos];
   origin = Total[PbcDiff[#] & /@ (posmatched\[Transpose][[1]] - pos0\[Transpose][[1]])]/Length[pos0];
   posshifted = {#1-origin, #2} &@@@ posmatched;
 
@@ -371,9 +374,10 @@ NumPolynomialVar[x_] := Module[{},
                                    If[Head[PowerExpand[Log[x]]] === Plus, Length[PowerExpand[Log[x]]], 1]]]
 ]
 
-PolynomialOrder[x_, vars_] := Module[{},
-Which[ListQ[x], PolynomialOrder[#, vars] &/@ x, 
-      Head[x]===Plus, Total@Exponent[First[Level[x,1]], vars], True, Total@Exponent[x, vars]]
+PolynomialOrder[x_, vars_, OptionsPattern[{"tot" -> True}]] := Module[{},
+  Which[ListQ[x], PolynomialOrder[#, vars] & /@ x, 
+        Head[x] === Plus, If[OptionValue["tot"], Total@Exponent[First[Level[x, 1]], vars], Exponent[First[Level[x, 1]], vars]], 
+        True, If[OptionValue["tot"], Total@Exponent[x, vars], Exponent[x, vars]]]
 ]
 
 StrainInvQ[x_, e_] := Module[{}, If[ListQ[x], StrainInvQ[#, e] & /@ x, MemberQ[Level[x, All], e]]]
@@ -404,15 +408,17 @@ GetInvariants[TRules_, seeds_, order_, OptionsPattern[{"MustInclude"->{{{},{}}},
                             fixseeds=Flatten[GenMonomialList[#1,i]];
                             If[i<n,{ConstantArray[i,Length@fixseeds],fixseeds}\[Transpose],{}], {i, #2}] &@@@ OptionValue["MustInclude"],2];
     Flatten[#]&/@(Table[Expand[# ss[[2]]] & /@ GenMonomialList[seeds,n-ss[[1]]], {ss, fixlist}]\[Transpose])];
-  invariant = Table[DeleteDuplicates[DeleteCases[Chop[Expand[Total[MonomialTransform[m, TRules]], OptionValue["round"]]], i_/;i==0], (Chop[#1 -#2] == 0 || Chop[#1 + #2] == 0) &], {m, monomials}];
+  invariant = Table[DeleteDuplicates[DeleteCases[Chop[Expand[Total[MonomialTransform[m, TRules]]], OptionValue["round"]], i_/;i==0], (Chop[#1 -#2]*Chop[#1 + #2] == 0) &], {m, monomials}];
   If[OptionValue["Simplify"], SimplifyCommonFactor[#,OptionValue["round"]] &/@ invariant, invariant], {n, order}];
   ReducedOut = Table[DeleteDuplicates[#, (#1 - #2 == 0 || #1 + #2 == 0 || Expand[#1 + I #2] == 0 || Expand[#1 - I #2] == 0) &] &/@ invariant, {invariant,out}];
-  SortedOut = Table[SortInvByNumVar[#] &/@ (ReducedOut[[i]]), {i,order}];
+  SortedOut = Table[SortInvByNumVar[#] &/@ invariant, {invariant, ReducedOut}];
   Do[mm = PolynomialReduce[#, Flatten@m, Join[Flatten@seeds,Flatten[OptionValue["MustInclude"]\[Transpose][[1]]]]] & /@ Flatten[m];
         If[! (DiagonalMatrixQ[Quiet[mm\[Transpose][[1]]]] || (Flatten@m === {})), 
            Print["Warnning! ", "polynomial may not be independent: ", MatrixForm[mm]]], {m, SortedOut}];
   Return[SortedOut]
 ]
+
+
 
 NumberCommonDivisor[NumList_,prec_:10^-12] := Module[{TempList, DenominatorLCM},
  TempList = Which[Head[#] === Real, Round[#,prec], Head[#] === Integer, #, Head[#] === Times, First@Level[#, {1}], Head[#] === Power, 1, Head[#] === Rational, #, (Head[#] === Complex)&&(Re[#]!=0), Abs[#], (Head[#] === Complex)&&(Re[#]==0), #] &/@ NumList;

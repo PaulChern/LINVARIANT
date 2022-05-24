@@ -351,7 +351,8 @@ GetStrainTensor[parent_, sub_, OptionsPattern["iso"->True]] := Module[{e, strain
              e = N[sub[[6]] /. sub[[8]]].Inverse[N[parent[[6]] /. parent[[8]]]] - IdentityMatrix[3];
              1/2 (e + Transpose[e] + Transpose[e].e),
              e = sub.Inverse[parent] - IdentityMatrix[3];
-             1/2 (e + Transpose[e] + Transpose[e].e)]
+             1/2 (e + Transpose[e] + 0*Transpose[e].e)];
+  Return[strain]
 ]
 
 GridPbc[ixyz_, Lxyz_] := Module[{}, Mod[ixyz - 1, Lxyz] + 1]

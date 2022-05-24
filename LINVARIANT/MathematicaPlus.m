@@ -14,6 +14,7 @@ MakeMatrixBlock        ::usage "MakeMatrixBlock[mat, dim]"
 SimpsonIntegrate       ::usage "SimpsonIntegrate[f, x]"
 RectangleIntPath       ::usage "ComplexIntegratePath[spt, ept, npt, ratio]"
 partitionBy            ::usage "partitionBy[l, p]"
+CloneReshape2D         ::usage "CloneReshape2D[array0, array1]"
 
 (*--------- Plot and Manipulate Crystal Structures -------------------- ----------------*)
 
@@ -30,6 +31,13 @@ partitionBy            ::usage "partitionBy[l, p]"
 Begin["`Private`"]
 
 (*--------------------------- Modules ----------------------------*)
+CloneReshape2D[array0_, array1_] := Module[{clone, map, out},
+  clone = Length[#] &/@ array0;
+  map = {(Accumulate[clone]) - clone + 1, Accumulate[clone]}\[Transpose];
+  out = Take[array1, #] &/@ map;
+  Return[out]
+]
+
 Complex2Exp[exp_] := Module[{},
   Expand[exp /. z_?NumericQ :> Abs[z] Exp[I Arg[z]]]
 ]
