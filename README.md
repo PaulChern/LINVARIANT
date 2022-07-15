@@ -40,8 +40,8 @@
 ### Examples:
 - Boracite, Perovskite (To be added: Spinel, Rutile, Pyrochlore)
 ## Publications using LINVARIANT
-- Deterministic control of ferroelectric polarization by ultrafast laser pulses, Nature Communications 13, 2566 (2022)
-- Dzyaloshinskii-Moriya-like interaction in ferroelectrics and anti-ferroelectrics, Nature Material 20, 341 (2021)
+- Deterministic control of ferroelectric polarization by ultrafast laser pulses, Nat. Commun. 13, 2566 (2022)
+- Dzyaloshinskii-Moriya-like interaction in ferroelectrics and anti-ferroelectrics, Nat. Mater. 20, 341 (2021)
 - Domain wall-localized excitations from GHz to THz, npj Comput. Mater. 6, 48 (2020)
 - Improper ferroelectricities in 134-type AA’3B4O12 perovskites, Phys. Rev. B 101, 214441 (2020).
 ## Todo:
