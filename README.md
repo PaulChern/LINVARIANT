@@ -5,7 +5,7 @@
 - Utilizing the Group Theory, it mathematically modeling physics systems such as Lattice, Electron, Spin and their coupling systems.
 - LINVARIANT generates symmetry adapted microscopic or phenomenological models.
 - LINVARIANT creates DFT training sets for the model fitting.
-- LINVARIANT has numerical solvers running on the model, such as MC, MD, Exact diagnalization, Minimization, and et al..
+- LINVARIANT has numerical solvers running on the model, such as MC, MD, Exact diagnalization, Minimization, etc.
 - For large scale calculations, LINVARIANT exports the symbolic models into FORTRAN modules.
 ## Features:
 ### models:
@@ -39,6 +39,11 @@
 - Mollwide projection
 ### Examples:
 - Boracite, Perovskite (To be added: Spinel, Rutile, Pyrochlore)
+## Publications using LINVARIANT
+- Deterministic control of ferroelectric polarization by ultrafast laser pulses, Nature Communications 13, 2566 (2022)
+- Dzyaloshinskii-Moriya-like interaction in ferroelectrics and anti-ferroelectrics, Nature Material 20, 341 (2021)
+- Domain wall-localized excitations from GHz to THz, npj Comput. Mater. 6, 48 (2020)
+- Improper ferroelectricities in 134-type AA’3B4O12 perovskites, Phys. Rev. B 101, 214441 (2020).
 ## Todo:
 - implement DFTB
 - implement LLG dynamics
