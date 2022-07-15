@@ -50,7 +50,7 @@
 - add exact diagonalization solver
 - adding Atomistic Green's Function (AGF) method to study scattering and ultrafast non-equilibrium dynamics
 - including electron phonon coupling (EPC) by fitting phonon dependent Tight-Binding (TB) model from DFT molecular dynamics (MD).
-## Publications using LINVARIANT
+## Publications used LINVARIANT
 - Deterministic control of ferroelectric polarization by ultrafast laser pulses, Nat. Commun. 13, 2566 (2022)
 - Dzyaloshinskii-Moriya-like interaction in ferroelectrics and anti-ferroelectrics, Nat. Mater. 20, 341 (2021)
 - Domain wall-localized excitations from GHz to THz, npj Comput. Mater. 6, 48 (2020)
