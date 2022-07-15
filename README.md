@@ -9,6 +9,7 @@
 - LINVARIANT creates DFT training sets for the model fitting.
 - LINVARIANT has numerical solvers running on the model, such as MC, MD, Exact diagnalization, Minimization, etc.
 - For large scale calculations, LINVARIANT exports the symbolic models into FORTRAN modules.
+
 ![outline](https://user-images.githubusercontent.com/12060384/179304662-66e8f555-959a-46c3-b25d-8abe7cfdc7de.png)
 ## Features:
 ### models:
