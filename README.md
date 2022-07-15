@@ -39,11 +39,6 @@
 - Mollwide projection
 ### Examples:
 - Boracite, Perovskite (To be added: Spinel, Rutile, Pyrochlore)
-## Publications using LINVARIANT
-- Deterministic control of ferroelectric polarization by ultrafast laser pulses, Nat. Commun. 13, 2566 (2022)
-- Dzyaloshinskii-Moriya-like interaction in ferroelectrics and anti-ferroelectrics, Nat. Mater. 20, 341 (2021)
-- Domain wall-localized excitations from GHz to THz, npj Comput. Mater. 6, 48 (2020)
-- Improper ferroelectricities in 134-type AA’3B4O12 perovskites, Phys. Rev. B 101, 214441 (2020).
 ## Todo:
 - implement DFTB
 - implement LLG dynamics
@@ -51,6 +46,11 @@
 - add exact diagonalization solver
 - adding Atomistic Green's Function (AGF) method to study scattering and ultrafast non-equilibrium dynamics
 - including electron phonon coupling (EPC) by fitting phonon dependent Tight-Binding (TB) model from DFT molecular dynamics (MD).
+## Publications using LINVARIANT
+- Deterministic control of ferroelectric polarization by ultrafast laser pulses, Nat. Commun. 13, 2566 (2022)
+- Dzyaloshinskii-Moriya-like interaction in ferroelectrics and anti-ferroelectrics, Nat. Mater. 20, 341 (2021)
+- Domain wall-localized excitations from GHz to THz, npj Comput. Mater. 6, 48 (2020)
+- Improper ferroelectricities in 134-type AA’3B4O12 perovskites, Phys. Rev. B 101, 214441 (2020).
 ## Authors
 * **Peng Chen** - peng.chen.iphy@gmail.com
 * **Hongjian Zhao** - solidstatezhao@gmail.com
