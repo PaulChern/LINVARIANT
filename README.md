@@ -1,41 +1,39 @@
 # LINVARIANT
 ![LINVARIANT](https://user-images.githubusercontent.com/12060384/179304207-a81112d9-ec48-47ae-b650-9ea2645d540b.png)
 
-**LINVARIANT** is a Universal model generator, in the field of computational condensed matter physics. <br />
-**INVARIANT** are such objects though we construct with the help of coordinate systems turn out to be independent of coordinates. <br />
+**LINVARIANT** is a first-principles-based model effective Hamiltonian software package for the atomistic simulations of realistic materials. The goals are to reach large scales and keep being predictive. <br />
+**INVARIANT** is a property of a mathematical object (or a class of mathematical objects) that remains unchanged after operations or transformations of a certain type are applied to the objects. <br />
 **L** is to memorize famous physicist Lev Davidovich Landau (22 January 1908 – 1 April 1968). <br />
-- Utilizing the Group Theory, it mathematically modeling physics systems such as Lattice, Electron, Spin and their coupling systems.
-- LINVARIANT generates symmetry adapted microscopic or phenomenological models.
-- LINVARIANT creates DFT training sets for the model fitting.
-- LINVARIANT has numerical solvers running on the model, such as MC, MD, Exact diagnalization, Minimization, etc.
-- For large scale calculations, LINVARIANT exports the symbolic models into FORTRAN modules.
+- LINVARIANT takes care of multi-physics systems such as lattice, electron, spin, and their interactions.
+- LINVARIANT is capable of generating both microscopic and phenomenological models.
+- LINVARIANT learns/analysis the symmetry of the interaction forms and generates their DFT training accordingly.
+- LINVARIANT solves the models with many numerical solvers, such as MC, MD, Exact diagonalization, Minimization, etc.
+- For large-scale calculations, LINVARIANT exports FORTRAN code from  symbolic models.
 
 ![outline](https://user-images.githubusercontent.com/12060384/179304662-66e8f555-959a-46c3-b25d-8abe7cfdc7de.png)
 ## Features:
 ### models:
-- Displacement and magnetic modes analysis
-- INVARIANT generator (couplings among distortion, strain and magnetic)
-- Modulate modes in supercell, generate initial Domain walls (DWs) structures for Density Functional Theory (DFT) codes
-- Landau model builder, Generate DFT training sets by phonon and magnetic frozen-in.
-- Heisenberg model with DM model builder
-- Tight-Binding model builder
+- Lattice models for structural phase transitions, such as Landau-Ginzburg-Devonshire models.
+- Magnetic models for (non-)collinear spins, such as the extended Heisenberg model.
+- Electronic models, such as the Tight-Binding model written in Wannier orbitals.
+- Full models with couplings among lattice, orbitals, and spins.
+- Models in zero-, one-, two, and three-dimension.
 ### solvers:
-- (1) Finite Element Method (FEM), (2) Minimization, (3) molecular dynamics (MD), (4) Monte Carlo (MC), and (5) Finite Differences nonlinear solver on large scale continuous model
+- (1) Finite Element Method (FEM), (2) Minimization, (3) molecular dynamics (MD), (4) Monte Carlo (MC), and (5) Finite Differences nonlinear solver on the large-scale continuous model
 - Parallel tempering algorithm is available with both MC and MD
 ### fitting:
 - Basis (ionic): phonon/irreducible representation/atomistic basis
-- Basis (electronic): pesudo-atomic/Wannier basis
-- structures searching by energy invariants
-- machine learning of energy invariants and their energy potential surfaces
-- supervised model fitting
+- Basis (electronic): pseudo-atomic/Wannier basis
+- searching crystal structures by machine learning of the energy invariants
+- walking around (sampling) the potential energy surface by machine learning the symmetry of the energetic coupling terms.
 ### Auxiliary:
-- Write Fortran using mathematica
+- Write Fortran (numerical) using mathematica (symbolic)
 - interface to VASP, Quantum Espresso, and OpenMX
 - interface to WANNIER90
 - mpi and openmp parallelization
 - dynamics under external electric field
 - Jij of Heisenberg model from DFT by Liechtenstein formalism
-- Fij (force constants) from tight-binding models
+- Fij (force constants) from tight-binding models (atomistic Green's function method)
 - Electron/phonon bands unfolding
 - phonon/magnon calculations from DFT input
 - X ray diffraction simulation
@@ -44,12 +42,9 @@
 ### Examples:
 - Boracite, Perovskite (To be added: Spinel, Rutile, Pyrochlore)
 ## Todo:
-- implement DFTB
-- implement LLG dynamics
-- implement k dot p model builder
-- add exact diagonalization solver
-- adding Atomistic Green's Function (AGF) method to study scattering and ultrafast non-equilibrium dynamics
-- including electron phonon coupling (EPC) by fitting phonon dependent Tight-Binding (TB) model from DFT molecular dynamics (MD).
+- implement the k dot p model builder
+- adding transport property calculations
+- including electron-phonon coupling (EPC) beyond first-order w.r.t. phonons.
 ## Publications used LINVARIANT
 - Deterministic control of ferroelectric polarization by ultrafast laser pulses, Nat. Commun. 13, 2566 (2022)
 - Dzyaloshinskii-Moriya-like interaction in ferroelectrics and anti-ferroelectrics, Nat. Mater. 20, 341 (2021)
