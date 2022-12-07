@@ -46,6 +46,7 @@
 - adding transport property calculations
 - including electron-phonon coupling (EPC) beyond first-order w.r.t. phonons.
 ## Publications used LINVARIANT
+- Microscopic origin of the electric Dzyaloshinskii-Moriya interaction, Phys. Rev. B 106, 224101 (2022).
 - Deterministic control of ferroelectric polarization by ultrafast laser pulses, Nat. Commun. 13, 2566 (2022)
 - Dzyaloshinskii-Moriya-like interaction in ferroelectrics and anti-ferroelectrics, Nat. Mater. 20, 341 (2021)
 - Domain wall-localized excitations from GHz to THz, npj Comput. Mater. 6, 48 (2020)
