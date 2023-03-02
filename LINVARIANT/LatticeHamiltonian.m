@@ -116,25 +116,28 @@ FC2Fi0Bonds[FC_, pos_, NSC_, OptionsPattern["tol" -> 0.1]] := Module[{latt, site
                           Flatten[Table[If[Chop[Norm[bonds] - Norm[bonds + NSC {s1, s2, s3}]] == 0., {Norm[bonds], bonds, NSC {s1, s2, s3}}, ## &[]], {s1, {-1, 0, 1}}, {s2, {-1, 0, 1}}, {s3, {-1, 0, 1}}], 2], {i, NumPpos}, {j, NumSpos}];
 
   Fi0 = Flatten[SortBy[#, #[[1]] &] & /@ Values@GroupBy[Flatten[Table[multi = Length[ImageVectorList[[i, p2s[shift][j]]]];
-        Table[{{i, j}, PbcDiff[shift,NSC] + imagevec[[3]], multi, FC[[p2s[{0,0,0}][i], p2s[shift][j]]]}, {imagevec, ImageVectorList[[i, p2s[shift][j]]]}], {shift, Keys@p2s}, {i, NumPpos}, {j, NumPpos}], 3], #[[2]] &], 1];
+        Table[{{i, j}, PbcDiff[shift + imagevec[[3]], NSC], multi, FC[[p2s[{0,0,0}][i], p2s[shift][j]]]}, {imagevec, ImageVectorList[[i, p2s[shift][j]]]}], {shift, Keys@p2s}, {i, NumPpos}, {j, NumPpos}], 3], #[[2]] &], 1];
 
-  Return[{Fi0, poscar}]]
+  Return[{Fi0, poscar}]
+]
 
-GetDynamicMatrix[Fi0_, pos_, q_] := Module[{latt, sites, HermiteDM, dm, dmBlock, NumPos, mass, ele, amu, s, mfactor, Vasp2THz = 15.633302300230191, i, j},
+GetDynamicMatrix[Fi0_, pos_, q_, OptionsPattern[{"mass"->{}}]] := Module[{latt, sites, HermiteDM, dm, dmBlock, NumPos, mass, ele, amu, s, mfactor, Vasp2THz = 15.633302300230191, i, j, TB},
   {latt, sites} = pos;
   NumPos = Length[sites];
-  mass = Table[amu=ToLowerCase[StringJoin[StringCases[i, RegularExpression["[a,m,u,A,M,U]"]]]]==="amu";
+  mass = If[OptionValue["mass"]==={},
+            Table[amu=ToLowerCase[StringJoin[StringCases[i, RegularExpression["[a,m,u,A,M,U]"]]]]==="amu";
                ele=If[amu, "C", First@StringCases[i, RegularExpression["[[:upper:]]*[[:lower:]]*"]]];
                s = StringCases[i, RegularExpression["\\d+"]];
                mfactor=If[s==={}, 1, ToExpression[First@s]] If[amu, 1/12, 1];
-               mfactor QuantityMagnitude[ElementData[ele, "AtomicMass"]], {i, sites\[Transpose][[2]]}];
+               QuantityMagnitude[ElementData[ele, "AtomicMass"]], {i, sites\[Transpose][[2]]}],
+            OptionValue["mass"]];
   dmBlock = Merge[{#1 -> 1/Sqrt[mass[[#1[[1]]]] mass[[#1[[2]]]]] #4/#3 Exp[I 2 Pi q.(sites[[#1[[2]], 1]] + #2 - sites[[#1[[1]], 1]])]} & @@@ Fi0, Total];
   dm = ArrayFlatten[Table[dmBlock[{i, j}], {i, NumPos}, {j, NumPos}]];
   HermiteDM = 1/2 (dm + dm\[ConjugateTranspose]) Vasp2THz^2;
   Return[HermiteDM]
 ]
 
-PhononBandsPlot[Fi0_, pos_, klist_, kintv_, OptionsPattern[{"range" -> All}]] := Module[{latt, sites, pdata, q, DM, sol, kpath, xticks, BandsPlot},
+PhononBandsPlot[Fi0_, pos_, klist_, kintv_, OptionsPattern[{"range" -> All, "AspectRatio" -> 1/GoldenRatio}]] := Module[{latt, sites, pdata, q, DM, sol, kpath, xticks, BandsPlot},
   {latt, sites} = pos;
   {kpath, xticks} = GetKpath[latt, klist, kintv];
   pdata = Table[DM = GetDynamicMatrix[Fi0, pos, q[[2]]];
@@ -143,7 +146,7 @@ PhononBandsPlot[Fi0_, pos_, klist_, kintv_, OptionsPattern[{"range" -> All}]] :=
   BandsPlot = ListPlot[pdata\[Transpose], 
                        Joined -> True, 
                        PlotRange -> {All,OptionValue["range"]}, 
-                       AspectRatio -> 1/GoldenRatio, 
+                       AspectRatio -> OptionValue["AspectRatio"], 
                        Frame -> True, 
                        ImageSize -> Medium,
                        GridLines -> {{xticks\[Transpose][[1]], ConstantArray[Thick, Length[xticks]]}\[Transpose], Automatic}, 
@@ -196,7 +199,7 @@ PhononUnfolding[Fi0_, DMPos_, StdPos_, q_, Qbz_, unfoldDim_, OptionsPattern[{"pw
     {i, Length[w2]}, DistributedContexts -> {"LINVARIANT`LatticeHamiltonian`Private`"}]]
 ]
 
-GetEwaldMatrix[NGrid_, tol_] := Module[{gcut, ix, iy, iz, NGridx, NGridy, NGridz, SuperLattice, mg, dpij, residue, \[Eta], cc, OriginQ, GList0, GList1, G, RecLatt, ig1, ig2, ig3}, 
+GetEwaldMatrix[NGrid_, epinf_, Q_, alat_, tol_] := Module[{gcut, ix, iy, iz, NGridx, NGridy, NGridz, SuperLattice, mg, dpij, residue, \[Eta], cc, OriginQ, GList0, GList1, G, RecLatt, ig1, ig2, ig3, fact}, 
   {NGridx, NGridy, NGridz} = NGrid;
   SuperLattice = N[IdentityMatrix[3] {NGridx, NGridy, NGridz}];
   RecLatt = 2 Pi Inverse[SuperLattice];
@@ -205,16 +208,17 @@ GetEwaldMatrix[NGrid_, tol_] := Module[{gcut, ix, iy, iz, NGridx, NGridy, NGridz
   mg = Ceiling[gcut Norm[#]/(2 Pi)] & /@ SuperLattice;
   residue = (4 \[Eta]^3)/(3 Sqrt[Pi]); 
   cc = (8 Pi)/Det[SuperLattice];
+  fact = Q^2/(epinf*alat);
   GList0 = Flatten[Table[G = RecLatt.{0, ig2, ig3}; 
                          If[10^-8 < Norm[G]^2 < gcut^2, G, ## &[]], {ig2, -mg[[2]], mg[[2]]}, {ig3, -mg[[3]], mg[[3]]}], 1];
                          GList1 = Flatten[Table[G = RecLatt.{ig1, ig2, ig3}; 
                          If[10^-8 < Norm[G]^2 < gcut^2, G, ## &[]], 
                          {ig1, 1, mg[[1]]}, {ig2, -mg[[2]], mg[[2]]}, {ig3, -mg[[3]], mg[[3]]}], 2];
-  dpij = ParallelTable[Sum[0.5 cc Cos[G.{ix, iy, iz}] Exp[-(G.G/(4 \[Eta]^2))] G\[TensorProduct]G/G.G, 
-                           {G, GList0}] + Sum[cc Cos[G.{ix, iy, iz}] Exp[-(G.G/(4 \[Eta]^2))] G\[TensorProduct]G/G.G, 
-                           {G, GList1}], {ix, NGridx}, {iy, NGridy}, {iz, NGridz}];
-  dpij[[1, 1, 1]] = dpij[[1, 1, 1]] - residue IdentityMatrix[3];
-  Return[dpij]
+  dpij = ParallelTable[Sum[0.5 cc Cos[G.{ix-1, iy-1, iz-1}] Exp[-(G.G/(4 \[Eta]^2))] G\[TensorProduct]G/G.G, 
+                           {G, GList0}] + Sum[cc Cos[G.{ix-1, iy-1, iz-1}] Exp[-(G.G/(4 \[Eta]^2))] G\[TensorProduct]G/G.G, 
+                           {G, GList1}], {ix, NGridx}, {iy, NGridy}, {iz, NGridz}, DistributedContexts -> {"LINVARIANT`LatticeHamiltonian`Private`"}];
+  dpij[[1, 1, 1]] = dpij[[1, 1, 1]] - residue*fact*IdentityMatrix[3];
+  Return[fact*dpij]
 ]
 
 Invariant2Fi0Bonds[InvList_, vars0_, CoeffStr_] := Module[{x, i, NeighbourList, varsijk, Fi0, vars, nn}, 

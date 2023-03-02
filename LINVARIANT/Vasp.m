@@ -1,4 +1,4 @@
-BeginPackage["LINVARIANT`Vasp`", {"LINVARIANT`INVARIANT`", "LINVARIANT`Structure`", "LINVARIANT`MathematicaPlus`", "LINVARIANT`Parser`"}]
+BeginPackage["LINVARIANT`Vasp`", {"LINVARIANT`INVARIANT`", "LINVARIANT`Structure`", "LINVARIANT`MathematicaPlus`", "LINVARIANT`Parser`", "LINVARIANT`DFT`"}]
 
 (*--------- Load, Save and Modify Crystal Structure Libraries ------------*)
 ImportPOSCAR                 ::usage "ImportPOSCAR[f]"
@@ -29,6 +29,7 @@ BundleDn                     ::usage "BundleUp[fx, l]"
 GetElasticModuli             ::usage "GetElasticModuli[file, vol]"
 GetDielectricTensor          ::usage "GetDielectricTensor[file]"
 ReadForceConstants           ::usage "ReadForceConstants[file]"
+ReadWannierCentres           ::usage "ReadWannierCentres[file]"
 
 (*--------- Plot and Manipulate Crystal Structures -------------------- ----------------*)
 
@@ -71,14 +72,14 @@ ParseVasprunFatBands[xml_, OptionsPattern[{"fermi"->None, "FatBandRange"->None}]
 
   spinupdn["k"] = klist;
   spinupdn["fermi"] = fermi;
-  Do[spinupdn[If[is==1, "up", is==2, "dn"]] = Table[{#1-fermi,#2}&@@@(Flatten[ParseXMLData[ParseXML[ParseXML[ParseXML[ParseXML[xml, "projected", {}], "eigenvalues", {}], "set", {"comment", "spin "<>ToString[is]}], "set", {"comment", "kpoint " <> ToString[ik]}], "r"], 1][[ifat0;;ifat1]]), {ik, NumKpoint}], {is, ISPIN}];
+  Do[spinupdn[Which[is==1, "up", is==2, "dn"]] = Table[{#1-fermi,#2}&@@@(Flatten[ParseXMLData[ParseXML[ParseXML[ParseXML[ParseXML[xml, "projected", {}], "eigenvalues", {}], "set", {"comment", "spin "<>ToString[is]}], "set", {"comment", "kpoint " <> ToString[ik]}], "r"], 1][[ifat0;;ifat1]]), {ik, NumKpoint}], {is, ISPIN}];
 
   fat = Complement[ParseXML[ParseXML[xml, "projected", {}], "array", {}], ParseXML[ParseXML[ParseXML[xml, "projected", {}], "eigenvalues", {}], "array", {}]];
   orbits = Flatten[ParseXML[fat, "field", {}]];
   Print[orbits];
 
   character["orb"] = orbits;
-  Do[character[If[is==1, "up", is==2, "dn"]] = Table[SparseArray[Flatten[ParseXMLData[ParseXML[ParseXML[ParseXML[fat, "set", {"comment", "spin"<>ToString[is]}], "set", {"comment", "kpoint "<>ToString[ik]}], "set", {"comment", "band "<>ToString[ib]}], "r"], 1]], {ik, NumKpoint}, {ib, ifat0, ifat1}], {is, ISPIN}];
+  Do[character[Which[is==1, "up", is==2, "dn"]] = Table[SparseArray[Flatten[ParseXMLData[ParseXML[ParseXML[ParseXML[fat, "set", {"comment", "spin"<>ToString[is]}], "set", {"comment", "kpoint "<>ToString[ik]}], "set", {"comment", "band "<>ToString[ib]}], "r"], 1]], {ik, NumKpoint}, {ib, ifat0, ifat1}], {is, ISPIN}];
 
   Return[{spinupdn, character}]
 ]
@@ -247,7 +248,7 @@ BerryPol[vasprun_, coord_] := Module[{ZVAL, lattice, sites, pos, units, PolIon, 
   sites = First@ParseXMLData[ParseXML[ParseXML[vasprun, "structure", {"name", "finalpos"}], "varray", {"name", "positions"}], "v"];
   pos = {lattice, Join[{sites}, ZVAL]\[Transpose]};
 
-  units = 1.6021766 10^-13 10^16/Det[lattice];
+  units = 1.6021766 10^3/Det[lattice];
   PolIon =Chop@ParseFortranNumber@StringSplit[First@First@ParseXML[vasprun, "v", {"name", "PION"}]];
   PolEle =Chop@ParseFortranNumber@StringSplit[First@First@ParseXML[vasprun, "v", {"name", "PELC"}]];
   PolIon = Total[#1 #3 & @@@ (Join[{sites}, ZVAL]\[Transpose])];
@@ -256,7 +257,9 @@ BerryPol[vasprun_, coord_] := Module[{ZVAL, lattice, sites, pos, units, PolIon, 
   Ptot = If[coord == "Cartesian", 
             units lattice\[Transpose].PbcDiff[Mod[PolIon - Inverse[(lattice\[Transpose])].PolEle, 1]], 
             units (Norm[#] &@lattice)*PbcDiff[Mod[PolIon - Inverse[(lattice\[Transpose])].PolEle, 1]]];
-  Return[Chop[Ptot, 10^-4]]
+  PolEle = units lattice\[Transpose].PbcDiff[Mod[-Inverse[(lattice\[Transpose])].PolEle, 1]];
+  PolIon = units lattice\[Transpose].PbcDiff[Mod[PolIon, 1]];
+  Return[Chop[{Ptot, PolIon, PolEle}, 10^-4]]
 ]
 
 ReadVpot[file_] := Module[{data, pot, Nx, Ny, Nz, i, j, k},
@@ -504,6 +507,13 @@ ReadForceConstants[file_] := Module[{data, NumAtom0, NumAtom, FC},
      Partition[data[[2 ;;]], 4]];
   FC = Table[FC[{i, j}], {i, NumAtom0}, {j, NumAtom}];
   Return[FC]
+]
+
+ReadWannierCentres[file_] := Module[{inp},
+  inp = OpenRead[file];
+  Read[inp, Number];
+  Read[inp, String];
+  If[#1 === "X", {ToExpression[#2], ToExpression[#3], ToExpression[#4]}, ## &[]] & @@@ StringSplit[ReadList[inp, String, RecordLists -> False]]
 ]
 
 (*-------------------------- Attributes ------------------------------*)

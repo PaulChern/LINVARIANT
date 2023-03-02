@@ -91,7 +91,7 @@ SolidSphericalHarmonicY[l_?IntegerQ, m_?IntegerQ, xyz_, coord_: "Cartesian"] := 
 
 SolidTesseralHarmonicY[l_?IntegerQ, m_?IntegerQ, xyz_, coord_: "Cartesian"] := Module[{x1, x2, x3}, 
   {x1, x2, x3} = xyz;
-  Simplify@Which[
+  FullSimplify@Which[
                  m > 0, 
                  Sqrt[2]/2 (-1)^m (SolidSphericalHarmonicY[l, m, xyz, coord] + (-1)^m SolidSphericalHarmonicY[l, -m, xyz, coord]), 
                  m < 0, 

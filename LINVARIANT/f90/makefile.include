@@ -1,0 +1,24 @@
+.SUFFIXES: .f .f90 .F90 .SUFFIXES .prj
+
+#OFLAG = -O3 -xHost -ipo
+OFLAG = -O3 -mAVX -ipo
+
+FC = mpif90 -fopenmp
+FC = mpiifort -fopenmp -fpp -DMPI
+FCL= mpiifort -fopenmp -mkl=parallel -lstdc++
+
+exe = LINVARIANT.x
+
+MKL_PATH   = $(MKLROOT)/lib/intel64
+BLAS       =
+LAPACK     = 
+BLACS      = -lmkl_blacs_intelmpi_lp64
+SCALAPACK  = -L$(MKL_PATH)/ -lmkl_scalapack_lp64 $(BLACS)
+SPGLIB     = -L/home/pc011/Applications/spglib/lib64 -lsymspg
+LIBXC      = -L/home/pc011/Applications/libxc/libxc-5.1.6/lib -lxcf90 -lxc
+LIBOPT     = -L/home/pc011/Applications/nlopt-2.6.2/lib64 -lnlopt
+#SCALAPACK  = $(MKL_PATH)/libmkl_scalapack_lp64.a $(BLACS)
+
+FFLAGS     = -assume byterecl -w
+INCS       = -I$(MKLROOT)/include/fftw -I/home/pc011/Applications/libxc/libxc-5.1.6/include -I/home/pc011/Applications/spglib/include -I/home/pc011/Applications/nlopt-2.6.2/include
+LLIBS      = $(SCALAPACK) $(BLAS) -lmkl_intel_lp64 -lmkl_intel_thread -lmkl_core $(SPGLIB) $(LIBXC) $(LIBOPT) #-liomp5 -lpthread -lm -ldl

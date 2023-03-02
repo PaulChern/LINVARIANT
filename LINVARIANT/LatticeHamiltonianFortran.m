@@ -4,17 +4,6 @@ BeginPackage["LINVARIANT`LatticeHamiltonianFortran`",{"LINVARIANT`Structure`","L
 FortranLatticeTikTok         ::usage "FortranLatticeTikTok[]"
 FortranLatticeMCStep         ::usage "FortranLatticeMCStep[]"
 FortranLatticePTSwap         ::usage "FortranLatticePTSwap[]"
-FortranGetInitConfig         ::usage "FortranGetInitConfig[]"
-FortranEwaldMatrix           ::usage "FortranEwaldMatrix[]"
-FortranDeltaHEwald           ::usage "FortranDeltaHEwald[]"
-FortranEOnSiteEwald          ::usage "FortranEOnSiteEwald[]"
-FortranGetEwaldField         ::usage "FortranGetEwaldField[]"
-FortranUpdateEwaldField      ::usage "FortranUpdateEwaldField[]"
-FortranGetEwaldForces        ::usage "FortranGetEwaldForces[]"
-HeadTailDeltaH               ::usage "HeadTailDeltaH[FunctionName, ReturnVar, FieldDim, nn]"
-HeadTailForces               ::usage "HeadTailForces[FunctionName, ReturnVar, FieldDim, nn]"
-HeadTailHessianOnSite        ::usage "HeadTailHessianOnSite[FunctionName, ReturnVar, FieldDim, nn]"
-HeadTailEOnSite              ::usage "HeadTailEOnSite[FunctionName, ReturnVar, FieldDim, nn]"
 WriteLatticeModelF90         ::usage "WriteLatticeModelF90[F90dir, FuncName, FuncType, InvariantList, MMAVars, MMA2F90Vars]"
 (*--------- Plot and Manipulate Crystal Structures -------------------- ----------------*)
 
@@ -303,7 +292,7 @@ FortranLatticePTSwap[] := Module[{Fint, Fout},
           {Fint[1] <> "Integer, Intent(inout) :: Replicas(NumReplicas,5)"},
           {Fint[1] <> "Real*8,  Intent(inout) :: Fields(FieldDim, NumField, cgrid%n1, cgrid%n2, cgrid%n3)"},
           {Fint[1] <> "Real*8,  Intent(inout) :: dFieldsdt(FieldDim, NumField, cgrid%n1, cgrid%n2, cgrid%n3)"},
-          {Fint[1] <> "Real*8,  Intent(inout) :: EwaldField(FieldDim, NumField, cgrid%n1, cgrid%n2, cgrid%n3)"},
+          {Fint[1] <> "Real*8,  Intent(inout) :: EwaldField(3, NumField, cgrid%n1, cgrid%n2, cgrid%n3)"},
           {Fint[1] <> "Real*8,  Intent(inout) :: e0ij(3,3)"},
           {Fint[1] <> "Real*8,  Intent(inout) :: Real*8,  Intent(inout) :: gm"},
           {Fint[1] <> "Integer, Intent(in)    :: NumReplicas, ireplica"},
@@ -427,7 +416,7 @@ FortranLatticeMCStep[OptionsPattern[{"EwaldField"->True, "SwapAll"->False}]] := 
     {Fint[1] <> "Integer, Intent(inout) :: imc"},
     {Fint[1] <> "Real*8,  Intent(inout) :: udamp(NumField), etadamp, dene"},
     {Fint[1] <> "Real*8,  Intent(inout) :: Fields(FieldDim, NumField, cgrid%n1, cgrid%n2, cgrid%n3)"}, 
-    {Fint[1] <> "Real*8,  Intent(inout) :: EwaldField(FieldDim, NumField, cgrid%n1, cgrid%n2, cgrid%n3)"},
+    {Fint[1] <> "Real*8,  Intent(inout) :: EwaldField(3, NumField, cgrid%n1, cgrid%n2, cgrid%n3)"},
     {Fint[1] <> "Real*8,  Intent(inout) :: e0ij(3,3)"}, 
     {Fint[1] <> "Integer                :: i, j, idelta, ix, iy, iz"}, 
     {Fint[1] <> "Integer                :: idum, acceptedu(NumField), acceptedeta"}}, 
@@ -460,8 +449,8 @@ FortranLatticeMCStep[OptionsPattern[{"EwaldField"->True, "SwapAll"->False}]] := 
     {Fint[5] <> "if(ProbTest .lt. AccProb) then"},
     {Fint[6] <> "acceptedu(idelta) = acceptedu(idelta) + 1"},
     {Fint[6] <> "dene = dene + DeltaE"},
-    {Fint[6] <> "do i = 1, FieldDimList(idelta)"},
-    {Fint[7] <> "Fields(i,idelta,ix,iy,iz) = Fields(i,idelta,ix,iy,iz) + dfield(i)"},
+    {Fint[6] <> "do i = 1, FieldDim"},
+    {Fint[7] <> "Fields(i,idelta,ix,iy,iz) = Fields(i,idelta,ix,iy,iz) + FieldBinary(i,idelta)*dfield(i)"},
     {Fint[6] <> "end do"}},
   EwaldFieldBlock,
   {{Fint[5] <> "end if"},
@@ -527,788 +516,87 @@ FortranLatticeMCStep[OptionsPattern[{"EwaldField"->True, "SwapAll"->False}]] := 
   Return[Fout]
 ] 
 
-FortranGetInitConfig[] := Module[{Fint, n, Fout},
-  Fint[n_] := StringRepeat["  ", n];
-  Fout = {
-  {"Subroutine GetInitConfig(Fields, e0ij, inittype, FileCode)"},
-  {Fint[1] <> "use Parameters"},
-  {Fint[1] <> "use Inputs"},
-  {Fint[1] <> "use Fileparser"},
-  {Fint[1]},
-  {Fint[1] <> "Implicit none"},
-  {Fint[1] <> "character(20)                 :: keyword"},
-  {Fint[1] <> "character(50)                 :: filename"},
-  {Fint[1] <> "character(40), intent(inout)  :: inittype"},
-  {Fint[1] <> "character(10), intent(in)     :: FileCode"},
-  {Fint[1] <> "real*8,        intent(inout)  :: Fields(FieldDim, NumField, cgrid%n1, cgrid%n2, cgrid%n3)"},
-  {Fint[1] <> "real*8,        intent(inout)  :: e0ij(3,3)"},
-  {Fint[1] <> "real*8                        :: eta(6)"},
-  {Fint[1] <> "real*8                        :: rand"},
-  {Fint[1] <> "integer                       :: i, j, ix, iy, iz"},
-  {Fint[1] <> "logical                       :: file_exists"},
-  {Fint[1] <> " "},
-  {Fint[1]},
-  {Fint[1] <> "filename = trim(Solver)//\".out/\"//trim(inittype)//\"-\"//trim(FileCode)//\".dat\""},
-  {Fint[1] <> "call caps2small(inittype)"},
-  {Fint[1] <> "keyword=trim(inittype)"},
-  {Fint[1] <> "      "},
-  {Fint[1] <> "SELECT CASE (keyword)"},
-  {Fint[2] <> "CASE (\"random\")"},
-  {Fint[3] <> "do iz = 1, cgrid%n3"},
-  {Fint[4] <> "do iy = 1, cgrid%n2"},
-  {Fint[5] <> "do ix = 1, cgrid%n1"},
-  {Fint[6] <> "do i = 1, NumField"},
-  {Fint[7] <> "do j = 1, FieldDimList(i)"},
-  {Fint[8] <> "Call random_number(rand)"},
-  {Fint[8] <> "Fields(j,i,ix,iy,iz) = (rand-0.5d0)/1.0d1"},
-  {Fint[8] <> "Fields(j,i,ix,iy,iz) = rand-0.5d0"},
-  {Fint[7] <> "end do"},
-  {Fint[6] <> "end do"},
-  {Fint[5] <> "end do"},
-  {Fint[4] <> "end do"},
-  {Fint[3] <> "end do"},
-  {Fint[3] <> "do i = 1, 6"},
-  {Fint[3] <> "Call random_number(rand)"},
-  {Fint[4] <> "eta(i) = (rand-0.50d0)/1.0d3"},
-  {Fint[3] <> "end do"},
-  {Fint[3] <> "e0ij = eta2eij(eta)"},
-  {Fint[2] <> "CASE (\"zero\")"},
-  {Fint[3] <> "Fields = 0.0d0"},
-  {Fint[3] <> "e0ij = 0.0d0"},
-  {Fint[2] <> "CASE (\"uniform\")"},
-  {Fint[3] <> "e0ij = 1.0D-3"},
-  {Fint[3] <> "Fields = 1.0D-1"},
-  {Fint[2] <> "CASE DEFAULT"},
-  {Fint[3] <> "INQUIRE(FILE=filename, EXIST=file_exists)"},
-  {Fint[3] <> "if (file_exists .eqv. .False.) then"},
-  {Fint[4] <> "write(*,*) \"Init not implemented yet!\""},
-  {Fint[4] <> "call abort"},
-  {Fint[3] <> "else"},
-  {Fint[4] <> "write(*,*) \"Init from file: \", filename"},
-  {Fint[4] <> "call InitFromFile(filename, Fields, e0ij)"},
-  {Fint[3] <> "end if"},
-  {Fint[2] <> "END SELECT"},
-  {Fint[1] <> "  "},
-  {"End Subroutine GetInitConfig"}};
-  Return[Fout]
-]
-
-FortranEwaldMatrix[] := Module[{Fint, n, Fout},
-  Fint[n_] := StringRepeat["  ", n];
-  Fout = {
-  {"Subroutine EwaldMatrix(latt)"},
-  {Fint[1]},
-  {Fint[1] <> "Use Parameters"},
-  {Fint[1] <> "Use Constants"},
-  {Fint[1] <> "Use LINVARIANT"},
-  {Fint[1] <> "Use Inputs"},
-  {Fint[1]},
-  {Fint[1] <> "Implicit none"},
-  {Fint[1] <> "Real*8, Intent(in) :: latt(3,3)"},
-  {Fint[1] <> "Real*8             :: dpij(3,3,cgrid%n1,cgrid%n2,cgrid%n3), dum(3,3), supercell(3,3), reclatt(3,3), am(3)"},
-  {Fint[1] <> "Real*8             :: pi2, celvol, eta, eta4, gcut, gcut2, dum0"},
-  {Fint[1] <> "Real*8             :: gx, gy, gz, g2, fact, tol, c, residue"},
-  {Fint[1]},
-  {Fint[1] <> "Integer            :: i, j, mg1, mg2, mg3, ix, iy, iz, ig1, ig2, ig3, rx, ry, rz"},
-  {Fint[1]},
-  {Fint[1] <> "Logical            :: origin"},
-  {Fint[1]},
-  {Fint[1] <> "!!!!!!!!!!!!!!!!!!"},
-  {Fint[1] <> "! some constants !"},
-  {Fint[1] <> "!!!!!!!!!!!!!!!!!!"},
-  {Fint[1]},
-  {Fint[1] <> "pi2 = pi*2.0d0"},
-  {Fint[1]},
-  {Fint[1] <> "tol = 1.0d-12"},
-  {Fint[1] <> "eta = sqrt(-log(tol))"},
-  {Fint[1] <> "gcut = 2.0*eta**2"},
-  {Fint[1] <> "gcut2 = gcut**2"},
-  {Fint[1] <> "eta4 = 1.0d0/(4*eta**2)"},
-  {Fint[1]},
-  {Fint[1] <> "supercell(:,1) = latt(:,1)*cgrid%n1"},
-  {Fint[1] <> "supercell(:,2) = latt(:,2)*cgrid%n2"},
-  {Fint[1] <> "supercell(:,3) = latt(:,3)*cgrid%n3"},
-  {Fint[1]},
-  {Fint[1] <> "call reclat(supercell,reclatt,1)"},
-  {Fint[1] <> "celvol = Cell2Volume(supercell)"},
-  {Fint[1]},
-  {Fint[1] <> "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"},
-  {Fint[1] <> "! Estimate number of reciprocal lattice vectors to use !"},
-  {Fint[1] <> "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"},
-  {Fint[1]},
-  {Fint[1] <> "do i = 1, 3"},
-  {Fint[2] <> "am(i) = 0.d0"},
-  {Fint[2] <> "do j = 1, 3"},
-  {Fint[3] <> "am(i) = am(i) + supercell(j,i)**2"},
-  {Fint[2] <> "enddo"},
-  {Fint[2] <> "am(i) = sqrt(am(i))"},
-  {Fint[1] <> "enddo"},
-  {Fint[1]},
-  {Fint[1] <> "mg1 = int(gcut*am(1)/pi2) + 1"},
-  {Fint[1] <> "mg2 = int(gcut*am(2)/pi2) + 1"},
-  {Fint[1] <> "mg3 = int(gcut*am(3)/pi2) + 1"},
-  {Fint[1]},
-  {Fint[1] <> "write(6,*) 'Simulation name: ', NameSim"},
-  {Fint[1] <> "write(6,*) 'Simulation cell volume:', celvol"},
-  {Fint[1] <> "write(6,*) 'Simulation Grid:', cgrid%n1, cgrid%n2, cgrid%n3"},
-  {Fint[1] <> "write(6,*) 'Gcut: ', gcut, 'mg1,mg2,mg3: ', mg1,mg2,mg3"},
-  {Fint[1] <> "write(6,*) 'Tol: ', tol"},
-  {Fint[1]},
-  {Fint[1] <> "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"},
-  {Fint[1] <> "! Begin the calculation of dpij matrix !"},
-  {Fint[1] <> "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"},
-  {Fint[1]},
-  {Fint[1] <> "do ix = 1, cgrid%n1"},
-  {Fint[2] <> "do iy = 1, cgrid%n2"},
-  {Fint[3] <> "do iz = 1, cgrid%n3"},
-  {Fint[3]},
-  {Fint[4] <> "do i = 1, 3"},
-  {Fint[5] <> "do j = 1, 3"},
-  {Fint[6] <> "dum(i,j) = 0.0d0"},
-  {Fint[5] <> "end do"},
-  {Fint[4] <> "end do"},
-  {Fint[4]},
-  {Fint[4] <> "rx = ix - 1"},
-  {Fint[4] <> "ry = iy - 1"},
-  {Fint[4] <> "rz = iz - 1"},
-  {Fint[4]},
-  {Fint[4] <> "origin = (rx.eq.0) .and. (ry.eq.0) .and. (rz.eq.0)"},
-  {Fint[4]},
-  {Fint[4] <> "!"},
-  {Fint[4] <> "!The term for -G gives the same contribution as the one for G,"},
-  {Fint[4] <> "!so we only sum over half the ig1 range and multiply by 2 (exclude"},
-  {Fint[4] <> "!ig1=0)"},
-  {Fint[4] <> "!"},
-  {Fint[4] <> "!Since we are really computing the \"dipole field\", "},
-  {Fint[4] <> "!not the total dipole energy, we need another factor of 2:"},
-  {Fint[4] <> "!"},
-  {Fint[4] <> "!Energy = Sum_ij{ Q_ij u_i u_j}, "},
-  {Fint[4] <> "!Field_k= Partial Energy/Partial u_k = 2*Sum_i{Q_ik u_i} "},
-  {Fint[4] <> "!"},
-  {Fint[4]},
-  {Fint[4] <> "c = 8.0d0*pi/celvol"},
-  {Fint[4] <> "residue = eta**3*(4.0d0/(3.0d0*sqrt(pi)))"},
-  {Fint[4]},
-  {Fint[5] <> "do ig1 = 0, mg1"},
-  {Fint[6] <> "do ig2 = -mg2, mg2"},
-  {Fint[7] <> "gx = ig1*reclatt(1,1) + ig2*reclatt(1,2) "},
-  {Fint[7] <> "gy = ig1*reclatt(2,1) + ig2*reclatt(2,2) "},
-  {Fint[7] <> "do ig3 = -mg3, mg3"},
-  {Fint[7]},
-  {Fint[8] <> "gz = ig3*reclatt(3,3)"},
-  {Fint[8] <> "g2 = gx**2 + gy**2 + gz**2"},
-  {Fint[8]},
-  {Fint[8] <> "if(g2.lt.gcut2.and.g2.gt.1.0d-8) then"},
-  {Fint[9] <> "fact = 1.0d0"},
-  {Fint[9] <> "if(ig1.eq.0) fact = 0.50d0"},
-  {Fint[10] <> "dum0 = fact*cos(gx*rx+gy*ry+gz*rz)*exp(-g2*eta4)/g2"},
-  {Fint[10] <> "dum(1,1) = dum(1,1) + dum0*gx**2"},
-  {Fint[10] <> "dum(2,2) = dum(2,2) + dum0*gy**2"},
-  {Fint[10] <> "dum(3,3) = dum(3,3) + dum0*gz**2"},
-  {Fint[10] <> "dum(2,3) = dum(2,3) + dum0*gz*gy"},
-  {Fint[10] <> "dum(1,3) = dum(1,3) + dum0*gx*gz"},
-  {Fint[10] <> "dum(1,2) = dum(1,2) + dum0*gx*gy"},
-  {Fint[10]},
-  {Fint[10] <> "dum(3,2) = dum(2,3)"},
-  {Fint[10] <> "dum(3,1) = dum(1,3)"},
-  {Fint[10] <> "dum(2,1) = dum(1,2)"},
-  {Fint[9] <> "end if"},
-  {Fint[8] <> "end do ! ig3=-mg3,mg3"},
-  {Fint[7] <> "end do ! ig2=-mg2,mg2"},
-  {Fint[6] <> "end do ! ig1=0,mg1"},
-  {Fint[6]},
-  {Fint[6] <> "do i = 1, 3"},
-  {Fint[7] <> "do j = 1, 3"},
-  {Fint[8] <> "dpij(i, j, ix, iy, iz) = dum(i,j)*c"},
-  {Fint[7] <> "end do"},
-  {Fint[6] <> "end do"},
-  {Fint[6] <> "if (origin) then"},
-  {Fint[7] <> "dpij(1, 1, ix, iy, iz) = dpij(1, 1, ix, iy, iz) - residue"},
-  {Fint[7] <> "dpij(2, 2, ix, iy, iz) = dpij(2, 2, ix, iy, iz) - residue"},
-  {Fint[7] <> "dpij(3, 3, ix, iy, iz) = dpij(3, 3, ix, iy, iz) - residue"},
-  {Fint[6] <> "endif"},
-  {Fint[5] <> "end do ! ix"},
-  {Fint[4] <> "end do ! iy"},
-  {Fint[3] <> "end do ! iz"},
-  {Fint[3]},
-  {Fint[3] <> "open(1, file='EwaldMat.dat', form='unformatted', status='unknown')"},
-  {Fint[3] <> "write(1) NameSim, cgrid%n1, cgrid%n2, cgrid%n3"},
-  {Fint[3] <> "write(1) (((((dpij(j, i, ix,iy,iz),j=1,3),i=1,3),ix=1,cgrid%n1),iy=1,cgrid%n2),iz=1,cgrid%n3)"},
-  {Fint[3] <> "close(1)"},
-  {Fint[1]},
-  {Fint[3] <> "open(2, file='EwaldMat.mma.dat', form='formatted', status='unknown')"},
-  {Fint[3] <> "write(2, '(3e25.14)') (((((dpij(j, i, ix,iy,iz),j=1,3),i=1,3),ix=1,cgrid%n1),iy=1,cgrid%n2),iz=1,cgrid%n3)"},
-  {Fint[3] <> "close(2)"},
-  {Fint[1]},
-  {"End Subroutine EwaldMatrix"}};
-  Return[Fout]
-]
-
-FortranEOnSiteEwald[OptionsPattern[{}]] := Module[{Fint, n, Fout},
-  Fint[n_] := StringRepeat["  ", n];
-  Fout = {{"Function GetEOnSiteEwald(ix, iy, iz, Fields) Result(ene)"},
-          {Fint[1]},
-          {Fint[1] <> "Use omp_lib"},
-          {Fint[1] <> "Use Parameters"},
-          {Fint[1] <> "Implicit none"},
-          {Fint[1] <> "Integer, Intent(in) :: ix, iy, iz"},
-          {Fint[1] <> "Real*8,  Intent(in) :: Fields(FieldDim, NumField, cgrid%n1, cgrid%n2, cgrid%n3)"},
-          {Fint[1] <> "Integer             :: i, j, jx, jy, jz, x, y, z, jfield, ifield"},
-          {Fint[1] <> "Real*8              :: ene, ThreadEne"},
-          {Fint[1]},
-          {Fint[1] <> "ene = 0.0d0"},
-          {Fint[1] <> "!$OMP    PARALLEL DEFAULT(SHARED) PRIVATE(jfield,x,y,z,ThreadEne)"},
-          {Fint[2] <> "ThreadEne = 0.0d0"},
-          {Fint[2]},
-          {Fint[2] <> "!$OMP    DO COLLAPSE(1)"},
-          {Fint[3] <> "do jz = 1, cgrid%n3"},
-          {Fint[3] <> "do jy = 1, cgrid%n2"},
-          {Fint[3] <> "do jx = 1, cgrid%n1"},
-          {Fint[3] <> "do jfield = 1, NumField ! delete jfield to decouple two fields"},
-          {Fint[3] <> "do ifield = 1, NumField"},
-          {Fint[3] <> "do j = 1, FieldDimList(jfield) ! jfield -> ifield"},
-          {Fint[3] <> "do i = 1, FieldDimList(ifield)"},
-          {Fint[4] <> "x = (jx-ix+1)-floor(real(jx-ix)/real(cgrid%n1))*cgrid%n1"},
-          {Fint[4] <> "y = (jy-iy+1)-floor(real(jy-iy)/real(cgrid%n2))*cgrid%n2"},
-          {Fint[4] <> "z = (jz-iz+1)-floor(real(jz-iz)/real(cgrid%n3))*cgrid%n3"},
-          {Fint[4] <> "! jfield -> ifield"},
-          {Fint[4] <> "ThreadEne = ThreadEne &"},
-          {Fint[5] <> "+ 0.5*FieldCharge(ifield)*FieldCharge(jfield)*Fields(i,ifield,ix,iy,iz)*EwaldMat(i,j,x,y,z)*Fields(j,jfield,jx,jy,jz)"},
-          {Fint[3] <> "end do ! j"},
-          {Fint[3] <> "end do ! j"},
-          {Fint[3] <> "end do ! i"},
-          {Fint[3] <> "end do ! jz"},
-          {Fint[3] <> "end do ! jy"},
-          {Fint[3] <> "end do ! jx"},
-          {Fint[3] <> "end do"},
-          {Fint[2] <> "!$OMP    END DO"},
-          {Fint[2]},
-          {Fint[2] <> "!$OMP CRITICAL"},
-          {Fint[3] <> "ene = ene + ThreadEne"},
-          {Fint[2] <> "!$OMP END CRITICAL"},
-          {Fint[2]},
-          {Fint[1] <> "!$OMP    END PARALLEL"},
-          {Fint[1]},
-          {Fint[1] <> "do jfield = 1, NumField - 1 ! delete jfield to decouple two fields"},
-          {Fint[2] <> "do ifield = 1, NumField - 1"},
-          {Fint[3] <> "do j = 1, FieldDimList(jfield) ! jfield -> ifield"},
-          {Fint[4] <> "do i = 1, FieldDimList(ifield)"},
-          {Fint[4] <> "! jfield -> ifield"},
-          {Fint[5] <> "ene = ene &"},
-          {Fint[6] <> "+ 0.5*FieldCharge(ifield)*FieldCharge(jfield)*Fields(i,ifield,ix,iy,iz)*EwaldMat(i,j,1,1,1)*Fields(j,jfield,ix,iy,iz)"},
-          {Fint[4] <> "end do ! j"},
-          {Fint[3] <> "end do ! i"},
-          {Fint[2] <> "end do ! "},
-          {Fint[1] <> "end do ! "},
-          {Fint[1]},
-          {"End Function GetEOnSiteEwald"}};
-  Return[Fout]
-]
-
-FortranDeltaHEwald[OptionsPattern[{"EwaldField"->True, "SwapAll" -> False}]] := Module[{Fint, n, Fout},
-  Fint[n_] := StringRepeat["  ", n];
-  Fout = If[OptionValue["EwaldField"],
-           Join[
-            {{"Function GetDeltaHEwald(x0, y0, z0, EwaldField" <> If[OptionValue["SwapAll"], "", ", idelta"] <> ", delta) Result(ene)"},
-             {Fint[1]},
-             {Fint[1] <> "Use Parameters"},
-             {Fint[1] <> "Implicit none"},
-             {Fint[1] <> "Integer, Intent(in) :: x0, y0, z0" <> If[OptionValue["SwapAll"], "", ", idelta"]},
-             {Fint[1] <> "Real*8,  Intent(in) :: EwaldField(FieldDim, NumField, cgrid%n1, cgrid%n2, cgrid%n3)"}},
-            {{Fint[1] <> "Real*8,  Intent(in) :: delta(FieldDimList(idelta))"}},
-            {{Fint[1] <> "Integer             :: i, j, ifield, jfield"},
-             {Fint[1] <> "Real*8              :: ene, ThreadEne"},
-             {Fint[1]},
-             {Fint[1] <> "ene = 0.0d0"},
-             {Fint[1]}},
-            If[OptionValue["SwapAll"], {{Fint[1] <> "do ifield = 1, NumField - 1"},
-                                        {Fint[2] <> "do i = 1, FieldDimList(ifield)"},
-                                        {Fint[3] <> "ene = ene + delta(i)*EwaldField(i,ifield,x0,y0,z0)"},
-                                        {Fint[2] <> "end do ! i"},
-                                        {Fint[1] <> "end do ! i"}},
-                                       {{Fint[1] <> "do i = 1, FieldDimList(idelta)"},
-                                        {Fint[2] <> "ene = ene + delta(i)*EwaldField(i,idelta,x0,y0,z0)"},
-                                        {Fint[1] <> "end do ! i"}}],
-            If[OptionValue["SwapAll"], {{Fint[1]},
-                                        {Fint[1] <> "do ifield = 1, NumField - 1"},
-                                        {Fint[2] <> "do jfield = 1, NumField - 1"},
-                                        {Fint[3] <> "do i = 1, FieldDimList(ifield)"},
-                                        {Fint[4] <> "do j = 1, FieldDimList(jfield)"},
-                                        {Fint[5] <> "ene = ene + 0.5*FieldCharge(ifield)*FieldCharge(jfield)*delta(i)*EwaldMat(j,i,1,1,1)*delta(j)"},
-                                        {Fint[4] <> "end do ! j"},
-                                        {Fint[3] <> "end do ! j"},
-                                        {Fint[2] <> "end do ! j"},
-                                        {Fint[1] <> "end do ! i"}},
-                                       {{Fint[1]},
-                                        {Fint[1] <> "do i = 1, FieldDimList(idelta)"},
-                                        {Fint[2] <> "do j = 1, FieldDimList(idelta)"},
-                                        {Fint[3] <> "ene = ene + 0.5*FieldCharge(idelta)**2*delta(i)*EwaldMat(j,i,1,1,1)*delta(j)"},
-                                        {Fint[2] <> "end do ! j"},
-                                        {Fint[1] <> "end do ! i"}}],
-            {{Fint[1]},
-             {"End Function GetDeltaHEwald"}}],
-           Join[
-            {{"Function GetDeltaHEwald(ix, iy, iz, Fields" <> If[OptionValue["SwapAll"], "", ", idelta"] <> "delta) Result(ene)"},
-             {Fint[1]},
-             {Fint[1] <> "Use omp_lib"},
-             {Fint[1] <> "Use Parameters"},
-             {Fint[1] <> "Implicit none"},
-             {Fint[1] <> "Integer, Intent(in) :: ix, iy, iz" <> If[OptionValue["SwapAll"], "", ", idelta"]},
-             {Fint[1] <> "Real*8,  Intent(in) :: Fields(FieldDim, NumField, cgrid%n1, cgrid%n2, cgrid%n3)"}},
-            {{Fint[1] <> "Real*8,  Intent(in) :: delta(FieldDimList(idelta))"}},
-            {{Fint[1] <> "Integer             :: i, j, jx, jy, jz, x, y, z, ifield, jfield"},
-             {Fint[1] <> "Real*8              :: ene, ThreadEne"},
-             {Fint[1]},
-             {Fint[1] <> "INTEGER             :: ThreadId"},
-             {Fint[1]},
-             {Fint[1] <> "ene = 0.0d0"},
-             {Fint[1] <> "!$OMP    PARALLEL DEFAULT(SHARED) PRIVATE(jfield,x,y,z,ThreadEne)"},
-             {Fint[2] <> "ThreadEne = 0.0d0"},
-             {Fint[2]}},
-            If[OptionValue["SwapAll"], {{Fint[2] <> "!$OMP    DO COLLAPSE(1)"},
-                                        {Fint[3] <> "do jz = 1, cgrid%n3"},
-                                        {Fint[4] <> "do jy = 1, cgrid%n2"},
-                                        {Fint[5] <> "do jx = 1, cgrid%n1"},
-                                        {Fint[6] <> "do jfield = 1, NumField - 1"},
-                                        {Fint[7] <> "do ifield = 1, NumField - 1"},
-                                        {Fint[8] <> "do i = 1, FieldDimList(ifield)"},
-                                        {Fint[9] <> "do j = 1, FieldDimList(jfield)"},
-                                        {Fint[10] <> "x = (jx-ix+1)-floor(real(jx-ix)/real(cgrid%n1))*cgrid%n1"},
-                                        {Fint[10] <> "y = (jy-iy+1)-floor(real(jy-iy)/real(cgrid%n2))*cgrid%n2"},
-                                        {Fint[10] <> "z = (jz-iz+1)-floor(real(jz-iz)/real(cgrid%n3))*cgrid%n3"},
-                                        {Fint[10] <> "ThreadEne = ThreadEne &"},
-                                        {Fint[11] <> "+ FieldCharge(ifield)*FieldCharge(jfield)*delta(i)*EwaldMat(j,i,x,y,z)*Fields(j,jfield,jx,jy,jz)"},
-                                        {Fint[9] <> "end do ! j"},
-                                        {Fint[8] <> "end do ! i"},
-                                        {Fint[7] <> "end do ! jz"},
-                                        {Fint[6] <> "end do ! jy"},
-                                        {Fint[5] <> "end do ! jx"},
-                                        {Fint[4] <> "end do ! ifield"},
-                                        {Fint[3] <> "end do ! ifield"},
-                                        {Fint[2] <> "!$OMP    END DO"},
-                                        {Fint[2]},
-                                        {Fint[2] <> "!$OMP CRITICAL"},
-                                        {Fint[3] <> "ene = ene + ThreadEne"},
-                                        {Fint[2] <> "!$OMP END CRITICAL"},
-                                        {Fint[1]},
-                                        {Fint[1] <> "!$OMP    END PARALLEL"}},
-                                       {{Fint[2] <> "!$OMP    DO COLLAPSE(1)"},
-                                        {Fint[3] <> "do jz = 1, cgrid%n3"},
-                                        {Fint[4] <> "do jy = 1, cgrid%n2"},
-                                        {Fint[5] <> "do jx = 1, cgrid%n1"},
-                                        {Fint[6] <> "do jfield = 1, NumField - 1"},
-                                        {Fint[7] <> "do i = 1, FieldDimList(idelta)"},
-                                        {Fint[8] <> "do j = 1, FieldDimList(jfield)"},
-                                        {Fint[9] <> "x = (jx-ix+1)-floor(real(jx-ix)/real(cgrid%n1))*cgrid%n1"},
-                                        {Fint[9] <> "y = (jy-iy+1)-floor(real(jy-iy)/real(cgrid%n2))*cgrid%n2"},
-                                        {Fint[9] <> "z = (jz-iz+1)-floor(real(jz-iz)/real(cgrid%n3))*cgrid%n3"},
-                                        {Fint[9] <> "ThreadEne = ThreadEne &"},
-                                        {Fint[10] <> "+ FieldCharge(idelta)*FieldCharge(jfield)*delta(i)*EwaldMat(j,i,x,y,z)*Fields(j,jfield,jx,jy,jz)"},
-                                        {Fint[8] <> "end do ! j"},
-                                        {Fint[7] <> "end do ! i"},
-                                        {Fint[6] <> "end do ! jz"},
-                                        {Fint[5] <> "end do ! jy"},
-                                        {Fint[4] <> "end do ! jx"},
-                                        {Fint[3] <> "end do ! ifield"},
-                                        {Fint[2] <> "!$OMP    END DO"},
-                                        {Fint[2]}}],
-            {{Fint[2] <> "!$OMP CRITICAL"},
-             {Fint[3] <> "ene = ene + ThreadEne"},
-             {Fint[2] <> "!$OMP END CRITICAL"},
-             {Fint[1]},
-             {Fint[1] <> "!$OMP    END PARALLEL"}},
-            {{Fint[1]}},
-            If[OptionValue["SwapAll"], {{Fint[1] <> "do ifield = 1, NumField - 1"},
-                                        {Fint[2] <> "do jfield = 1, NumField - 1"},
-                                        {Fint[1] <> "do i = 1, FieldDimList(ifield)"},
-                                        {Fint[2] <> "do j = 1, FieldDimList(jfield)"},
-                                        {Fint[3] <> "ene = ene + 0.5*FieldCharge(ifield)*FieldCharge(jfield)*delta(i)*EwaldMat(j,i,1,1,1)*delta(j)"},
-                                        {Fint[2] <> "end do ! j"},
-                                        {Fint[2] <> "end do ! j"},
-                                        {Fint[2] <> "end do ! j"},
-                                        {Fint[1] <> "end do ! i"}},
-                                       {{Fint[1] <> "do i = 1, 3"},
-                                        {Fint[2] <> "do j = 1, 3"},
-                                        {Fint[3] <> "ene = ene + 0.5*FieldCharge(idelta)*FieldCharge(idelta)*delta(i)*EwaldMat(j,i,1,1,1)*delta(j)"},
-                                        {Fint[2] <> "end do ! j"},
-                                        {Fint[1] <> "end do ! i"}}],
-            {{Fint[1]},
-             {"End Function GetDeltaHEwald"}}]];
-  Return[Fout]
-]
-
-FortranGetEwaldField[OptionsPattern[]] := Module[{Fint, n, Fout},
-  Fint[n_] := StringRepeat["  ", n];
-  Fout = Join[{{"Subroutine GetEwaldField(Fields, EwaldField)"},
-   {Fint[1] <> ""},
-   {Fint[1] <> "implicit none"},
-   {Fint[1] <> "real*8,  intent(in)           :: Fields(FieldDim, NumField, cgrid%n1, cgrid%n2, cgrid%n3)"},
-   {Fint[1] <> "real*8,  intent(inout)        :: EwaldField(FieldDim, NumField, cgrid%n1, cgrid%n2, cgrid%n3)"},
-   {Fint[1] <> "integer                       :: i, j, ifield, jfield, ix, iy, iz, jx, jy, jz, x, y, z"},
-   {Fint[1]},
-   {Fint[1] <> "EwaldField = 0.0D0"},
-   {Fint[1]},
-   {Fint[1] <> "!$OMP    PARALLEL  DEFAULT(SHARED) PRIVATE(x,y,z)"}, 
-   {Fint[2] <> "do jz = 1, cgrid%n3"},
-   {Fint[2] <> "do jy = 1, cgrid%n2"},
-   {Fint[2] <> "do jx = 1, cgrid%n1"},
-   {Fint[2] <> "do jfield = 1, NumField - 1"},
-   {Fint[2] <> "do j = 1, FieldDimList(jfield)"},
-   {Fint[1] <> "!$OMP    DO COLLAPSE(1)"}, 
-   {Fint[2] <> "do iz = 1, cgrid%n3"},
-   {Fint[2] <> "do iy = 1, cgrid%n2"},
-   {Fint[2] <> "do ix = 1, cgrid%n1"},
-   {Fint[2] <> "do ifield = 1, NumField - 1! delete to decouple two fields"},
-   {Fint[2] <> "do i = 1, FieldDimList(ifield) ! ifield -> jfield"},
-   {Fint[3] <> "Call Pbc(jx-ix, jy-iy, jz-iz, x, y, z)"},
-   {Fint[3] <> "! ifield -> jfield"},
-   {Fint[3] <> "EwaldField(i,ifield,ix,iy,iz) = EwaldField(i,ifield,ix,iy,iz) &"},
-   {Fint[4] <> "+ FieldCharge(jfield)*FieldCharge(ifield)*EwaldMat(j,i,x,y,z)*Fields(j,jfield,jx,jy,jz)"},
-   {Fint[2] <> "end do"},
-   {Fint[2] <> "end do"},
-   {Fint[2] <> "end do"},
-   {Fint[2] <> "end do"},
-   {Fint[2] <> "end do"},
-   {Fint[1] <> "!$OMP    END DO"}, 
-   {Fint[2] <> "end do"},
-   {Fint[2] <> "end do"},
-   {Fint[2] <> "end do"},
-   {Fint[2] <> "end do"},
-   {Fint[2] <> "end do"},
-   {Fint[1] <> "!$OMP    END PARALLEL"}, 
-   {Fint[1]},
-   {Fint[1]},
-   {"End Subroutine GetEwaldField"}}];
-  Return[Fout]
-]
-
-FortranUpdateEwaldField[OptionsPattern[{"SwapAll"->False}]] := Module[{Fint, n, Fout},
-  Fint[n_] := StringRepeat["  ", n];
-  Fout = Join[
-    {{"Subroutine UpdateEwaldField(ix, iy, iz, EwaldField" <> If[OptionValue["SwapAll"], "", ", idelta"] <> ", delta)"},
-     {Fint[1] <> "Use omp_lib"},
-     {Fint[1] <> "use Parameters"},
-     {Fint[1] <> "use Inputs"},
-     {Fint[1] <> "use Fileparser"},
-     {Fint[1] <> ""},
-     {Fint[1] <> "Implicit none"},
-     {Fint[1] <> "integer, intent(in)     :: ix, iy, iz" <> If[OptionValue["SwapAll"], "", ", idelta"]},
-     {Fint[1] <> "real*8,  intent(inout)  :: EwaldField(FieldDim, NumField, cgrid%n1, cgrid%n2, cgrid%n3)"}},
-    {{Fint[1] <> "real*8,  intent(in)     :: delta(FieldDimList(idelta))"}},
-    {{Fint[1] <> "integer                 :: i, j, ifield, jfield, jx, jy, jz, x, y, z"},
-     {Fint[1]}},
-    If[OptionValue["SwapAll"], {{Fint[1] <> "!$OMP    PARALLEL  DEFAULT(SHARED) PRIVATE(x,y,z)"},
-                                {Fint[2] <> "do ifield = 1, NumField - 1"},
-                                {Fint[2] <> "do i = 1, FieldDimList(ifield)"},
-                                {Fint[1] <> "!$OMP    DO COLLAPSE(1)"},
-                                {Fint[2] <> "do jz = 1, cgrid%n3"},
-                                {Fint[2] <> "do jy = 1, cgrid%n2"},
-                                {Fint[2] <> "do jx = 1, cgrid%n1"},
-                                {Fint[2] <> "do jfield = 1, NumField - 1 ! delete to decouple two fields"},
-                                {Fint[2] <> "do j = 1, FieldDimList(jfield) ! jfield -> idelta"},
-                                {Fint[3] <> "x = (jx-ix+1)-floor(real(jx-ix)/real(cgrid%n1))*cgrid%n1"},
-                                {Fint[3] <> "y = (jy-iy+1)-floor(real(jy-iy)/real(cgrid%n2))*cgrid%n2"},
-                                {Fint[3] <> "z = (jz-iz+1)-floor(real(jz-iz)/real(cgrid%n3))*cgrid%n3"},
-                                {Fint[3] <> "! jfield -> idelta"},
-                                {Fint[3] <> "EwaldField(j,jfield,jx,jy,jz) = &"},
-                                {Fint[3] <> "EwaldField(j,jfield,jx,jy,jz) + FieldCharge(jfield)*FieldCharge(ifield)*EwaldMat(j,i,x,y,z)*delta(i)"},
-                                {Fint[2] <> "end do"},
-                                {Fint[2] <> "end do"},
-                                {Fint[2] <> "end do"},
-                                {Fint[2] <> "end do"},
-                                {Fint[2] <> "end do"},
-                                {Fint[1] <> "!$OMP    END DO"},
-                                {Fint[2] <> "end do"},
-                                {Fint[2] <> "end do"},
-                                {Fint[1] <> "!$OMP    END PARALLEL"}},
-                               {{Fint[1] <> "!$OMP    PARALLEL  DEFAULT(SHARED) PRIVATE(x,y,z)"},
-                                {Fint[2] <> "do i = 1, FieldDimList(idelta)"},
-                                {Fint[1] <> "!$OMP    DO COLLAPSE(1)"},
-                                {Fint[2] <> "do jz = 1, cgrid%n3"},
-                                {Fint[2] <> "do jy = 1, cgrid%n2"},
-                                {Fint[2] <> "do jx = 1, cgrid%n1"},
-                                {Fint[2] <> "do jfield = 1, NumField - 1 ! delete to decouple two fields"},
-                                {Fint[2] <> "do j = 1, FieldDimList(jfield) ! jfield -> idelta"},
-                                {Fint[3] <> "x = (jx-ix+1)-floor(real(jx-ix)/real(cgrid%n1))*cgrid%n1"},
-                                {Fint[3] <> "y = (jy-iy+1)-floor(real(jy-iy)/real(cgrid%n2))*cgrid%n2"},
-                                {Fint[3] <> "z = (jz-iz+1)-floor(real(jz-iz)/real(cgrid%n3))*cgrid%n3"},
-                                {Fint[3] <> "! jfield -> idelta"},
-                                {Fint[3] <> "EwaldField(j,jfield,jx,jy,jz) = &"},
-                                {Fint[3] <> "EwaldField(j,jfield,jx,jy,jz) + FieldCharge(jfield)*FieldCharge(idelta)*EwaldMat(j,i,x,y,z)*delta(i)"},
-                                {Fint[2] <> "end do"},
-                                {Fint[2] <> "end do"},
-                                {Fint[2] <> "end do"},
-                                {Fint[2] <> "end do"},
-                                {Fint[2] <> "end do"},
-                                {Fint[1] <> "!$OMP    END DO"},
-                                {Fint[2] <> "end do"},
-                                {Fint[1] <> "!$OMP    END PARALLEL"}}],
-    {{Fint[1]},
-     {"End Subroutine UpdateEwaldField"}}];
-  Return[Fout]]
-
-FortranGetEwaldForces[OptionsPattern[{"AllSites" -> True}]] := Module[{Fint, n, Fout, func},
-  Fint[n_] := StringRepeat["  ", n];
-  func = If[OptionValue["AllSites"], {{"Function GetEwaldForces(Fields) Result(EwaldForce)"}}, {{"Function GetEwaldForces(ix, iy, iz, Fields) Result(EwaldForce)"}}];
-  Fout = Join[
-    func,
-    If[OptionValue["AllSites"], {{Fint[1] <> "Use omp_lib"}}, {}],
-    {{Fint[1] <> "use Parameters"},
-     {Fint[1] <> "use Inputs"},
-     {Fint[1] <> "use Fileparser"},
-     {Fint[1] <> ""},
-     {Fint[1] <> "implicit none"},
-     {Fint[1] <> "real*8,  intent(in)           :: Fields(FieldDim, NumField, cgrid%n1, cgrid%n2, cgrid%n3)"},
-     {Fint[1] <> If[OptionValue["AllSites"], "Integer                       :: ", "Integer, Intent(in)           :: "] <> "ix, iy, iz"},
-     {Fint[1] <> "integer                       :: i, ifield"},
-     {Fint[1] <> "integer                       :: j, jfield, jx, jy, jz"},
-     {Fint[1] <> "integer                       :: x, y, z"}, 
-     {Fint[1] <> "real*8                        :: EwaldForce" <> If[OptionValue["AllSites"], "(FieldDim, NumField, cgrid%n1, cgrid%n2, cgrid%n3)", "(Max(FieldDim, 6), NumField+1)"]}, 
-     {Fint[1] <> "real*8                        :: force"},
-     {Fint[1]},
-     {Fint[1] <> "EwaldForce = 0.0D0"},
-     {Fint[1]}},
-    If[OptionValue["AllSites"],
-     {{Fint[1] <> "!$OMP    PARALLEL DEFAULT(SHARED) PRIVATE(ix,iy,iz,ifield,i,x,y,z,force)"},
-      {Fint[1] <> "do jz = 1, cgrid%n3"},
-      {Fint[2] <> "do jy = 1, cgrid%n2"},
-      {Fint[3] <> "do jx = 1, cgrid%n1"},
-      {Fint[4] <> "do jfield = 1, NumField - 1"},
-      {Fint[5] <> "do j = 1, FieldDimList(jfield)"},
-      {Fint[6] <> "!$OMP    DO COLLAPSE(1)"},
-      {Fint[6] <> "do iz = 1, cgrid%n3"},
-      {Fint[6] <> "do iy = 1, cgrid%n2"},
-      {Fint[6] <> "do ix = 1, cgrid%n1"},
-      {Fint[6] <> "do ifield = 1, NumField ! delete to decouple two fields"},
-      {Fint[6] <> "do i = 1, FieldDimList(ifield) ! ifield -> jfield"}},
-     {{Fint[1] <> "do jz = 1, cgrid%n3"},
-      {Fint[1] <> "do jy = 1, cgrid%n2"},
-      {Fint[1] <> "do jx = 1, cgrid%n1"},
-      {Fint[1] <> "do jfield = 1, NumField - 1"},
-      {Fint[1] <> "do j = 1, FieldDimList(jfield)"},
-      {Fint[1] <> "do ifield = 1, NumField - 1! delete to decouple two fields"},
-      {Fint[1] <> "do i = 1, FieldDimList(ifield) ! ifield -> jfield"}}],
-    {{Fint[If[OptionValue["AllSites"], 7, 2]] <> "x = (jx-ix+1)-floor(real(jx-ix)/real(cgrid%n1))*cgrid%n1"}, 
-     {Fint[If[OptionValue["AllSites"], 7, 2]] <> "y = (jy-iy+1)-floor(real(jy-iy)/real(cgrid%n2))*cgrid%n2"}, 
-     {Fint[If[OptionValue["AllSites"], 7, 2]] <> "z = (jz-iz+1)-floor(real(jz-iz)/real(cgrid%n3))*cgrid%n3"}, 
-     {Fint[If[OptionValue["AllSites"], 7, 2]] <> "! ifield -> jfield"}, 
-     {Fint[If[OptionValue["AllSites"], 7, 2]] <> "force = FieldCharge(ifield)*FieldCharge(jfield)*EwaldMat(i,j,x,y,z)*Fields(j,jfield,jx,jy,jz)"}},
-    If[OptionValue["AllSites"],
-     {{Fint[7] <> "! ifield -> jfield"},
-      {Fint[7] <> "EwaldForce(i, ifield, ix, iy, iz) = EwaldForce(i, ifield, ix, iy, iz) - force"}},
-     {{Fint[2] <> "EwaldForce(i, ifield) = EwaldForce(i, ifield) - force"}}],
-    If[OptionValue["AllSites"],
-     {{Fint[6] <> "end do"},
-      {Fint[6] <> "end do"},
-      {Fint[6] <> "end do"},
-      {Fint[6] <> "end do"},
-      {Fint[6] <> "end do"},
-      {Fint[6] <> "!$OMP    END DO"},
-      {Fint[5] <> "end do"},
-      {Fint[4] <> "end do"},
-      {Fint[3] <> "end do"},
-      {Fint[2] <> "end do"},
-      {Fint[1] <> "end do"},
-      {Fint[1] <> "!$OMP    END PARALLEL"}},
-     {{Fint[1] <> "end do"},
-      {Fint[1] <> "end do"},
-      {Fint[1] <> "end do"},
-      {Fint[1] <> "end do"},
-      {Fint[1] <> "end do"},
-      {Fint[1] <> "end do"},
-      {Fint[1] <> "end do"}}],
-    {{Fint[1]},
-     {"End Function GetEwaldForces"}}];
-  Return[Fout]
-]
-
-HeadTailDeltaH[FunctionName_?StringQ, ReturnVar_, nn_, OptionsPattern[{}]] := Module[{Fint, n, head, tail, res, reslist},
-  Fint[n_] := StringRepeat["  ", n];
-  {res, reslist} = Which[StringQ[ReturnVar], {ReturnVar, {ReturnVar}}, ListQ[ReturnVar] && Length[ReturnVar] == 2, {First[ReturnVar], ReturnVar[[2]]}, True, Print["ReturnVar either a string or a list with 2 elements"; Abort[]]];
-  head = Join[{{"Function " <> FunctionName <> "(x0, y0, z0, Fields, e0ij, idelta, delta) Result(" <> res <> ")"},
-               {Fint[1]},
-               {Fint[1] <> "Implicit none"},
-               {Fint[1] <> "Integer, Intent(in) :: x0, y0, z0, idelta"},
-               {Fint[1] <> "Real*8,  Intent(in) :: Fields(FieldDim, NumField, cgrid%n1, cgrid%n2, cgrid%n3)"},
-               {Fint[1] <> "Real*8,  Intent(in) :: delta(FieldDimList(idelta))"},
-               {Fint[1] <> "Real*8,  Intent(in) :: e0ij(3,3)"},
-               {Fint[1] <> "Real*8              :: eij(3,3), euij(3,3)"}},
-              {Fint[1] <> "Real*8              :: " <> #} & /@ DeleteDuplicates[Join[{res}, reslist]],
-              {{Fint[1]}},
-              HopingCodeBlock[nn][[2]],
-              {{Fint[1]}},
-              HopingCodeBlock[nn][[3]],
-              {{Fint[1]}},
-              {Fint[1] <> # <> " = 0.0D0"} & /@ DeleteDuplicates[Join[{res}, reslist]],
-              {{Fint[1] <> "euij = StrainFromu(x0, y0, z0, Fields)"},
-               {Fint[1] <> "eij = e0ij + euij"},
-               {Fint[1]}
-              }
-              ];
-  tail = {{Fint[1]}, {"End Function " <> FunctionName}};
-  Return[{head, tail}]
-] 
-
-HeadTailForces[FunctionName_?StringQ, ReturnVar_, nn_, OptionsPattern[{"AllSites" -> True}]] := 
- Module[{Fint, n, head, tail, res, reslist, func},
-  Fint[n_] := StringRepeat["  ", n];
-  {res, reslist} = Which[StringQ[ReturnVar], {ReturnVar, {ReturnVar}}, ListQ[ReturnVar] && Length[ReturnVar] == 2, {First[ReturnVar], ReturnVar[[2]]}, True, Print["ReturnVar either a string or a list with 2 elements"; Abort[]]];
-  func = If[OptionValue["AllSites"], {{"Function " <> FunctionName <> "(Fields, e0ij) Result(" <> res <> ")"}}, {{"Function " <> FunctionName <> "(x0, y0, z0, Fields, e0ij) Result(" <> res <> ")"}}];
-  head = Join[ 
-      func,
-      {{Fint[1]},
-       {Fint[1] <> "Implicit none"},
-       {Fint[1] <> "Real*8,  Intent(in) :: Fields(FieldDim, NumField, cgrid%n1, cgrid%n2, cgrid%n3)"}, 
-       {Fint[1] <> "Real*8,  Intent(in) :: e0ij(3,3)"},
-       {Fint[1] <> If[OptionValue["AllSites"], "Integer             :: ", "Integer, Intent(in) :: "] <> "x0, y0, z0"},
-       {Fint[1] <> "Real*8              :: eij(3,3), euij(3,3)"}},
-       {Fint[1] <> "Real*8              :: " <> # <> If[OptionValue["AllSites"], "(Max(FieldDim, 6), NumField+1, cgrid%n1, cgrid%n2, cgrid%n3)", "(Max(FieldDim, 6), NumField+1)"]} & /@ DeleteDuplicates[Join[{res}, reslist]],
-      {{Fint[1]}},
-      HopingCodeBlock[nn][[2]],
-      {{Fint[1]}},
-      {Fint[1] <> # <> " = 0.0D0"} & /@ DeleteDuplicates[Join[{res}, reslist]],
-      If[OptionValue["AllSites"], 
-         {{Fint[1] <> "!$OMP    PARALLEL DEFAULT(SHARED) PRIVATE(" <> StringJoin[Riffle[Join[{"eij,euij,x0","y0","z0"},HopingCodeBlock[nn][[1]]], ","]] <> ")"}, 
-          {Fint[1] <> "!$OMP    DO COLLAPSE(3)"},
-          {Fint[1] <> "do z0 = 1, cgrid%n3"},
-          {Fint[1] <> "do y0 = 1, cgrid%n2"},
-          {Fint[1] <> "do x0 = 1, cgrid%n1"}}, {}],
-      {{Fint[2]}},
-      {{Fint[2] <> "euij = StrainFromu(x0, y0, z0, Fields)"},
-       {Fint[2] <> "eij = e0ij + euij"},
-       {Fint[2]}},
-      HopingCodeBlock[nn, "int" -> If[OptionValue["AllSites"], 2, 1]][[3]],
-      {{Fint[1]}}];
-  tail = Join[
-    If[OptionValue["AllSites"], 
-      {{Fint[1] <> "end do"},
-       {Fint[1] <> "end do"},
-       {Fint[1] <> "end do"},
-       {Fint[1] <> "!$OMP    END DO"},
-       {Fint[1] <> "!$OMP    END PARALLEL"}}, {}],
-    If[ListQ[ReturnVar], {{Fint[1] <> res <> "=" <> StringJoin[Riffle[reslist, "+"]]}}, {}],
-    {{Fint[1]},
-     {"End Function " <> FunctionName}}];
-  Return[{head, tail}]]
-
-HeadTailHessianOnSite[FunctionName_?StringQ, ReturnVar_, nn_, OptionsPattern[{}]] :=
- Module[{Fint, n, head, tail, res, reslist, func},
-  Fint[n_] := StringRepeat["  ", n];
-  {res, reslist} = Which[StringQ[ReturnVar], {ReturnVar, {ReturnVar}}, ListQ[ReturnVar] && Length[ReturnVar] == 2, {First[ReturnVar], ReturnVar[[2]]}, True, Print["ReturnVar either a string or a list with 2 elements"; Abort[]]];
-  func = {{"Function " <> FunctionName <> "(x0, y0, z0, Fields, e0ij) Result(" <> res <> ")"}};
-  head = Join[
-      func,
-      {{Fint[1]},
-       {Fint[1] <> "use Parameters"},
-       {Fint[1] <> "use Inputs"}},
-      {{Fint[1]},
-       {Fint[1] <> "Implicit none"},
-       {Fint[1] <> "Real*8,  Intent(in) :: Fields(FieldDim, NumField, cgrid%n1, cgrid%n2, cgrid%n3)"},
-       {Fint[1] <> "Real*8,  Intent(in) :: e0ij(3,3)"},
-       {Fint[1] <> "Integer, Intent(in) :: x0, y0, z0"},
-       {Fint[1] <> "Real*8              :: eij(3,3), euij(3,3)"}},
-      {Fint[1] <> "Real*8              :: " <> # <> "(OnSiteDim, OnSiteDim)"} & /@ DeleteDuplicates[Join[{res}, reslist]],
-      {{Fint[1]}},
-      HopingCodeBlock[nn][[2]],
-      {{Fint[1]}},
-      {Fint[1] <> # <> " = 0.0D0"} & /@ DeleteDuplicates[Join[{res}, reslist]],
-      {{Fint[1] <> "euij = StrainFromu(x0, y0, z0, Fields)"},
-       {Fint[1] <> "eij = e0ij + euij"},
-       {Fint[1]}},
-      HopingCodeBlock[nn, "int" -> 1][[3]],
-      {{Fint[1]}}];
-  tail = Join[
-    If[ListQ[ReturnVar], {{Fint[1] <> res <> "=" <> StringJoin[Riffle[reslist, "+"]]}}, {}],
-    {{Fint[1]},
-     {"End Function " <> FunctionName}}];
-  Return[{head, tail}]
-]
-
-HeadTailEOnSite[FunctionName_?StringQ, ReturnVar_, nn_, OptionsPattern[{"AllSites" -> True}]] := Module[{Fint, n, head, tail, res, reslist, func},
-  Fint[n_] := StringRepeat["  ", n];
-  {res, reslist} = Which[StringQ[ReturnVar], {ReturnVar, {ReturnVar}}, ListQ[ReturnVar] && Length[ReturnVar] == 2, {First[ReturnVar], ReturnVar[[2]]}, True, Print["ReturnVar either a string or a list with 2 elements"; Abort[]]];
-  func = If[OptionValue["AllSites"], {{"Function " <> FunctionName <> "(Fields, e0ij) Result(" <> res <> ")"}}, {{"Function " <> FunctionName <> "(x0, y0, z0, Fields, e0ij) Result(" <> res <> ")"}}];
-  head = Join[
-      func,
-      {{Fint[1]},
-       {Fint[1] <> "Implicit none"},
-       {Fint[1] <> "Real*8,  Intent(in) :: Fields(FieldDim, NumField, cgrid%n1, cgrid%n2, cgrid%n3)"},
-       {Fint[1] <> "Real*8,  Intent(in) :: e0ij(3,3)"},
-       {Fint[1] <> If[OptionValue["AllSites"], "Integer             :: ", "Integer, Intent(in) :: "] <> "x0, y0, z0"},
-       {Fint[1] <> "Real*8              :: eij(3,3), euij(3,3)"}},
-       {Fint[1] <> "Real*8              :: " <> # <> If[OptionValue["AllSites"], "(cgrid%n1, cgrid%n2, cgrid%n3)", ""]} & /@ DeleteDuplicates[Join[{res}, reslist]],
-      {{Fint[1]}},
-      HopingCodeBlock[nn][[2]],
-      {{Fint[1]}},
-      {Fint[1] <> # <> " = 0.0D0"} & /@ DeleteDuplicates[Join[{res}, reslist]],
-      {{Fint[1]}},
-      If[OptionValue["AllSites"],
-         {{Fint[1] <> "!$OMP    PARALLEL DEFAULT(SHARED) PRIVATE(" <> StringJoin[Riffle[Join[{"eij,euij,x0","y0","z0"},HopingCodeBlock[nn][[1]]], ","]] <> ")"},
-          {Fint[1] <> "!$OMP    DO COLLAPSE(3)"},
-          {Fint[1] <> "do z0 = 1, cgrid%n3"},
-          {Fint[1] <> "do y0 = 1, cgrid%n2"},
-          {Fint[1] <> "do x0 = 1, cgrid%n1"}}, {}],
-      {{Fint[1]},
-       {Fint[2] <> "euij = StrainFromu(x0, y0, z0, Fields)"},
-       {Fint[2] <> "eij = e0ij + euij"},
-       {Fint[1]}},
-      HopingCodeBlock[nn, "int" -> If[OptionValue["AllSites"], 2, 1]][[3]],
-      {{Fint[1]}}];
-  tail = Join[
-    If[OptionValue["AllSites"],
-      {{Fint[1] <> "end do"},
-       {Fint[1] <> "end do"},
-       {Fint[1] <> "end do"},
-       {Fint[1] <> "!$OMP    END DO"},
-       {Fint[1] <> "!$OMP    END PARALLEL"}}, {}],
-    If[ListQ[ReturnVar], {{Fint[1] <> res <> "=" <> StringJoin[Riffle[reslist, "+"]]}}, {}],
-    {{Fint[1]},
-     {"End Function " <> FunctionName}}];
-  Return[{head, tail}]
-]
-
-WriteLatticeModelF90[F90dir_, FuncName_?StringQ, FuncType_?StringQ, InvariantList_?ListQ, MMAVars_, OptionsPattern[{"AllSites" -> False, "TylorOrder" -> 6}]] := Module[{FortranVar, FortranArrayVar, Invariants, HamList, ham, CoeffType, FortranVarList, ifield, i, inv, MMA, Fortran, f90, body, head, tail, CaseExprTable, var, ii},
+WriteLatticeModelF90[F90dir_, FuncName_?StringQ, FuncType_?StringQ, InvariantList_?ListQ, MMAVars_, OptionsPattern[{"AllSites" -> False, "TylorOrder" -> 6}]] := Module[{FortranVar, FortranArrayVar, Invariants, HamList, ham, CoeffType, FortranVarList, ifield, i, inv, MMA, Fortran, f90, body, head, tail, CaseExprTable, var, ii, MMA2F90Vars, nn, ix, iy, iz, FortranVarLength, ExprFunc, ExprFuncBlock, CollectData},
 
   MMA2F90Vars = FortranVarSub[MMAVars];
-  
+  ExprFunc = {{}};
+ 
   FortranVarList = FuncType <> # & /@ First[Transpose[InvariantList]];
   HamList = Table[{inv[[1]], Expand@If[ListQ[inv[[2]]], inv[[2]].(ToExpression["Coeff"<>inv[[1]]][#] & /@ Range[Length@inv[[2]]]), inv[[2]]]}, {inv, InvariantList}];
+
+  nn = Max@Abs@Append[Flatten[Cases[Variables[HamList], #] & /@ DeleteDuplicates[(Subscript[First[#], _, ix_, iy_, iz_] -> {ix, iy, iz}) & /@ Flatten[MMAVars[[1 ;; -2]]]]], 0];
+
   Which[
-  (* Forces *)
-    FuncType == "Forces",
+  (*Forces*)
+    FuncType == "Forces", 
     Fortran = Flatten[
-                Table[MMA =Flatten[Table[Table[
-                        FortranArrayVar = If[OptionValue["AllSites"],
-                                             FortranVarStr[FuncType<>ham[[1]], {ToString[i], ToString[ifield], "x0", "y0", "z0"}], 
-                                             FortranVarStr[FuncType<>ham[[1]], {ToString[i], ToString[ifield]}]];
-                        {FortranArrayVar, -D[Expand[ham[[2]]], MMAVars[[ifield, i]]]}, {i, Length@MMAVars[[ifield]]}], {ifield, Length@MMAVars}], 1];
-                      {#1, Expr2Fortran[#2, MMA2F90Vars]} & @@@ MMA, {ham, HamList}], 1];
-    body = Flatten[FortranExprBlock[#1, #2, If[OptionValue["AllSites"], 2, 1]] & @@@ Fortran, 1];
-    {head, tail} = HeadTailForces[FuncName, If[Length@FortranVarList == 1, First@FortranVarList, {FuncType, FortranVarList}], 1, "AllSites" -> OptionValue["AllSites"]],
-  (* DeltaH *)
-    FuncType == "DeltaH",
-    Fortran = Table[MMA = NOrderResponse[ham[[2]], #, OptionValue["TylorOrder"]] &/@ MMAVars;
+              Table[MMA = Flatten[Table[Table[FortranArrayVar = If[OptionValue["AllSites"], 
+                                              FortranFuncArg[FuncType <> ham[[1]] <> ToString[i] <> ToString[ifield], {"x0", "y0", "z0"}], 
+                                              FuncType <> ham[[1]] <> ToString[i] <> ToString[ifield]];
+                         {FortranArrayVar, -D[Expand[ham[[2]]], MMAVars[[ifield, i]]]}, {i, Length@MMAVars[[ifield]]}], {ifield, Length@MMAVars}], 1];
+                         {#1, Expr2Fortran[#2, MMA2F90Vars]} & @@@ MMA, {ham, HamList}], 1];
+
+    ExprFuncBlock = FortranExprFunc[#1 <> "(nexpr)", FuncType, #2, nn, 2, "AllSites" -> OptionValue["AllSites"]] & @@@ Fortran;
+    ExprFunc = Flatten[Append[Flatten[#, 1], {"  "}] & /@ (Transpose[ExprFuncBlock][[2]]), 1];
+
+    ii = 0;
+    CollectData = Flatten[Table[Table[ii = ii + 1; 
+                      Join[{{"    " <> FuncType <> #1 <> "(" <> ToString[i] <> "," <> ToString[ifield] <> ",:" <> ",:" <> ",:" <> ") = &"}}, 
+                      FortranSumRiffle[Table[FuncType <> #1 <> ToString[i] <> ToString[ifield] <> "n" <> ToString[j], 
+                      {j, Length[ExprFuncBlock[[ii, 2]]]}], 3, 4]], {i, Length@MMAVars[[ifield]]}], {ifield, Length@MMAVars}] & @@@ HamList, 3];
+
+    body = Join[{#} & /@ Flatten[ExprFuncBlock\[Transpose][[1]]], {{" "}}, CollectData];
+    FortranVar = {"Real*8", StringTrim[#], {"cgrid%n1", "cgrid%n2", "cgrid%n3"}} & /@ (StringSplit[Flatten[ExprFuncBlock\[Transpose][[1]]], "="]\[Transpose][[1]]);
+    {head, tail} = HeadTailForces[FuncName, If[Length@FortranVarList == 1, First@FortranVarList, {FuncType, FortranVarList}], nn, "ExprFunc" -> False, "AllSites" -> OptionValue["AllSites"], "variables" -> FortranVar],
+
+  (* Variation *)
+    FuncType == "Variation",
+    Fortran = Table[(*MMA = NOrderResponse[ham[[2]], #, OptionValue["TylorOrder"]] &/@ MMAVars;*)
+                    MMA = Table[ParallelMap[NOrderResponse[#, var, OptionValue["TylorOrder"]]&, ham[[2]], 
+                                            Method -> Automatic, 
+                                            DistributedContexts -> {"LINVARIANT`LatticeHamiltonianFortran`Private`"}], {var, MMAVars}];
                     Expr2Fortran[#, MMA2F90Vars] &/@ MMA, {ham, HamList}];
-    CaseExprTable = Transpose[Table[FortranExprBlock[#1, #2[[i]], 2], {i, Length@#2}] & @@@ Transpose[{FortranVarList, Fortran}]];
-    body = FortranCaseBlock["idelta", {ToString[#] & /@ Range[Length[First@Fortran]], Table[Join[Flatten[CaseExprTable[[i]], 1], {{"    " <> FuncType <> "=" <> StringJoin[Riffle[FortranVarList, "+"]]}, {"  "}}], {i, Length@CaseExprTable}]}\[Transpose], GetCaseDefaults[{{"write(*,*) \"mode out of range!\""}, {"call abort"}}, 1], 1];
-    {head, tail} = HeadTailDeltaH[FuncName, {FuncType, FortranVarList}, 1], 
-  (* EOnSite *)
-    FuncType == "EOnSite",
-    Fortran = Flatten[
-                Table[FortranArrayVar = If[OptionValue["AllSites"], FortranVarStr[FuncType<>ham[[1]], {"x0", "y0", "z0"}], FuncType<>ham[[1]]];
-                      MMA = {{FortranArrayVar, ham[[2]]}};
-                      {#1, Expr2Fortran[#2, MMA2F90Vars]} & @@@ MMA, {ham, HamList}], 1];
-    body = Flatten[FortranExprBlock[#1, #2, If[OptionValue["AllSites"], 2, 1]] & @@@ Fortran, 1];
-    {head, tail} = HeadTailEOnSite[FuncName, If[Length@FortranVarList == 1, First@FortranVarList, {FuncType, FortranVarList}], 1, "AllSites" -> OptionValue["AllSites"]],
+
+    CaseExprTable = Transpose[Table[FortranExprFunc[#1 <> ToString[i] <> "(nexpr)", FuncType, #2[[i]], nn, 2, "AllSites" -> OptionValue["AllSites"]], {i, Length@#2}] & @@@Transpose[{FortranVarList, Fortran}]];
+    ExprFunc = Flatten[Flatten[Transpose[#][[2]], 2] & /@ CaseExprTable, 1];
+
+    FortranVarLength = Table[Length[#[[1]]] & /@ (CaseExprTable\[Transpose][[i]]), {i, Length@FortranVarList}];
+    FortranVar = Flatten[Table[Table[#1 <> ToString[i] <> "n" <> ToString[ii], {ii, #2[[i]]}], {i, Length[#2]}] & @@@ Transpose[{FortranVarList, FortranVarLength}]];
+    body = FortranCaseBlock["idelta", {ToString[#] & /@ Range[Length[First@Fortran]], Table[Join[{#} &/@ Flatten[First@Transpose[CaseExprTable[[i]]], 1], {{"  "}, {"    " <> FuncType <> " = &"}}, FortranSumRiffle[StringSplit[Flatten[First@Transpose[CaseExprTable[[i]]], 1], "="]\[Transpose][[1]], 3, 4], {{"  "}}], {i, Length@CaseExprTable}]}\[Transpose], GetCaseDefaults[{{"write(*,*) \"mode out of range!\""}, {"call abort"}}, 1], 1];
+    {head, tail} = HeadTailVariation[FuncName, {FuncType, FortranVar}, nn, "AllSites" -> OptionValue["AllSites"], "ExprFunc" -> False], 
+
+    (*SiteEnergy*)
+    FuncType == "SiteEnergy", 
+    Fortran = Flatten[Table[FortranArrayVar = If[OptionValue["AllSites"], 
+                                                 FortranFuncArg[FuncType <> ham[[1]], {"x0", "y0", "z0"}], 
+                                                 FuncType <> ham[[1]]];
+                            MMA = {{FortranArrayVar, ham[[2]]}};
+                            {#1, Expr2Fortran[#2, MMA2F90Vars]} & @@@ MMA, {ham, HamList}], 1];
+
+    ExprFuncBlock = FortranExprFunc[#1 <> "(nexpr)", FuncType, #2, nn, 2, "AllSites" -> OptionValue["AllSites"]] & @@@ Fortran;
+    ExprFunc = Flatten[Append[Flatten[#, 1], {"  "}] & /@ (Transpose[ExprFuncBlock][[2]]), 1];
+
+    CollectData = Flatten[Table[
+                    Join[{{If[OptionValue["AllSites"], 
+                              "    " <> FuncType <> HamList[[i, 1]] <> " = &", 
+                              "    " <> FuncType <> HamList[[i, 1]] <> " = &"]}}, 
+                         FortranSumRiffle[Table[FuncType <> HamList[[i, 1]] <> "n" <> ToString[j], 
+                    {j, Length[ExprFuncBlock[[i, 2]]]}], 3, 4]], {i, Length@HamList}], 1];
+
+    body = Join[{#} & /@ Flatten[ExprFuncBlock\[Transpose][[1]]], {{" "}}, CollectData];
+    FortranVar = {"Real*8", StringTrim[#]} & /@ (StringSplit[Flatten[ExprFuncBlock\[Transpose][[1]]], "="]\[Transpose][[1]]);
+
+    {head, tail} = HeadTailSiteEnergy[FuncName, If[Length@FortranVarList == 1, First@FortranVarList, {FuncType, FortranVarList}], nn, "ExprFunc" -> False, "AllSites" -> OptionValue["AllSites"], "variables" -> FortranVar],
+
   (* HessianOnSite *)
-    FuncType == "HessianOnSite",
-    Fortran = Flatten[Table[MMA = Flatten[Table[FortranArrayVar = FortranVarStr[FuncType<>ham[[1]], {ToString[i], ToString[j]}];
+    FuncType == "SiteHessian",
+    Fortran = Flatten[Table[MMA = Flatten[Table[FortranArrayVar = FortranFuncArg[FuncType<>ham[[1]], {ToString[i], ToString[j]}];
                                     {FortranArrayVar, Expand@D[ham[[2]], {MMAVars[[i]],1}, {MMAVars[[j]],1}]}, {i, Length@MMAVars}, {j, Length@MMAVars}], 1];
                             {#1, Expr2Fortran[#2, MMA2F90Vars]} & @@@ MMA, {ham, HamList}], 1];
     body = Flatten[FortranExprBlock[#1, #2, 1] & @@@ Fortran, 1];
-    {head, tail} = HeadTailHessianOnSite[FuncName, If[Length@FortranVarList == 1, First@FortranVarList, {FuncType, FortranVarList}], 1]
-];
+    {head, tail} = HeadTailHessianOnSite[FuncName, If[Length@FortranVarList == 1, First@FortranVarList, {FuncType, FortranVarList}], nn]];
   MMA2FORTRAN[F90dir <> "/" <> FuncName, Join[head, body, tail]];
+  Return[ExprFunc]
 ]
 (*-------------------------- Attributes ------------------------------*)
 

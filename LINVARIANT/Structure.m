@@ -19,6 +19,7 @@ GridPbc                      ::usage = "GridPbc[ixyz, Lxyz]"
 GridNeighbors                ::usage = "GridNeighbors[r0, MeshDim]"
 PbcDiff                      ::usage = "PbcDiff[diff]"
 GetUpTo3rdNeighbors          ::usage = "GetUpTo3rdNeighbors[]"
+GetNeighborList              ::usage = "GetNeighborList[dist]"
 MakeSuperCell                ::usage = "MakeSuperCell[Crys, {Nx, Ny, Nz}]"
 GetBZPath                    ::usage = "GetBZPath[struc]"
 GetBZHighSymK                ::usage = "GetBZHighSymK[struc]"
@@ -45,6 +46,7 @@ GetBonds                     ::usage = "GetBonds[spg0, tij, pos]"
 ImportXSF                    ::usage = "ShiftXSF[dir, fname, shift : {0, 0, 0}]"
 eta2eij                      ::usage = "eta2eij[eta]"
 eij2eta                      ::usage = "eij2eta[eij]"
+StrainFromu                  ::usage = "StrainFromu[eu, u]"
 
 (*--------- Plot and Manipulate Crystal Structures -------------------- ----------------*)
 
@@ -125,7 +127,10 @@ DistMatrix = Compile[{{latt, _Real, 2}, {pos1, _Real, 2}, {pos2, _Real, 2}, {cel
 PosMatchTo[latt_, spos_, dpos_, OptionsPattern["shift"->False]] := Module[{difftable, posmap, i, newpos},
   difftable = DistMatrix[latt, spos, dpos, {1,1,1}];
   posmap = First@First@Position[#, x_ /; TrueQ[x == Min[#]]] & /@ difftable;
-  newpos = If[OptionValue["shift"], PbcDiff[#]&/@(Table[dpos[[posmap[[i]]]], {i, Length@spos}] - spos) + spos,Table[Mod[dpos[[posmap[[i]]]],1], {i, Length@spos}]];
+  newpos = If[OptionValue["shift"], 
+              PbcDiff[#]&/@(Table[dpos[[posmap[[i]]]], {i, Length@spos}] - spos) + spos,
+              Table[Mod[dpos[[posmap[[i]]]],1], {i, Length@spos}]];
+
   Return[{posmap, newpos}]
 ]
 
@@ -201,6 +206,12 @@ GetUpTo3rdNeighbors[OptionsPattern[{"OnSite" -> False}]] := Module[{FirstNeighbo
             {{{0,0,0}}, FirstNeighborList, SecondNeighborList, ThirdNeighborList}, 
             {FirstNeighborList, SecondNeighborList, ThirdNeighborList}]
   ]
+]
+
+GetNeighborList[dist_, OptionsPattern[{"OnSite" -> False}]] := Module[{NeighborList, out},
+  NeighborList = SortBy[Tuples[Range[-dist, dist, 1], {3}], Norm[N@#] &];
+  out = If[OptionValue["OnSite"], NeighborList, DeleteCases[NeighborList, {0,0,0}]];
+  Return[out]
 ]
 
 GetLatticeVectors[dat_] := Module[{a1, b1, c1, \[Alpha]1, \[Beta]1, \[Gamma]1, bt},
@@ -366,9 +377,10 @@ GridNeighbors[r0_, MeshDim_] := Module[{r00, list, FirstNeighborList, SecondNeig
   Return[Neighbours]
 ]
 
-PbcDiff[diff_, cell_:{1, 1, 1}] := Module[{halflattice}, 
+PbcDiff[diff_, cell_:{1, 1, 1}] := Module[{halflattice, diff0}, 
+  diff0 = Mod[diff, cell];
   halflattice = cell/2;
-  Which[-#2 <= #1 < #2, #1, #1 >= #2, #1 - 2 #2, #1 < -#2, #1 + 2 #2] &@@@ ({diff, halflattice}\[Transpose])
+  Which[-#2 <= #1 < #2, #1, #1 >= #2, #1 - 2 #2, #1 < -#2, #1 + 2 #2] &@@@ ({diff0, halflattice}\[Transpose])
 ]
 
 MakeSuperCell[Crys_, mode_, k_, {Nx_, Ny_, Nz_}] := Module[{R, pos, ix, iy, iz, spos, sR},
@@ -603,6 +615,19 @@ eta2eij[eta_] := Module[{eij},
 eij2eta[eij_] := Module[{eta},
   eta = {eij[[1,1]], eij[[2,2]], eij[[3,3]], eij[[2,3]], eij[[1,3]], eij[[1,2]]};
   Return[eta]
+]
+
+StrainFromu[eu_, u_, nn_] := Module[{strains, shift, s, n, i, j, k, uij, II, eij, out},
+  strains = {{1, 1}, {2, 2}, {3, 3}, {2, 3}, {1, 3}, {1, 2}};
+  
+  shift = Table[(RotationMatrix[(2 n Pi)/3, {1, 1, 1}] . {0, #1, #2} & @@@ Permutations[Flatten[Table[ConstantArray[i - 1, 2], {i, 1, nn}]], {2}]), {n, 0, 2}]; 
+  uij = Table[II = IdentityMatrix[3][[j]];
+              1/Length[shift[[j]]] Sum[Subscript[u, i, II[[1]] + ToExpression["x0"] + s[[1]], II[[2]] + ToExpression["y0"] + s[[2]], II[[3]] + ToExpression["z0"] + s[[3]]] - Subscript[u, i, ToExpression["x0"] + s[[1]], ToExpression["y0"] + s[[2]], ToExpression["z0"] + s[[3]]], {s, shift[[j]]}], {j, 3}, {i, 3}]; 
+  eij = Expand[0.5 (uij + uij\[Transpose])];
+  
+  out = Association[Subscript[eu, #1, #2, ToExpression["x0_"], ToExpression["y0_"], ToExpression["z0_"]] -> Expand[eij[[#1, #2]]] & @@@ strains];
+
+  Return[out]
 ]
 
 (*-------------------------- Attributes ------------------------------*)

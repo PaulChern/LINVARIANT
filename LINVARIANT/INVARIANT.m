@@ -22,6 +22,8 @@ Field2Epsilon                ::usage = "Field2Epsilon[field]"
 GetEpsilonijRule             ::usage = "GetEpsilonijRule[symfile]"
 GetTransformationRules       ::usage = "GetTransformationRules[spg0, OpMatrix]"
 StrainInvQ                   ::usage = "StrainInvQ[x, e]"
+XInvQ                        ::usage = "XInvQ[x, e]"
+JijInvQ                      ::usage = "JijInvQ[x]"
 NumPolynomialVar             ::usage = "NumPolynomialVar[x]"
 PolynomialOrder              ::usage = " PolynomialOrder[x, vars]"
 SortInvByNumVar              ::usage = "SortInvByNumVar[list]"
@@ -42,6 +44,9 @@ GetSiteInt                   ::usage = "GetSiteInt[spg0, field]"
 GetSiteCluster               ::usage = "GetSiteCluster[spg0, PosVec]"
 GetSiteEpsilon               ::usage = "GetSiteEpsilon[spg0, PosVec]"
 InvariantEOnSite             ::usage = "InvariantEOnSite[xyz, expr]"
+BasisShift                   ::usage = "BasisShift[pos0, spg0, Basis]"
+GetCellCellInt               ::usage = "GetCellCellInt[spg0, TRules, field]"
+InvariantFolding             ::usage = "InvariantFolding[model]"
 
 (*--------- Plot and Manipulate Crystal Structures -------------------- ----------------*)
 
@@ -84,7 +89,7 @@ ISODISTORT[Lattice_, pos0_, pos_, IsoMatrix_, label_, OptionsPattern[{"round"->1
   posmatched = If[OptionValue["match"], 
                   Transpose[{PosMatchTo[Lattice, pos0\[Transpose][[1]], pos\[Transpose][[1]]][[2]], Transpose[pos0][[2]]}],
                   pos];
-  origin = Total[PbcDiff[#] & /@ (posmatched\[Transpose][[1]] - pos0\[Transpose][[1]])]/Length[pos0];
+  origin = 0*Total[PbcDiff[#] & /@ (posmatched\[Transpose][[1]] - pos0\[Transpose][[1]])]/Length[pos0];
   posshifted = {#1-origin, #2} &@@@ posmatched;
 
   Amp = Table[phonon=Flatten[Lattice\[Transpose].PbcDiff[#] & /@ (Transpose[posshifted][[1]] - Transpose[pos0][[1]])];
@@ -201,7 +206,7 @@ GetMatrixRep[grp0_, grpt_, pos_, BasisMatrix_, BasisLabels_, ftype_] := Module[{
   grp = {grpt, grp0};
   {latt, sites} = pos;
   (*slatt = Lattice2Symbolic[latt] /. {ToExpression["a"]->1, ToExpression["b"]->2, ToExpression["c"]->4};*)
-  slatt = Lattice2Symbolic[latt][[1]];
+  (*slatt = Lattice2Symbolic[latt][[1]];*)
   {BasisDim, NumBasis} = Dimensions[BasisMatrix];
   cell = GetCellFromGrp[grpt];
   OpMatrix =
@@ -209,13 +214,13 @@ GetMatrixRep[grp0_, grpt_, pos_, BasisMatrix_, BasisLabels_, ftype_] := Module[{
       If[BasisDim != 0,
          {NormFactor, BasisField} = Table[
          basis=GetBasisField[i, BasisMatrix, BasisLabels, pos, ftype];
-         {If[ftype!="orbital",1/ComplexExpand@Norm[Flatten[slatt\[Transpose].# &/@ (basis\[Transpose][[2]]\[Transpose][[2]])]],
+         {If[ftype!="orbital",1/ComplexExpand@Norm[Flatten[latt\[Transpose].# &/@ (basis\[Transpose][[2]]\[Transpose][[2]])]],
                               1/Norm[Flatten[basis\[Transpose][[2]]\[Transpose][[2]]]]], 
           basis}, {i,NumBasis}]\[Transpose];
          TransformedBasisField = ParallelTable[SymmetryOpBasisField[g, pos, cell, #, ftype] &/@ BasisField, {g, Keys[grp[[ig]]]}, DistributedContexts -> {"LINVARIANT`INVARIANT`Private`"}];
          ParallelTable[mat = 
                        If[ftype!="orbital",
-                          Table[Simplify@Expand[NormFactor[[i]] NormFactor[[j]] Flatten[slatt\[Transpose].# &/@ (TransformedBasisField[[g]][[i]]\[Transpose][[2]]\[Transpose][[2]])].Flatten[slatt\[Transpose].# &/@ (BasisField[[j]]\[Transpose][[2]]\[Transpose][[2]])]], {i, Range@NumBasis}, {j, Range@NumBasis}],
+                          Table[Simplify@Expand[NormFactor[[i]] NormFactor[[j]] Flatten[latt\[Transpose].# &/@ (TransformedBasisField[[g]][[i]]\[Transpose][[2]]\[Transpose][[2]])].Flatten[latt\[Transpose].# &/@ (BasisField[[j]]\[Transpose][[2]]\[Transpose][[2]])]], {i, Range@NumBasis}, {j, Range@NumBasis}],
                           Table[Simplify@Expand[NormFactor[[i]] NormFactor[[j]] Flatten[TransformedBasisField[[g]][[i]]\[Transpose][[2]]\[Transpose][[2]]].Flatten[BasisField[[j]]\[Transpose][[2]]\[Transpose][[2]]]], {i, Range@NumBasis}, {j, Range@NumBasis}]];
          SparseArray[mat], {g, Length[grp[[ig]]]}, DistributedContexts -> {"LINVARIANT`INVARIANT`Private`"}],
          Table[{}, {Length[grp[[ig]]]}]], {ig, 2}];
@@ -374,13 +379,18 @@ NumPolynomialVar[x_] := Module[{},
                                    If[Head[PowerExpand[Log[x]]] === Plus, Length[PowerExpand[Log[x]]], 1]]]
 ]
 
-PolynomialOrder[x_, vars_, OptionsPattern[{"tot" -> True}]] := Module[{},
-  Which[ListQ[x], PolynomialOrder[#, vars] & /@ x, 
-        Head[x] === Plus, If[OptionValue["tot"], Total@Exponent[First[Level[x, 1]], vars], Exponent[First[Level[x, 1]], vars]], 
-        True, If[OptionValue["tot"], Total@Exponent[x, vars], Exponent[x, vars]]]
+PolynomialOrder[x_, vars_, OptionsPattern[{"tot" -> True}]] := Module[{fullvars},
+  fullvars = If[vars === {}, Variables[x], vars];
+  Which[ListQ[x], PolynomialOrder[#, fullvars] & /@ x, 
+        Head[x] === Plus, If[OptionValue["tot"], Total@Exponent[First[Level[x, 1]], fullvars], Exponent[First[Level[x, 1]], fullvars]], 
+        True, If[OptionValue["tot"], Total@Exponent[x, fullvars], Exponent[x, fullvars]]]
 ]
 
 StrainInvQ[x_, e_] := Module[{}, If[ListQ[x], StrainInvQ[#, e] & /@ x, MemberQ[Level[x, All], e]]]
+
+XInvQ[x_, e_] := Module[{}, If[ListQ[x], XInvQ[#, e] & /@ x, Or @@ (MemberQ[Level[x, All], #] & /@ e)]]
+
+JijInvQ[x_] := Module[{}, If[ListQ[x], JijInvQ[#] & /@ x, Or@@(Length[Level[#, 1]] > 3 & /@ Variables[x])]]
 
 SortInvByNumVar[list_] := Module[{},
   SortBy[list, NumPolynomialVar[#] &]
@@ -395,11 +405,11 @@ InvariantCharacter[inv_, vars_] := Module[{v0, v1, sub, s, seeds},
         True, seeds = If[Head[inv] === Plus, Level[inv, 1], {inv}];
               DeleteDuplicates@Table[v1 = Variables[s];
                                      v0 = Complement[vars, v1];
-                                     sub = Join[Thread[v0 -> ConstantArray[0, Length@v0]], Thread[v1 -> ConstantArray[1, Length@v1]]];
+                                     sub = Join[Thread[v0 -> 0], Thread[v1 -> 1]];
                                      vars /. sub, {s, seeds}]]
 ]
 
-GetInvariants[TRules_, seeds_, order_, OptionsPattern[{"MustInclude"->{{{},{}}}, "Simplify"->True, "round"->10^-6}]] := Module[{fixlist, monomials, invariant, m, n, i, j, ss, factor, out, factorLCM, factorGCD, OpDispMatrix, OpSpinMatrix, OpOrbitalMatrix, ReducedOut, SortedOut, mm, fixseeds},
+GetInvariants[TRules_, seeds_, order_, OptionsPattern[{"check" -> True, "MustInclude"->{{{},{}}}, "Simplify"->True, "eventerms"->False, "round"->10^-6}]] := Module[{fixlist, monomials, invariant, m, n, i, j, ss, factor, out, factorLCM, factorGCD, OpDispMatrix, OpSpinMatrix, OpOrbitalMatrix, ReducedOut, SortedOut, mm, fixseeds, eventerms},
   out = Table[
   monomials = If[
     OptionValue["MustInclude"]=={{{},{}}}, 
@@ -409,12 +419,18 @@ GetInvariants[TRules_, seeds_, order_, OptionsPattern[{"MustInclude"->{{{},{}}},
                             If[i<n,{ConstantArray[i,Length@fixseeds],fixseeds}\[Transpose],{}], {i, #2}] &@@@ OptionValue["MustInclude"],2];
     Flatten[#]&/@(Table[Expand[# ss[[2]]] & /@ GenMonomialList[seeds,n-ss[[1]]], {ss, fixlist}]\[Transpose])];
   invariant = Table[DeleteDuplicates[DeleteCases[Chop[Expand[Total[MonomialTransform[m, TRules]]], OptionValue["round"]], i_/;i==0], (Chop[#1 -#2]*Chop[#1 + #2] == 0) &], {m, monomials}];
-  If[OptionValue["Simplify"], SimplifyCommonFactor[#,OptionValue["round"]] &/@ invariant, invariant], {n, order}];
+  invariant = If[OptionValue["Simplify"], SimplifyCommonFactor[#,OptionValue["round"]] &/@ invariant, invariant];
+  If[OptionValue["eventerms"], 
+     Table[Table[If[AllTrue[PolynomialOrder[If[invariant[[i]]==={}, {}, invariant[[i]][[j]]], {}, "tot"->False], EvenQ], 
+                    invariant[[i]][[j]], 
+                    ##&[]], {j, Length[invariant[[i]]]}], {i,Length@invariant}],
+     invariant], {n, order}];
   ReducedOut = Table[DeleteDuplicates[#, (#1 - #2 == 0 || #1 + #2 == 0 || Expand[#1 + I #2] == 0 || Expand[#1 - I #2] == 0) &] &/@ invariant, {invariant,out}];
   SortedOut = Table[SortInvByNumVar[#] &/@ invariant, {invariant, ReducedOut}];
-  Do[mm = PolynomialReduce[#, Flatten@m, Join[Flatten@seeds,Flatten[OptionValue["MustInclude"]\[Transpose][[1]]]]] & /@ Flatten[m];
+  If[OptionValue["check"],
+     Do[mm = PolynomialReduce[#, Flatten@m, Join[Flatten@seeds,Flatten[OptionValue["MustInclude"]\[Transpose][[1]]]]] & /@ Flatten[m];
         If[! (DiagonalMatrixQ[Quiet[mm\[Transpose][[1]]]] || (Flatten@m === {})), 
-           Print["Warnning! ", "polynomial may not be independent: ", MatrixForm[mm]]], {m, SortedOut}];
+        Print["Warnning! ", "polynomial may not be independent: ", MatrixForm[mm]]], {m, SortedOut}]];
   Return[SortedOut]
 ]
 
@@ -562,7 +578,7 @@ GetSiteEpsilon[spg0_, PosVec_] := Block[{xyzStrData, rot, tran, op, newpos, newv
   Return[Rationalize[{#[[1]], #[[2]]}]\[Transpose] &/@ ({newpos, newvec}\[Transpose])]
 ]
 
-GetSiteCluster[spg0_, TRules_, field_] := Block[{xyzStrData, rot, tran, sites, clusters, cell},
+GetSiteClusterOld[spg0_, TRules_, field_] := Block[{xyzStrData, rot, tran, sites, clusters, cell},
   cell = GetCellFromGrp[spg0];
   xyzStrData = Which[AssociationQ[spg0], Keys[spg0], ListQ[spg0], spg0];
 
@@ -572,18 +588,41 @@ GetSiteCluster[spg0_, TRules_, field_] := Block[{xyzStrData, rot, tran, sites, c
   Return[Rationalize[{#[[1]], #[[2]]}]\[Transpose] &/@ ({sites, clusters}\[Transpose])]
 ]
 
+GetSiteCluster[spg0_, TRules_, field_] := Block[{i, j, v1, v2, s1, s2, s3, e1, e2, e3, d, ii, jj, ix, iy, iz, xyzStrData, rot, tran, sites, clusters, cell, ng, dim, rules0, rules1, rule2rule},
+  {ng, dim} = Dimensions[TRules];
+  cell = GetCellFromGrp[spg0];
+  xyzStrData = Which[AssociationQ[spg0], Keys[spg0], ListQ[spg0], spg0];
+  rule2rule = {Subscript[v_, d_] -> Subscript[v, d, s1, s2, s3], Subscript[v_, ii_, jj_] -> (Subscript[v, ii, jj, s1, s2, s3] + Subscript[v, ii, jj, e1, e2, e3])/2};
+  sites = Table[{rot, tran} = xyz2RotT[op]; 
+                rot . # & /@ (field\[Transpose][[1]]), {op, xyzStrData}];
+  rules0 = Table[{s1, s2, s3} = sites[[i, 1]];
+                 {e1, e2, e3} = sites[[i, 2]];
+                 {v1, v2} = Level[TRules[[i, j]], 1]; 
+                 v1 -> (v2 /. rule2rule), {i, ng}, {j, dim}];
+  rules1 = Table[{s1, s2, s3} = sites[[i, 2]]; 
+                 {e1, e2, e3} = sites[[i, 2]];
+                 {v1, v2} = Level[TRules[[i, j]], 1]; 
+                 v1 -> (v2 /. rule2rule), {i, ng}, {j, dim}];
+  clusters = Table[{field\[Transpose][[2]][[1]] /. rules0[[i]], field\[Transpose][[2]][[2]] /. rules1[[i]]}, {i, ng}];
+  Return[clusters]
+]
+
 GetCellCellInt[spg0_, TRules_, field_] := Module[{g, FieldTransformed, tij, factor, OpMatrix, f},
   g = Length[spg0];
   FieldTransformed = GetSiteCluster[spg0, TRules, field];
-  tij = Sum[Times@@(Var2field[#2, #1] &@@@ FieldTransformed[[i]]), {i,g}];
+  (*tij = Sum[Times@@(Var2field[#2, #1] &@@@ FieldTransformed[[i]]), {i,g}];*)
+  tij = Chop@Expand@Sum[Times@@(FieldTransformed[[i]]), {i,g}];
   Return[SimplifyCommonFactor[tij]]
 ] 
 
-Jij[spg0_, TRules_, fielddef_?ListQ, OptionsPattern[{"OnSite" -> False, "IsoTranRules"->{}}]] := Module[{tij, i, j, n, field, v0, v1, neighbor, nlist},
-  nlist = Flatten[GetUpTo3rdNeighbors["OnSite" -> OptionValue["OnSite"]], 1];
+Jij[spg0_, dist_, TRules_, fielddef_?ListQ, OptionsPattern[{"OnSite" -> False}]] := Module[{tij, i, j, n, field, v0, v1, neighbor, nlist, pg, rules},
+  nlist = GetNeighborList[dist, "OnSite" -> OptionValue["OnSite"]];
+
+  {pg, rules} = Transpose[If[Norm[xyz2RotT[#1[[1]]][[2]]] == 0, {#1, #2}, ## &[]] & @@@ Transpose[{Normal[spg0], TRules}]];
+
   tij = Expand[DeleteDuplicates[DeleteCases[Flatten[
           Table[field = {{{0, 0, 0}, v0}, {n, v1}};
-                GetCellCellInt[spg0, TRules, field], {v0, fielddef[[1]]}, {v1, fielddef[[2]]}, {n, nlist}]], 0], #1 === -#2 || #1 === #2 &]];
+                GetCellCellInt[Association[pg], rules, field], {v0, fielddef[[1]]}, {v1, fielddef[[2]]}, {n, nlist}]], 0], #1 === -#2 || #1 === #2 &]];
   Return[tij]
 ]
 
@@ -591,6 +630,33 @@ Jij[spg0_, TRules_, fielddef_?ListQ, OptionsPattern[{"OnSite" -> False, "IsoTran
 InvariantEOnSite[expr_] := Module[{X, i, dx, dy, dz},
   expr /. {Subscript[X_, i_, dx_, dy_, dz_] :> Subscript[X, i, ToExpression["ix"] + dx, ToExpression["iy"] + dy, ToExpression["iz"] + dz]}
 ]
+
+BasisShift[pos0_, spg0_, Basis_] := Module[{cell, xyzStrData, subsites, latt, sites, rot, tran, active, bvector, shift},
+  {latt, sites} = pos0;
+  cell = GetCellFromGrp[spg0];
+  xyzStrData = Which[AssociationQ[spg0], Keys[spg0], ListQ[spg0], spg0];
+  shift = Table[{rot, tran} = xyz2RotT[op];
+                subsites = {#1, ! Norm[#2] == 0} & @@@ Transpose[{sites\[Transpose][[1]], Partition[bvector, 3]}];
+                active = Select[{Chop[rot . #1 - Mod[rot . #1, {1, 1, 1}]], #2} & @@@ subsites, #[[2]] &];
+                If[MemberQ[active, {{0, 0, 0}, True}], {0, 0, 0}, Round@Mean[active\[Transpose][[1]]]], {op, xyzStrData}, {bvector, Basis\[Transpose]}];
+  Return[shift]
+]
+
+InvariantFolding[model_] := Module[{inv, tab, coeff, vars, vsub, data, i, basis, p, tot, head, var2one, svars, invlabel},
+  {coeff, inv} = model;
+  vars = Select[Variables[inv], Length@# == 5 &];
+  svars = Select[Variables[inv], Length@# == 3 &];
+  vsub = {DeleteDuplicates[Subscript[#1, #2, #3, #4, #5] -> Subscript[#1, #2] & @@@ vars],
+          DeleteDuplicates[Subscript[#1, #2, #3] -> Subscript[#1, #2, #3] & @@@ svars]};
+  var2one = # -> 1 & /@ Variables[inv /. Flatten@vsub];
+  data = {If[Head[#2]===Plus, First[#2], #2], #1, Tally[MonomialList[#2] /. Flatten@vsub]} & @@@ Transpose[model];
+  basis = DeleteDuplicates[Flatten[data\[Transpose][[3]], 1]\[Transpose][[1]]];
+  tab = Table[Flatten[{data[[i, 1]] /. vsub[[2]], data[[i, 3]][[1, 2]], Table[Total[If[First[#] === p, (data[[i, 2]] Last[#]) /. var2one, 0] & /@ (data[[i, 3]])], {p, basis}]}], {i, Length@data}];
+  head = Flatten[{"", "coordinates", basis}];
+  tot = Total[tab]; tot[[1]] = "";
+  Print[Grid[Join[{Flatten@{"", "", Range[Length[head]-2]}}, {head}, {tot}, tab], Background -> {{1 -> Green, 2 -> Green}, {1 -> Pink, 2 -> Pink, 3 -> Pink}}, ItemSize -> Full]];
+]
+
 (*-------------------------- Attributes ------------------------------*)
 
 (*Attributes[]={Protected, ReadProtected}*)

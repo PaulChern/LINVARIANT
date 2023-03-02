@@ -15,6 +15,7 @@ SimpsonIntegrate       ::usage "SimpsonIntegrate[f, x]"
 RectangleIntPath       ::usage "ComplexIntegratePath[spt, ept, npt, ratio]"
 partitionBy            ::usage "partitionBy[l, p]"
 CloneReshape2D         ::usage "CloneReshape2D[array0, array1]"
+CollectPolynomial      ::usage "CollectPolynomial[expr]"
 
 (*--------- Plot and Manipulate Crystal Structures -------------------- ----------------*)
 
@@ -61,7 +62,7 @@ NOrderResponse[eqn_, var_, n_] := Module[{\[Epsilon], exp, varnew},
 ]
 
 GetSubscriptInfo[atom_] := Module[{},
-  If[MatchQ[atom, _List], GetSubscriptInfo[#] & /@ atom, Which[AtomQ[atom], ## &[], MatchQ[atom, _Subscript], Level[atom, 1], MatchQ[atom, _Power], If[MatchQ[Level[atom, 1][[2]], _Integer], GetSubscriptInfo[#] & /@ ConstantArray[Level[atom, 1][[1]], Level[atom, 1][[2]]], ##&[]], True, GetSubscriptInfo[#] & /@ Level[atom, 1]]]
+  If[MatchQ[atom, _List], GetSubscriptInfo[#] & /@ atom, Which[AtomQ[atom], atom, MatchQ[atom, _Subscript], Level[atom, 1], MatchQ[atom, _Power], If[MatchQ[Level[atom, 1][[2]], _Integer], GetSubscriptInfo[#] & /@ ConstantArray[Level[atom, 1][[1]], Level[atom, 1][[2]]], ##&[]], True, GetSubscriptInfo[#] & /@ Level[atom, 1]]]
 ]
 
 ReadNonEmptyLine[stream_] := Module[{templine},
@@ -119,6 +120,14 @@ RectangleIntPath[dir_, spt_, ept_, npt_, ratio_] := Module[{de, je, path},
 
 partitionBy[l_, p_] := 
   MapThread[l[[# ;; #2]] &, {{0}~Join~Most@# + 1, #} &@Accumulate@p]
+
+CollectPolynomial[expr_] := Module[{terms, t, data, model, out},
+  terms = If[Head[Expand@expr] === Plus, Level[Expand@expr, {1}], {expr}];
+  data = Table[p = t /. {Subscript[__] -> 1}; {p, Rationalize[t/p]}, {t, terms}];
+  model = Transpose[#] & /@ (GatherBy[data, Abs@First[#] &]);
+  out = {#1[[1]], Rationalize[#1/(#1[[1]])] . #2} & @@@ model;
+  Return[SortBy[out, #[[2]]&]]
+]
 
 (*-------------------------- Attributes ------------------------------*)
 
