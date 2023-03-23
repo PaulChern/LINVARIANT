@@ -93,18 +93,22 @@ GetDynamicMatrixOld[FC_, pos_, q_, NSC_, OptionsPattern["tol" -> 0.1]] := Module
   Return[{HermiteDM, ppos}]
 ]
 
-FC2Fi0Bonds[FC_, pos_, NSC_, OptionsPattern["tol" -> 0.1]] := Module[{latt, sites, p2s, Fi0, Nij, ppos, spos, poscar, NumPpos, NumSpos, NeighborList, shift, imagevec, ImageVectorList, vectors, multi, Nx, Ny, Nz, i, j, s1, s2, s3, bonds},
+FC2Fi0Bonds[FC_, pos_, NSC_, OptionsPattern[{"tol" -> 0.1, "rotate"->False}]] := Module[{latt, sites, p2s, Fi0, Nij, ppos, spos, poscar, NumPpos, NumSpos, NeighborList, shift, imagevec, ImageVectorList, vectors, multi, Nx, Ny, Nz, i, j, s1, s2, s3, bonds},
   Nij = DiagonalMatrix[NSC];
   {latt, sites} = pos;
   {Nx, Ny, Nz} = NSC;
-  NeighborList = Flatten[Table[{i, j, k} - {1, 1, 1}, {i, Nx}, {j, Ny}, {k, Nz}], 2];
+  NeighborList = If[OptionValue["rotate"],
+                    Flatten[Table[{k, j, i} - {1, 1, 1}, {i, Nz}, {j, Ny}, {k, Nx}], 2],
+                    Flatten[Table[{i, j, k} - {1, 1, 1}, {i, Nx}, {j, Ny}, {k, Nz}], 2]];
 
   If[Det[Nij] < 0,
      spos = Join[{latt}, {{Rationalize@Chop[Inverse[latt].Inverse[Nij].latt.#1], #2} & @@@ sites}];
      ppos = Join[{Nij.latt}, {DeleteDuplicates[{Rationalize@Mod[Chop[Inverse[latt].Inverse[Nij].latt.#1], 1], #2} & @@@ sites, ((Norm[#1[[1]] - #2[[1]]] < OptionValue["tol"])&&(#1[[2]]===#2[[2]])) &]}];
      poscar = ppos,
      ppos=pos;
-     spos = {Nij.latt, Flatten[Table[{#[[1]] + {i - 1, j - 1, k - 1}, #[[2]]}, {i, Nx}, {j, Ny}, {k, Nz}] &/@ sites, 3]};
+     spos = If[OptionValue["rotate"],
+               {Nij.latt, Flatten[Table[{#[[1]] + {k - 1, j - 1, i - 1}, #[[2]]}, {i, Nz}, {j, Ny}, {k, Nx}] &/@ sites, 3]},
+               {Nij.latt, Flatten[Table[{#[[1]] + {i - 1, j - 1, k - 1}, #[[2]]}, {i, Nx}, {j, Ny}, {k, Nz}] &/@ sites, 3]}];
      poscar = spos
   ];
 
@@ -137,10 +141,10 @@ GetDynamicMatrix[Fi0_, pos_, q_, OptionsPattern[{"mass"->{}}]] := Module[{latt, 
   Return[HermiteDM]
 ]
 
-PhononBandsPlot[Fi0_, pos_, klist_, kintv_, OptionsPattern[{"range" -> All, "AspectRatio" -> 1/GoldenRatio}]] := Module[{latt, sites, pdata, q, DM, sol, kpath, xticks, BandsPlot},
+PhononBandsPlot[Fi0_, pos_, klist_, kintv_, OptionsPattern[{"range" -> All, "mass1"->False, "AspectRatio" -> 1/GoldenRatio, "imagesize" -> Medium}]] := Module[{latt, sites, pdata, q, DM, sol, kpath, xticks, BandsPlot},
   {latt, sites} = pos;
   {kpath, xticks} = GetKpath[latt, klist, kintv];
-  pdata = Table[DM = GetDynamicMatrix[Fi0, pos, q[[2]]];
+  pdata = Table[DM = GetDynamicMatrix[Fi0, pos, q[[2]], If[OptionValue["mass1"], "mass" -> ConstantArray[1, Length@sites], {}]];
                 sol = Eigenvalues[DM];
                 Sort[{q[[1]], ReIm[Sqrt[#]].{1,-1}} &/@ sol], {q, kpath}]; 
   BandsPlot = ListPlot[pdata\[Transpose], 
@@ -148,7 +152,7 @@ PhononBandsPlot[Fi0_, pos_, klist_, kintv_, OptionsPattern[{"range" -> All, "Asp
                        PlotRange -> {All,OptionValue["range"]}, 
                        AspectRatio -> OptionValue["AspectRatio"], 
                        Frame -> True, 
-                       ImageSize -> Medium,
+                       ImageSize -> OptionValue["imagesize"],
                        GridLines -> {{xticks\[Transpose][[1]], ConstantArray[Thick, Length[xticks]]}\[Transpose], Automatic}, 
                        ImageSize -> Medium, 
                        FrameTicks -> {{Automatic, None}, {xticks, None}}];
@@ -199,7 +203,8 @@ PhononUnfolding[Fi0_, DMPos_, StdPos_, q_, Qbz_, unfoldDim_, OptionsPattern[{"pw
     {i, Length[w2]}, DistributedContexts -> {"LINVARIANT`LatticeHamiltonian`Private`"}]]
 ]
 
-GetEwaldMatrix[NGrid_, epinf_, Q_, alat_, tol_] := Module[{gcut, ix, iy, iz, NGridx, NGridy, NGridz, SuperLattice, mg, dpij, residue, \[Eta], cc, OriginQ, GList0, GList1, G, RecLatt, ig1, ig2, ig3, fact}, 
+GetEwaldMatrix[NGrid_, epinf_, Q_, alat_, tol_] := Module[{gcut, ix, iy, iz, NGridx, NGridy, NGridz, SuperLattice, mg, dpij, residue, \[Eta], cc, OriginQ, GList0, GList1, G, RecLatt, ig1, ig2, ig3, fact, angstrom2bohr}, 
+  angstrom2bohr = 1.88973;
   {NGridx, NGridy, NGridz} = NGrid;
   SuperLattice = N[IdentityMatrix[3] {NGridx, NGridy, NGridz}];
   RecLatt = 2 Pi Inverse[SuperLattice];
@@ -208,7 +213,7 @@ GetEwaldMatrix[NGrid_, epinf_, Q_, alat_, tol_] := Module[{gcut, ix, iy, iz, NGr
   mg = Ceiling[gcut Norm[#]/(2 Pi)] & /@ SuperLattice;
   residue = (4 \[Eta]^3)/(3 Sqrt[Pi]); 
   cc = (8 Pi)/Det[SuperLattice];
-  fact = Q^2/(epinf*alat);
+  fact = Q^2/(epinf*angstrom2bohr*alat*2);
   GList0 = Flatten[Table[G = RecLatt.{0, ig2, ig3}; 
                          If[10^-8 < Norm[G]^2 < gcut^2, G, ## &[]], {ig2, -mg[[2]], mg[[2]]}, {ig3, -mg[[3]], mg[[3]]}], 1];
                          GList1 = Flatten[Table[G = RecLatt.{ig1, ig2, ig3}; 

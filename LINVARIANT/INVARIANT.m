@@ -38,16 +38,17 @@ ImposeDW                     ::usage = "ImposeDW[Wyckoff0, IsoMatrix, modeset, {
 ImposeIsoStrainVariedDspMode ::usage = "ImposeIsoStrainVariedDspMode[Wyckoff0, IsoMatrix, modeset, LV]"
 ShowInvariantTable           ::usage = "ShowInvariantTable[TableData]"
 Jij                          ::usage = "Jij[r0, MeshDim]"
+GetJijStar                   ::usage = "GetJijStar[expr, nn, vars]"
 FieldCode2var                ::usage = "FieldCode2var[code, varstr]"
 Var2field                    ::usage = "Var2field[expr, site]"
 GetSiteInt                   ::usage = "GetSiteInt[spg0, field]"
-GetSiteCluster               ::usage = "GetSiteCluster[spg0, PosVec]"
 GetSiteEpsilon               ::usage = "GetSiteEpsilon[spg0, PosVec]"
 InvariantEOnSite             ::usage = "InvariantEOnSite[xyz, expr]"
 BasisShift                   ::usage = "BasisShift[pos0, spg0, Basis]"
-GetCellCellInt               ::usage = "GetCellCellInt[spg0, TRules, field]"
 InvariantFolding             ::usage = "InvariantFolding[model]"
-
+GridSymTransformation        ::usage = "GridSymTransformation[site0, xyz]"
+CollectPolynomial            ::usage = "CollectPolynomial[expr]"
+JijTRules                    ::usage = "JijTRules[spg0, TRules, dist]"
 (*--------- Plot and Manipulate Crystal Structures -------------------- ----------------*)
 
 (*--------- Point and Space Group Information ---------------------------*)
@@ -388,7 +389,7 @@ PolynomialOrder[x_, vars_, OptionsPattern[{"tot" -> True}]] := Module[{fullvars}
 
 StrainInvQ[x_, e_] := Module[{}, If[ListQ[x], StrainInvQ[#, e] & /@ x, MemberQ[Level[x, All], e]]]
 
-XInvQ[x_, e_] := Module[{}, If[ListQ[x], XInvQ[#, e] & /@ x, Or @@ (MemberQ[Level[x, All], #] & /@ e)]]
+XInvQ[x_, e_, bool_:Or] := Module[{}, If[ListQ[x], XInvQ[#, e] & /@ x, bool @@ (MemberQ[Level[x, All], #] & /@ e)]]
 
 JijInvQ[x_] := Module[{}, If[ListQ[x], JijInvQ[#] & /@ x, Or@@(Length[Level[#, 1]] > 3 & /@ Variables[x])]]
 
@@ -458,16 +459,18 @@ SimplifyCommonFactor[expr_,prec_:10^-6] := Module[{factorLCM, factorGCD},
        ]
 ]
 
-ImposeDW[Wyckoff0_, IsoMatrix_, modeset_, {Nx_, Ny_, Nz_}] := Module[{mode, id, Amp, pos, s, ix, iy, iz, Superpos},
-  Superpos = Table[{#1 + {ix, iy, iz}, #2} & @@@ Wyckoff0, {ix, 0, Nx - 1}, {iy, 0, Ny - 1}, {iz, 0, Nz - 1}];
-  Do[pos = Superpos[[ix]][[iy]][[iz]];
+ImposeDW[pos0_, IsoMatrix_, modeset_, {Nx_, Ny_, Nz_}] := Module[{mode, id, Amp, latt0, sites0, latt, sites, s, ix, iy, iz, Superpos},
+  {latt0, sites0} = pos0;
+  Superpos = Table[{Mod[(#1 + {ix, iy, iz})/{Nx, Ny, Nz},1], #2} & @@@ sites0, {ix, 0, Nx - 1}, {iy, 0, Ny - 1}, {iz, 0, Nz - 1}];
+  Do[sites = Superpos[[ix]][[iy]][[iz]];
      s = Cos[2 Pi {1/Nx, 1/Ny, 1/Nz}.{ix, iy, iz}];
      Do[id = mode[[1]]; Amp = s mode[[3]] mode[[4]];
-        pos = Transpose[{#[[1]] & /@ pos + Amp If[IntegerQ[id], # & /@ Partition[IsoMatrix[[;; , id]] // Normal, 3], Print["mode not exist!"]], First@StringCases[#, RegularExpression["[[:upper:]][[:lower:]]*"]] & /@ Transpose[pos][[2]]}], {mode, modeset}
+        sites = Transpose[{#[[1]] & /@ sites + Amp If[IntegerQ[id], # & /@ Partition[IsoMatrix[[;; , id]] // Normal, 3], Print["mode not exist!"]], First@StringCases[#, RegularExpression["[[:upper:]][[:lower:]]*"]] & /@ Transpose[sites0][[2]]}], {mode, modeset}
         ];
-     Superpos[[ix]][[iy]][[iz]] = pos, {ix, Nx}, {iy, Ny}, {iz, Nz}
+     Superpos[[ix]][[iy]][[iz]] = sites, {ix, Nx}, {iy, Ny}, {iz, Nz}
      ];
-  Return[Superpos]
+  latt = {Nx latt0[[1]], Ny latt0[[2]], Nz latt0[[3]]};
+  Return[{latt, SortBy[Flatten[Superpos, 3], #[[2]]&]}]
 ]
 
 ImposeIsoStrainVariedDspMode[Wyckoff0_, IsoMatrix_, modeset_, LV_] := Module[{mode, modesetnew, id, Amp, pos, NN},
@@ -481,15 +484,20 @@ ImposeIsoStrainVariedDspMode[Wyckoff0_, IsoMatrix_, modeset_, LV_] := Module[{mo
   Return[pos]
 ]
 
-ShowInvariantTable[InvData_, param_, OptionsPattern[{"FontSize" -> 12, "color"->Pink}]] := Module[{colors, bg, i, j, len, newparam, NumOrder, TableData, vars, order},
+ShowInvariantTable[InvData_, param_, OptionsPattern[{"FontSize" -> 12, "color"->Pink}]] := Module[{colors, bg, i, j, len, newparam, NumOrder, TableData, vars, order, ind, tmp, count},
   NumOrder= Length[InvData];
   bg = Flatten[If[Flatten[#] === {}, ## &[], {Gray,Table[ConstantArray[Hue[OptionValue["color"], 0.5 + i 0.5/Length[#]],Length[#[[i]]]], {i, Length[#]}]}] & /@ InvData];
   newparam = If[param===Null, Table[ConstantArray[0, Length[Flatten[InvData[[i]]]]], {i, NumOrder}], DeleteCases[param,{}]];
+  count = 0;
+  ind = Table[tmp = count + Range[Length[Flatten[InvData[[i]]]]];
+              count = count + Length[Flatten[InvData[[i]]]];
+              tmp, {i, NumOrder}];
+
   Grid[Flatten[Table[If[Flatten[InvData[[i]]] != {}, vars = Variables[Flatten[InvData[[i]]][[1, 1]]];
                      order=Total@Exponent[Flatten[InvData[[i]]][[1, 1]], vars];
-                     Prepend[{newparam, Flatten[#]&/@InvData}\[Transpose][[i]]\[Transpose], 
-                             {"#", ToString[ToString["U"]^"("<>ToString[order]<>")",StandardForm]<>" contains                          "<>ToString[Length[Flatten[InvData[[i]]]]]<>" invariants"}], ##&[]], {i, NumOrder}], 1], 
-       Background -> {{Yellow, White}, bg}, 
+                     Prepend[{ind, newparam, Flatten[#]&/@InvData}\[Transpose][[i]]\[Transpose], 
+                             {"#", "Parameters", ToString[ToString["U"]^"("<>ToString[order]<>")",StandardForm]<>" contains                          "<>ToString[Length[Flatten[InvData[[i]]]]]<>" invariants"}], ##&[]], {i, NumOrder}], 1], 
+       Background -> {{Gray, Yellow, White}, bg}, 
        Alignment -> Left, 
        Spacings -> {1, 0.5}, 
        ItemSize -> Full, 
@@ -588,44 +596,70 @@ GetSiteClusterOld[spg0_, TRules_, field_] := Block[{xyzStrData, rot, tran, sites
   Return[Rationalize[{#[[1]], #[[2]]}]\[Transpose] &/@ ({sites, clusters}\[Transpose])]
 ]
 
-GetSiteCluster[spg0_, TRules_, field_] := Block[{i, j, v1, v2, s1, s2, s3, e1, e2, e3, d, ii, jj, ix, iy, iz, xyzStrData, rot, tran, sites, clusters, cell, ng, dim, rules0, rules1, rule2rule},
-  {ng, dim} = Dimensions[TRules];
-  cell = GetCellFromGrp[spg0];
+JijTRules[pos0_, spg0_, TRules_, Basis_, dist_] := Module[{xyzStrData, i, j, s, v, a, o1, o2, o3, s1, s2, s3, ng, field, out, KeyRule, ValueRule, v1, v2, tgrp, numvar, dim, rules, uvar, AcousticBasis, FullBasis, FullOpMat}, 
+   {dim, numvar} = Dimensions[Basis];
+   tgrp = <|"x,y,z" -> {{{1, 0, 0, 0}, {0, 1, 0, 0}, {0, 0, 1, 0}, {0, 0, 0, 1}}, Null}|>;
+   rules = If[TRules ==={},  
+              uvar = Subscript[ToExpression["u"], #] & /@ Range[3];
+              AcousticBasis = (Normalize[#] & /@ (Flatten[Table[1.0 IdentityMatrix[3], {dim/3}], 1]\[Transpose]))\[Transpose];
+              FullBasis = Transpose@Join[Basis\[Transpose], AcousticBasis\[Transpose]];
+              FullOpMat = Round[GetMatrixRep[spg0, tgrp, pos0, FullBasis, Range[Length[numvar] + 3], "disp"], 0.02];
+              Rationalize@Chop[Join[#1, #2] & @@@ ({GetIsoTransformRules[FullOpMat, "disp"],
+                                                    GetIsoStrainTransformRules[pos0[[1]], spg0]}\[Transpose])],
+              TRules];
+
+  {ng, dim} = Dimensions[rules];
+  field = GetNeighborList[dist, "OnSite" -> True];
   xyzStrData = Which[AssociationQ[spg0], Keys[spg0], ListQ[spg0], spg0];
-  rule2rule = {Subscript[v_, d_] -> Subscript[v, d, s1, s2, s3], Subscript[v_, ii_, jj_] -> (Subscript[v, ii, jj, s1, s2, s3] + Subscript[v, ii, jj, e1, e2, e3])/2};
-  sites = Table[{rot, tran} = xyz2RotT[op]; 
-                rot . # & /@ (field\[Transpose][[1]]), {op, xyzStrData}];
-  rules0 = Table[{s1, s2, s3} = sites[[i, 1]];
-                 {e1, e2, e3} = sites[[i, 2]];
-                 {v1, v2} = Level[TRules[[i, j]], 1]; 
-                 v1 -> (v2 /. rule2rule), {i, ng}, {j, dim}];
-  rules1 = Table[{s1, s2, s3} = sites[[i, 2]]; 
-                 {e1, e2, e3} = sites[[i, 2]];
-                 {v1, v2} = Level[TRules[[i, j]], 1]; 
-                 v1 -> (v2 /. rule2rule), {i, ng}, {j, dim}];
-  clusters = Table[{field\[Transpose][[2]][[1]] /. rules0[[i]], field\[Transpose][[2]][[2]] /. rules1[[i]]}, {i, ng}];
-  Return[clusters]
+
+  KeyRule = {Subscript[v_, a_] :> Subscript[v, a, o1, o2, o3]};
+  ValueRule = {Subscript[v_, a_] :> Subscript[v, a, s1, s2, s3]};
+  
+  out = Table[{o1, o2, o3} = s;
+              {s1, s2, s3} = GridSymTransformation[s, xyzStrData[[i]]];
+              {s1, s2, s3} = xyz2RotT[xyzStrData[[i]]][[1]].s;
+              {v1, v2} = Level[rules[[i, j]], 1];
+              (v1 /. KeyRule) -> (v2 /. ValueRule), {i, ng}, {j, dim}, {s, field}];
+  Return[DeleteDuplicates[Flatten[#]] & /@ out]
 ]
 
-GetCellCellInt[spg0_, TRules_, field_] := Module[{g, FieldTransformed, tij, factor, OpMatrix, f},
-  g = Length[spg0];
-  FieldTransformed = GetSiteCluster[spg0, TRules, field];
-  (*tij = Sum[Times@@(Var2field[#2, #1] &@@@ FieldTransformed[[i]]), {i,g}];*)
-  tij = Chop@Expand@Sum[Times@@(FieldTransformed[[i]]), {i,g}];
-  Return[SimplifyCommonFactor[tij]]
-] 
-
-Jij[spg0_, dist_, TRules_, fielddef_?ListQ, OptionsPattern[{"OnSite" -> False}]] := Module[{tij, i, j, n, field, v0, v1, neighbor, nlist, pg, rules},
+Jij[pos0_, spg0_, dist_, TRules_, Basis_, fieldlist_?ListQ, OptionsPattern[{"OnSite" -> False}]] := Module[{tij, i, j, n, field, v0, v1, neighbor, nlist, rules, out, sub0, subn, sub, v, a, s1, s2, s3},
   nlist = GetNeighborList[dist, "OnSite" -> OptionValue["OnSite"]];
 
-  {pg, rules} = Transpose[If[Norm[xyz2RotT[#1[[1]]][[2]]] == 0, {#1, #2}, ## &[]] & @@@ Transpose[{Normal[spg0], TRules}]];
+  rules = JijTRules[pos0, spg0, TRules, Basis, dist]; SetSharedVariable[rules];
 
-  tij = Expand[DeleteDuplicates[DeleteCases[Flatten[
-          Table[field = {{{0, 0, 0}, v0}, {n, v1}};
-                GetCellCellInt[Association[pg], rules, field], {v0, fielddef[[1]]}, {v1, fielddef[[2]]}, {n, nlist}]], 0], #1 === -#2 || #1 === #2 &]];
-  Return[tij]
+  tij = ParallelTable[Table[{s1, s2, s3} = n;
+                            sub0 = {Subscript[v_, a_] :> Subscript[v, a, 0, 0, 0]};
+                            subn = {Subscript[v_, a_] :> Subscript[v, a, s1, s2, s3]};
+                            field = {v0 /. sub0, v1 /. subn};
+                            SimplifyCommonFactor@Chop[Expand[Sum[Times@@field /. sub, {sub, rules}]]], {v0, fieldlist[[1]]}, {v1, fieldlist[[2]]}], {n, nlist}, 
+                      DistributedContexts -> {"LINVARIANT`INVARIANT`Private`"}];
+
+  tij = Expand[DeleteDuplicates[DeleteCases[Flatten[tij], 0], #1 === -#2 || #1 === #2 &]];
+
+  out = DeleteDuplicates[DeleteCases[GetJijStar[#, -1] &/@ tij, 0], 
+                                        (#1 - #2 == 0 || #1 + #2 == 0 || Expand[#1 + I #2] == 0 || Expand[#1 - I #2] == 0) &];
+  Return[out]
 ]
 
+GridSymTransformation[site0_, xyz_] := Module[{siteset0, siteset, rot},
+  rot = xyz2RotT[xyz][[1]];
+  siteset0 = Join[{{0, 0, 0}}, {0, 0, 0} + IdentityMatrix[3], {1, 1, 1} - IdentityMatrix[3], {{1, 1, 1}}];
+  siteset = rot . (# + site0) & /@ siteset0;
+  First[Sort[{Total[#], #} & /@ siteset]][[2]]
+]
+
+GetJijStar[expr_, disp_:-1] := Module[{vars, nn, v, \[Alpha], \[Beta], a, b, i, j, k, dd, t, terms, out, ix, iy, iz},
+  If[expr == 0. || expr === {}, Return[0]];
+  vars = DeleteDuplicates[Cases[Variables[expr],  Subscript[v_, a_, ix_, iy_, iz_] -> Subscript[v, a]]];
+  nn = If[disp<0, Max[Max[#] & /@ Abs@Cases[Variables[expr], Subscript[v_, a_, ix_, iy_, iz_] -> {ix, iy, iz}]], disp];
+
+  terms = Level[Chop@Expand@Sum[expr /. {Subscript[v_, \[Alpha]_, i_, j_, k_] -> Subscript[v, \[Alpha], i + dd[[1]], j + dd[[2]], k + dd[[3]]]}, {dd, Tuples[Range[-nn, nn], {3}]}], {1}];
+
+  out = Total@Table[If[!And @@ Map[D[t, {#, 1}] === 0 &, Flatten[vars /. {Subscript[v_, a_] -> Subscript[v, a, 0, 0, 0]}]], t, ## &[]], {t, terms}];
+
+  Return[SimplifyCommonFactor@out]
+]
 
 InvariantEOnSite[expr_] := Module[{X, i, dx, dy, dz},
   expr /. {Subscript[X_, i_, dx_, dy_, dz_] :> Subscript[X, i, ToExpression["ix"] + dx, ToExpression["iy"] + dy, ToExpression["iz"] + dz]}
@@ -643,18 +677,32 @@ BasisShift[pos0_, spg0_, Basis_] := Module[{cell, xyzStrData, subsites, latt, si
 ]
 
 InvariantFolding[model_] := Module[{inv, tab, coeff, vars, vsub, data, i, basis, p, tot, head, var2one, svars, invlabel},
-  {coeff, inv} = model;
+  {coeff, inv} = CollectPolynomial[model[[1]].FixDoubleCounting[model[[2]]], {}, "round" -> 1.0 10^-8]\[Transpose];
   vars = Select[Variables[inv], Length@# == 5 &];
   svars = Select[Variables[inv], Length@# == 3 &];
   vsub = {DeleteDuplicates[Subscript[#1, #2, #3, #4, #5] -> Subscript[#1, #2] & @@@ vars],
           DeleteDuplicates[Subscript[#1, #2, #3] -> Subscript[#1, #2, #3] & @@@ svars]};
   var2one = # -> 1 & /@ Variables[inv /. Flatten@vsub];
-  data = {If[Head[#2]===Plus, First[#2], #2], #1, Tally[MonomialList[#2] /. Flatten@vsub]} & @@@ Transpose[model];
+  data = {If[Head[#2]===Plus, First[#2], #2], #1, Tally[MonomialList[#2] /. Flatten@vsub]} & @@@ Transpose[{coeff, inv}];
   basis = DeleteDuplicates[Flatten[data\[Transpose][[3]], 1]\[Transpose][[1]]];
   tab = Table[Flatten[{data[[i, 1]] /. vsub[[2]], data[[i, 3]][[1, 2]], Table[Total[If[First[#] === p, (data[[i, 2]] Last[#]) /. var2one, 0] & /@ (data[[i, 3]])], {p, basis}]}], {i, Length@data}];
   head = Flatten[{"", "coordinates", basis}];
   tot = Total[tab]; tot[[1]] = "";
   Print[Grid[Join[{Flatten@{"", "", Range[Length[head]-2]}}, {head}, {tot}, tab], Background -> {{1 -> Green, 2 -> Green}, {1 -> Pink, 2 -> Pink, 3 -> Pink}}, ItemSize -> Full]];
+]
+
+CollectPolynomial[expr_, TRules_:{}, OptionsPattern[{"chop"->1.0*10^-6, "round"->1.0*10^-16, "sort" -> True}]] := Module[{terms, t, data, model, out, v, invariant, s, f},
+  terms = If[Head[Expand@expr] === Plus, Level[Expand@expr, {1}], {expr}];
+  data = Table[p = t /. {Subscript[__] -> 1};
+               f = Rationalize[t/p];
+               invariant = If[TRules === {}, 0, GetJijStar[SimplifyCommonFactor@Chop[Expand[Sum[f /. s, {s, TRules}]]], -1]];
+               {Round[p, OptionValue["round"]], f, If[invariant === 0, {}, Sort@invariant]}, {t, terms}];
+  model = Transpose[#] & /@ If[TRules ==={}, 
+                               GatherBy[data, {Abs@First[#], Sort[DeleteDuplicates[Variables[#[[2]]]/.{{Subscript[v_, __] -> v}}]]} &],
+                               Gather[data, (#1[[3]] - #2[[3]] === 0 || #1[[3]] + #2[[3]] === 0) &]];
+  
+  out = If[Chop@Mean[Abs@#1] < OptionValue["chop"], ##&[], {Sign[First@#1] Chop@Mean[Abs@#1], (Sign[First@#1] Sign[#1]).#2}] & @@@ model;
+  Return[If[OptionValue["sort"], ReverseSortBy[out, Abs[#[[1]]]&], SortBy[out, #[[2]]&]]]
 ]
 
 (*-------------------------- Attributes ------------------------------*)

@@ -636,7 +636,7 @@ FortranParamModule[CoeffList_, vars_] := Module[{Fint, n, head, tail, body1, bod
            {Fint[1] <> "Logical           :: EfieldQ                !< dipole dipole interaction"},
            {Fint[1] <> "Logical           :: TrainQ                 !< dipole dipole interaction"},
            {Fint[1] <> "Logical           :: CLAMPQ(6)              !< strain frozen"},
-           {Fint[1] <> "Logical           :: FrozenQ(" <> ToString[FieldDim] <> ")             !< parameters frozen"},
+           {Fint[1] <> "Logical           :: FrozenQ(" <> ToString[NumField] <> ")             !< parameters frozen"},
            {Fint[1] <> "real*8            :: Temp                   !< Temperature"},
            {Fint[1] <> "real*8            :: Pressure               !< Pressure"},
            {Fint[1]},

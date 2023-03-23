@@ -286,9 +286,10 @@ Module Ewald
       mg3 = int(gcut*am(3)/pi2) + 1
       
       write(6,*) 'Simulation name: ', NameSim
-      write(6,*) 'Simulation cell volume:', celvol
-      write(6,*) 'Simulation Grid:', cgrid%n1, cgrid%n2, cgrid%n3
-      write(6,*) 'Gcut: ', gcut, 'mg1,mg2,mg3: ', mg1,mg2,mg3
+      write(6,*) 'Simulation cell volume: ', celvol
+      write(6,*) 'Simulation Grid: ', cgrid%n1, cgrid%n2, cgrid%n3
+      write(6,*) 'Gcut: ', gcut
+      write(6,*) 'mg1,mg2,mg3: ', mg1,mg2,mg3
       write(6,*) 'Tol: ', tol
       
       !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -370,15 +371,15 @@ Module Ewald
       end do ! iz
           
       open(2, file='EwaldMat.mma.dat', form='formatted', status='unknown')
-      write(2, '(3e25.14)') (((((dpij(j, i, ix,iy,iz)/(epinf*alat),j=1,3),i=1,3),ix=1,cgrid%n1),iy=1,cgrid%n2),iz=1,cgrid%n3)
+      write(2, '(3e25.14)') (((((dpij(j, i, ix,iy,iz)/(2*epinf*alat)/angstrom2bohr**2,j=1,3),i=1,3),ix=1,cgrid%n1),iy=1,cgrid%n2),iz=1,cgrid%n3)
       close(2)
 
       do iz = 1, cgrid%n3
         do iy = 1, cgrid%n2
           do ix = 1, cgrid%n1
-            if ((((ix.gt.1).and.(ix.lt.(nn+2))).or.(ix.gt.(cgrid%n1-nn))).and. &
-                (((iy.gt.1).and.(iy.lt.(nn+2))).or.(iy.gt.(cgrid%n2-nn))).and. &
-                (((iz.gt.1).and.(iz.lt.(nn+2))).or.(iz.gt.(cgrid%n3-nn)))) then
+            if (((ix.lt.(nn+2)).or.(ix.gt.(cgrid%n1-nn))).and. &
+                ((iy.lt.(nn+2)).or.(iy.gt.(cgrid%n2-nn))).and. &
+                ((iz.lt.(nn+2)).or.(iz.gt.(cgrid%n3-nn)))) then
               dpij(:, :, ix,iy,iz) = 0.0D0
             end if
           end do
@@ -387,7 +388,7 @@ Module Ewald
 
       open(1, file='EwaldMat.dat', form='unformatted', status='unknown')
       write(1) NameSim, cgrid%n1, cgrid%n2, cgrid%n3
-      write(1) (((((dpij(j, i, ix,iy,iz)/(epinf*alat),j=1,3),i=1,3),ix=1,cgrid%n1),iy=1,cgrid%n2),iz=1,cgrid%n3)
+      write(1) (((((dpij(j, i, ix,iy,iz)/(2*epinf*alat)/angstrom2bohr**2,j=1,3),i=1,3),ix=1,cgrid%n1),iy=1,cgrid%n2),iz=1,cgrid%n3)
       close(1)
 
     end if

@@ -274,8 +274,27 @@ Program main
     !!!!!!!!!!!!!!!!!
     ! Initialize PT !
     !!!!!!!!!!!!!!!!!
+    io_begin
+    INQUIRE(FILE='REPLICAS.dat', EXIST=file_exists)
+    if (file_exists) then
+      open(ifileno, file='REPLICAS.dat', status='old')
+      do ireplica = 1, NCPU
+        read(ifileno, *) TempList(ireplica)
+      end do
+      close(ifileno)
+    else
+      do ireplica = 1, NCPU
+        TempList(ireplica) = ReplicaT0 + (ireplica-1)*(ReplicaTN-ReplicaT0)/(NCPU-1)
+      end do
+    end if
+    io_end
+
+#ifdef MPI
+    call MPI_BCAST(TempList, NCPU, MPI_DOUBLE_PRECISION, 0, MPI_COMM_WORLD, IERROR)
+    call MPI_BARRIER(MPI_COMM_WORLD, IERROR)
+#endif
+
     do ireplica = 1, NCPU
-      TempList(ireplica) = ReplicaT0 + (ireplica-1)*(ReplicaTN-ReplicaT0)/(NCPU-1)
       Replicas(ireplica,:) = (/ireplica, ireplica, 0, 0, 0/)
     end do
 
