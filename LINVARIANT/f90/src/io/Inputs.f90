@@ -54,6 +54,8 @@ Module Inputs
 
     namelist/grid/ &
       supercell,   &
+      gridpadding, &
+      vacuumq,     &
       k_mesh,      &
       fft_grid,    &
       DeltaT
@@ -394,6 +396,25 @@ Module Inputs
             read(cache, *, iostat=i_err) cgrid%n1, cgrid%n2, cgrid%n3
             cgrid%npts = cgrid%n1*cgrid%n2*cgrid%n3
             if(i_err/=0) write(*,*) 'ERROR: Reading ',trim(keyword),' data',i_err
+          case('gridpadding')
+            read(ifileno, '(A)', iostat=i_err) cache
+            pos = scan(cache, '=')
+            cache = trim(cache(pos+1:))
+            read(cache, *, iostat=i_err) cgrid_b%n1, cgrid_b%n2, cgrid_b%n3
+            cgrid_b%npts = cgrid_b%n1*cgrid_b%n2*cgrid_b%n3
+            if(i_err/=0) write(*,*) 'ERROR: Reading ',trim(keyword),' data',i_err
+          case('vacuumq')
+            read(ifileno, '(A)', iostat=i_err) cache
+            pos = scan(cache, '=')
+            cache = trim(cache(pos+1:))
+            read(cache, *, iostat=i_err) VacuumQ
+            if(i_err/=0) write(*,*) 'ERROR: Reading ',trim(keyword),' data',i_err
+          case('screening')
+            read(ifileno, '(A)', iostat=i_err) cache
+            pos = scan(cache, '=')
+            cache = trim(cache(pos+1:))
+            read(cache, *, iostat=i_err) screening
+            if(i_err/=0) write(*,*) 'ERROR: Reading ',trim(keyword),' data',i_err
           case('k_mesh')
             read(ifileno, '(A)', iostat=i_err) cache
             pos = scan(cache, '=')
@@ -478,6 +499,17 @@ Module Inputs
     cgrid%n2          = 12
     cgrid%n3          = 12
     cgrid%npts        = cgrid%n1*cgrid%n2*cgrid%n3
+
+    cgrid_a%n1        = 12
+    cgrid_a%n2        = 12
+    cgrid_a%n3        = 12
+    cgrid_a%npts      = cgrid_a%n1*cgrid_a%n2*cgrid_a%n3
+
+    cgrid_b%n1        = 0
+    cgrid_b%n2        = 0
+    cgrid_b%n3        = 0
+    cgrid_b%npts      = 0
+
     rgrid%n1          = 50
     rgrid%n2          = 50
     rgrid%n3          = 50
@@ -508,9 +540,11 @@ Module Inputs
     TapeRate          = 1000
     TrainRate         = 10000000000000000
     DipoleQ           = .true.
+    VacuumQ           = .false.
     EfieldQ           = .false.
     TrainQ            = .false.
     EfieldType        = "dc"
+    Screening         = 0.2
     CLAMPQ            = (/.false., .false., .false., .false., .false., .false./)
     FrozenQ           = (/.false., .false., .false./)
     call caps2small(Solver)
@@ -565,7 +599,7 @@ Module Inputs
     
     character(*), Intent(in) :: filename
     Integer                  :: FileHandle = 1111
-    Integer                  :: ix, iy, iz, i, ifield
+    Integer                  :: ix, iy, iz, i, j, ifield
     Real(dp)                 :: qdotr(3), tmp(3)
     Real*8, Intent(inout)    :: Fields(FieldDim, NumField, cgrid%n1, cgrid%n2, cgrid%n3)
     Real*8, Intent(inout)    :: e0ij(3,3)
@@ -573,8 +607,9 @@ Module Inputs
     e0ij = 0.0D0
     
     open(FileHandle,file=filename,form='formatted',status='old')
-!    Read(FileHandle, "(3E25.15)") e0ij(1,1), e0ij(2,2), e0ij(3,3)
-!    Read(FileHandle, "(3E25.15)") e0ij(2,3), e0ij(1,3), e0ij(1,2)
+    do ifield = 1, NumField
+      Read(FileHandle, "(3E25.15)") ((DWq(j,i,ifield), j=1,3), i=1,FieldDim)
+    end do
     Read(FileHandle, *) e0ij(1,1), e0ij(2,2), e0ij(3,3)
     Read(FileHandle, *) e0ij(2,3), e0ij(1,3), e0ij(1,2)
     do While (.True.)
@@ -582,7 +617,7 @@ Module Inputs
       Read(FileHandle, *, END=999) ix, iy, iz
       do ifield = 1, NumField
         do i = 1, FieldDim
-          qdotr(i)=Real(Exp(2*pi*cmplx(0.0_dp,1.0_dp)*(DWq(1,i)*ix+DWq(2,i)*iy+DWq(3,i)*iz)))
+          qdotr(i)=Real(Exp(2*pi*cmplx(0.0_dp,1.0_dp)*(DWq(1,i,ifield)*ix+DWq(2,i,ifield)*iy+DWq(3,i,ifield)*iz)))
         end do
 !        Read(FileHandle, "(3E25.15)", END=999) tmp
         Read(FileHandle, *, END=999) tmp

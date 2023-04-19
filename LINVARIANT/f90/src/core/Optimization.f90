@@ -10,7 +10,7 @@ module optimization
     Implicit none
     Real(dp)  :: val, x(n), grad(n)
     integer   :: n, need_gradient
-    Real*8    :: Fields(FieldDim, NumField, cgrid%n1, cgrid%n2, cgrid%n3)
+    Real*8    :: Fields(FieldDim, NumField, cgrid_a%n1+cgrid_b%n1, cgrid_a%n2+cgrid_b%n2, cgrid_a%n3+cgrid_b%n3)
     Real*8    :: e0ij(3,3)
     Integer   :: ix, iy, iz
 

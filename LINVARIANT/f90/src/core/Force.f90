@@ -12,6 +12,7 @@ Module Force
   Include "ForcesExpr.f90"
  
   Include "GetForces.f90"
+  Include "GetForcesEps.f90"
   Include "GetForcesG.f90"
   Include "GetForcesH.f90"
  
@@ -24,12 +25,13 @@ Module Force
   Include "GetForcesHup.f90"
   Include "GetForcesHsu.f90"
   Include "GetForcesHsp.f90"
+  Include "GetForcesHsup.f90"
 
   Function GetGradient(Fields, e0ij) Result(g)
     Implicit none
-    Real*8,  Intent(in)    :: Fields(FieldDim, NumField, cgrid%n1, cgrid%n2, cgrid%n3)
+    Real*8,  Intent(in)    :: Fields(FieldDim, NumField, cgrid_a%n1+cgrid_b%n1, cgrid_a%n2+cgrid_b%n2, cgrid_a%n3+cgrid_b%n3)
     Real*8,  Intent(in)    :: e0ij(3,3)
-    Real*8                 :: Forces(Max(FieldDim,6),NumField+1,cgrid%n1,cgrid%n2,cgrid%n3)
+    Real*8                 :: Forces(Max(FieldDim,6),NumField+1,cgrid_a%n1+cgrid_b%n1, cgrid_a%n2+cgrid_b%n2, cgrid_a%n3+cgrid_b%n3)
     Real*8                 :: ForcesEta(6)
     Real*8                 :: g(FieldDim*NumField*cgrid%npts+6)
     Integer                :: i, ix, iy, iz

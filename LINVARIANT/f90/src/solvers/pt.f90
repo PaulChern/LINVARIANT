@@ -56,23 +56,23 @@ Subroutine PTSwap(TempList, Fields, EwaldField, e0ij, dFieldsdt, de0ijdt, gm, Nu
   Implicit none
   Real*8,  Intent(inout) :: TempList(NumReplicas)
   Integer, Intent(inout) :: Replicas(NumReplicas,5)
-  Real*8,  Intent(inout) :: Fields(FieldDim, NumField, cgrid%n1, cgrid%n2, cgrid%n3)
-  Real*8,  Intent(inout) :: dFieldsdt(FieldDim, NumField, cgrid%n1, cgrid%n2, cgrid%n3)
-  Real*8,  Intent(inout) :: EwaldField(3, NumField, cgrid%n1, cgrid%n2, cgrid%n3)
+  Real*8,  Intent(inout) :: Fields(FieldDim, NumField, cgrid_a%n1+cgrid_b%n1, cgrid_a%n2+cgrid_b%n2, cgrid_a%n3+cgrid_b%n3)
+  Real*8,  Intent(inout) :: dFieldsdt(FieldDim, NumField, cgrid_a%n1+cgrid_b%n1, cgrid_a%n2+cgrid_b%n2, cgrid_a%n3+cgrid_b%n3)
+  Real*8,  Intent(inout) :: EwaldField(3, NumField, cgrid_a%n1+cgrid_b%n1, cgrid_a%n2+cgrid_b%n2, cgrid_a%n3+cgrid_b%n3)
   Real*8,  Intent(inout) :: e0ij(3,3)
   Real*8,  Intent(inout) :: de0ijdt(3,3)
   Real*8,  Intent(inout) :: gm(NumField+1)
   Integer, Intent(in)    :: NumReplicas, ireplica
   Integer                :: i, istep, DimFields1D 
   
-  Real*8   :: MPI_EWALDFIELD_1D(cgrid%npts*NumField*FieldDim)
-  Real*8   :: MPI_EWALDFIELD_1D_Recv(NumReplicas*cgrid%npts*NumField*FieldDim)
-  Real*8   :: MPI_FIELD_1D(cgrid%npts*NumField*FieldDim)
+  Real*8   :: MPI_EWALDFIELD_1D((cgrid_a%npts+cgrid_b%npts)*NumField*FieldDim)
+  Real*8   :: MPI_EWALDFIELD_1D_Recv(NumReplicas*(cgrid_a%npts+cgrid_b%npts)*NumField*FieldDim)
+  Real*8   :: MPI_FIELD_1D((cgrid_a%npts+cgrid_b%npts)*NumField*FieldDim)
   Real*8   :: MPI_FIELD_1D_Recv(NumReplicas*cgrid%npts*NumField*FieldDim)
   Real*8   :: MPI_ETA(6)
   Real*8   :: MPI_ETA_Recv(NumReplicas*6)
-  Real*8   :: MPI_DFIELDDT_1D(cgrid%npts*NumField*FieldDim)
-  Real*8   :: MPI_DFIELDDT_1D_Recv(NumReplicas*cgrid%npts*NumField*FieldDim)
+  Real*8   :: MPI_DFIELDDT_1D((cgrid_a%npts+cgrid_b%npts)*NumField*FieldDim)
+  Real*8   :: MPI_DFIELDDT_1D_Recv(NumReplicas*(cgrid_a%npts+cgrid_b%npts)*NumField*FieldDim)
   Real*8   :: MPI_DETADT(6)
   Real*8   :: MPI_DETADT_Recv(NumReplicas*6)
   Real*8   :: MPI_GM
@@ -80,7 +80,7 @@ Subroutine PTSwap(TempList, Fields, EwaldField, e0ij, dFieldsdt, de0ijdt, gm, Nu
   Real*8   :: EtotRecv(NumReplicas)
   Real*8   :: Etot, Tk(2)
   
-  DimFields1D = cgrid%npts*NumField*FieldDim
+  DimFields1D = (cgrid_a%npts+cgrid_b%npts)*NumField*FieldDim
   
   if(CoolingSteps.eq.0)then
     Etot = GetEtot(Fields, e0ij)

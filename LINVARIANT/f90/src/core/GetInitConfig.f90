@@ -5,7 +5,7 @@ Subroutine GetInitConfig(Fields, e0ij, inittype, FileCode)
   character(50)                 :: filename
   character(40), intent(inout)  :: inittype
   character(10), intent(in)     :: FileCode
-  real*8,        intent(inout)  :: Fields(FieldDim, NumField, cgrid%n1, cgrid%n2, cgrid%n3)
+  real*8,        intent(inout)  :: Fields(FieldDim, NumField, cgrid_a%n1+cgrid_b%n1, cgrid_a%n2+cgrid_b%n2, cgrid_a%n3+cgrid_b%n3)
   real*8,        intent(inout)  :: e0ij(3,3)
   real*8                        :: eta(6)
   real*8                        :: field(FieldDim,NumField)
@@ -19,7 +19,9 @@ Subroutine GetInitConfig(Fields, e0ij, inittype, FileCode)
   filename = trim(Solver)//".out/"//trim(inittype)//"-"//trim(FileCode)//".dat"
   call caps2small(inittype)
   keyword=trim(inittype)
-        
+       
+  Fields = 0.0_dp
+
   SELECT CASE (keyword)
     CASE ("random")
       do iz = 1, cgrid%n3
@@ -54,17 +56,23 @@ Subroutine GetInitConfig(Fields, e0ij, inittype, FileCode)
         open(FileHandle,file=trim(Solver)//".out/"//"phase-"//trim(FileCode)//".dat",form='formatted',status='old')
         Read(FileHandle, "(3E25.15)") e0ij(1,1), e0ij(2,2), e0ij(3,3)
         Read(FileHandle, "(3E25.15)") e0ij(2,3), e0ij(1,3), e0ij(1,2)
+        do ifield = 1, NumField
+          Read(FileHandle, "(3E25.15)") (field(i, ifield), i=1,FieldDim)
+        end do
+        do ifield = 1, NumField
+          Read(FileHandle, "(3E25.15)") ((DWq(j,i,ifield), j=1,3), i=1,FieldDim)
+        end do
+
         e0ij(3,2) = e0ij(2,3)
         e0ij(3,1) = e0ij(1,3)
         e0ij(2,1) = e0ij(1,2)
-    
+
         do ifield = 1, NumField
-          Read(FileHandle, "(3E25.15)") (field(i, ifield), i=1,FieldDim)
           do i = 1, FieldDim
             do iz = 1, cgrid%n3
               do iy = 1, cgrid%n2
                 do ix =1, cgrid%n1
-                  qdotr=Real(Exp(2*pi*cmplx(0.0_dp,1.0_dp)*(DWq(1,i)*ix+DWq(2,i)*iy+DWq(3,i)*iz)))
+                  qdotr=Real(Exp(2*pi*cmplx(0.0_dp,1.0_dp)*(DWq(1,i,ifield)*ix+DWq(2,i,ifield)*iy+DWq(3,i,ifield)*iz)))
                   Fields(i,ifield,ix,iy,iz) = FieldsBinary(i,ifield)*field(i,ifield)*tanh(100.0*qdotr)
                 end do
               end do

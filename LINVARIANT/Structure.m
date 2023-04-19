@@ -18,6 +18,7 @@ GetStrainTensor              ::usage = "GetStrainTensor[parent, sub]"
 GridPbc                      ::usage = "GridPbc[ixyz, Lxyz]"
 GridNeighbors                ::usage = "GridNeighbors[r0, MeshDim]"
 PbcDiff                      ::usage = "PbcDiff[diff]"
+GetCrystalOrigin             ::usage = "GetCrystalOrigin[sites]"
 GetUpTo3rdNeighbors          ::usage = "GetUpTo3rdNeighbors[]"
 GetNeighborList              ::usage = "GetNeighborList[dist]"
 MakeSuperCell                ::usage = "MakeSuperCell[Crys, {Nx, Ny, Nz}]"
@@ -124,12 +125,15 @@ DistMatrix = Compile[{{latt, _Real, 2}, {pos1, _Real, 2}, {pos2, _Real, 2}, {cel
 ]
 *)
 
-PosMatchTo[latt_, spos_, dpos_, OptionsPattern["shift"->False]] := Module[{difftable, posmap, i, newpos},
+PosMatchTo[latt_, spos_, dpos_, OptionsPattern[{"OriginShift"->False, "SymmetricQ"->False}]] := Module[{difftable, posmap, i, newpos, oshift},
   difftable = DistMatrix[latt, spos, dpos, {1,1,1}];
   posmap = First@First@Position[#, x_ /; TrueQ[x == Min[#]]] & /@ difftable;
-  newpos = If[OptionValue["shift"], 
-              PbcDiff[#]&/@(Table[dpos[[posmap[[i]]]], {i, Length@spos}] - spos) + spos,
-              Table[Mod[dpos[[posmap[[i]]]],1], {i, Length@spos}]];
+  oshift = If[OptionValue["OriginShift"], 
+              If[OptionValue["SymmetricQ"], 
+                 GetCrystalOrigin[Table[dpos[[posmap[[i]]]], {i, Length@spos}]] - GetCrystalOrigin[spos],
+                 Mean[PbcDiff[#]&/@(Table[dpos[[posmap[[i]]]], {i, Length@spos}] - spos)]], 
+              {0, 0, 0}];
+  newpos = Table[Mod[dpos[[posmap[[i]]]] - oshift, 1], {i, Length@spos}];
 
   Return[{posmap, newpos}]
 ]
@@ -381,6 +385,14 @@ PbcDiff[diff_, cell_:{1, 1, 1}] := Module[{halflattice, diff0},
   diff0 = Mod[diff, cell];
   halflattice = cell/2;
   Which[-#2 <= #1 < #2, #1, #1 >= #2, #1 - 2 #2, #1 < -#2, #1 + 2 #2] &@@@ ({diff0, halflattice}\[Transpose])
+]
+
+GetCrystalOrigin[sites_, OptionsPattern[{"SymmetricQ" -> True}]] := Module[{s, occ, z, origin},
+  origin = If[OptionValue["SymmetricQ"], 
+              Total@Flatten[Table[occ = 1/Power[2, Count[Chop[s], 0]];
+                            DeleteDuplicates[occ {s, s /. {z_ /; (Chop[z] == 0) -> 1}}], {s, sites}], 1]/Length[sites],
+              Mean[sites]];
+  Return[origin]
 ]
 
 MakeSuperCell[Crys_, mode_, k_, {Nx_, Ny_, Nz_}] := Module[{R, pos, ix, iy, iz, spos, sR},

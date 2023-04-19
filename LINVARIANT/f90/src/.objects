@@ -36,6 +36,7 @@ SRCS=\
 
 MMA=\
 	GetVariation.f90 \
+	GetVariationEps.f90 \
 	GetVariationG.f90 \
 	GetVariationGs.f90 \
 	GetVariationGp.f90 \
@@ -46,7 +47,9 @@ MMA=\
 	GetVariationHup.f90 \
 	GetVariationHsu.f90 \
 	GetVariationHsp.f90 \
+	GetVariationHsup.f90 \
 	GetForces.f90 \
+	GetForcesEps.f90 \
 	GetForcesG.f90 \
 	GetForcesGs.f90 \
 	GetForcesGp.f90 \
@@ -57,6 +60,7 @@ MMA=\
 	GetForcesHup.f90 \
 	GetForcesHsu.f90 \
 	GetForcesHsp.f90 \
+	GetForcesHsup.f90 \
 	GetSiteEnergy.f90 \
 	GetSiteEnergyG.f90 \
 	GetSiteEnergyGs.f90 \
@@ -68,7 +72,7 @@ MMA=\
 	GetSiteEnergyHup.f90 \
 	GetSiteEnergyHsu.f90 \
 	GetSiteEnergyHsp.f90 \
-	GetVariationG.f90 \
+	GetSiteEnergyHsup.f90 \
 	GetHeterostructureStrain.f90 \
 	ReadCoefficients.f90 \
 	GetInitConfig.f90

@@ -34,8 +34,8 @@ Module Outputs
     
     Integer        :: FileHandle
     Integer        :: ix, iy, iz, i, ifield
-    Real*8         :: Fields(FieldDim, NumField, cgrid%n1, cgrid%n2, cgrid%n3)
-    Real*8         :: dFieldsdt(FieldDim, NumField, cgrid%n1, cgrid%n2, cgrid%n3)
+    Real*8         :: Fields(FieldDim, NumField, cgrid_a%n1+cgrid_b%n1, cgrid_a%n2+cgrid_b%n2, cgrid_a%n3+cgrid_b%n3)
+    Real*8         :: dFieldsdt(FieldDim, NumField, cgrid_a%n1+cgrid_b%n1, cgrid_a%n2+cgrid_b%n2, cgrid_a%n3+cgrid_b%n3)
     Real*8         :: Epot, Ekin(2), e0ij(3,3), de0ijdt(3,3)
     
     Epot = GetEtot(Fields, e0ij)
@@ -63,10 +63,13 @@ Module Outputs
     character(*)   :: filename
     Integer        :: FileHandle = 1111
     Integer        :: ix, iy, iz, i, ifield
-    Real*8         :: Fields(FieldDim, NumField, cgrid%n1, cgrid%n2, cgrid%n3)
-    Real*8         :: e0ij(3,3), euij(3,3,cgrid%n1,cgrid%n2,cgrid%n3)
+    Real*8         :: Fields(FieldDim, NumField, cgrid_a%n1+cgrid_b%n1, cgrid_a%n2+cgrid_b%n2, cgrid_a%n3+cgrid_b%n3)
+    Real*8         :: e0ij(3,3), euij(3,3,cgrid_a%n1+cgrid_b%n1, cgrid_a%n2+cgrid_b%n2, cgrid_a%n3+cgrid_b%n3)
     
     open(FileHandle,file=trim(Solver)//'.out/'//filename,form='formatted',status='unknown')
+    Do ifield = 1, NumField
+      Write(FileHandle, "("//trim(int2str(FieldDim))//"E25.15)") ((/0.0, 0.0, 0.0/), i=1,FieldDim)
+    End do
     write(FileHandle, "(3E25.15)") e0ij(1,1), e0ij(2,2), e0ij(3,3)
     write(FileHandle, "(3E25.15)") e0ij(2,3), e0ij(1,3), e0ij(1,2)
     do iz = 1, cgrid%n3
@@ -80,6 +83,7 @@ Module Outputs
         end do
       end do
     end do
+
     close(FileHandle)
 
     open(FileHandle,file=trim(Solver)//'.out/Final_euij.dat',form='formatted',status='unknown')
@@ -177,7 +181,7 @@ Module Outputs
   Subroutine GetOpAvg(Fields, avg)
     Implicit None
 
-    Real*8, Intent(in)    :: Fields(FieldDim, NumField, cgrid%n1, cgrid%n2, cgrid%n3)
+    Real*8, Intent(in)    :: Fields(FieldDim, NumField, cgrid_a%n1+cgrid_b%n1, cgrid_a%n2+cgrid_b%n2, cgrid_a%n3+cgrid_b%n3)
     Real*8, Intent(inout) :: avg(FieldDim, NumField)
     Integer               :: ix, iy, iz, num
     Integer               :: ifield, i, j
@@ -194,7 +198,11 @@ Module Outputs
               iy > nint(GateField(1)) .and. iy <= cgrid%n2-nint(GateField(1)) .and. &
               iz > nint(GateField(1)) .and. iz <= cgrid%n3-nint(GateField(1))) then
             num = num + 1
-            avg(j, ifield) = avg(j, ifield) + FieldsBinary(j,ifield)*Fields(j,ifield,ix,iy,iz)
+            If (ifield .eq. NumField) then
+              avg(j, ifield) = avg(j, ifield) + FieldsBinary(j,ifield)*Abs(Fields(j,ifield,ix,iy,iz))
+            else
+              avg(j, ifield) = avg(j, ifield) + FieldsBinary(j,ifield)*Fields(j,ifield,ix,iy,iz)
+            End if
           end if
         End do
         End do
@@ -208,9 +216,9 @@ Module Outputs
   Subroutine GetAbsEuij(Fields, euij)
     Implicit None
 
-    Real*8, Intent(in)    :: Fields(FieldDim, NumField, cgrid%n1, cgrid%n2, cgrid%n3)
+    Real*8, Intent(in)    :: Fields(FieldDim, NumField, cgrid_a%n1+cgrid_b%n1, cgrid_a%n2+cgrid_b%n2, cgrid_a%n3+cgrid_b%n3)
     Real*8, Intent(inout) :: euij(3, 3)
-    Real*8                :: tmp(3,3,cgrid%n1,cgrid%n2,cgrid%n3)
+    Real*8                :: tmp(3,3,cgrid_a%n1+cgrid_b%n1, cgrid_a%n2+cgrid_b%n2, cgrid_a%n3+cgrid_b%n3)
     Integer               :: ix, iy, iz
 
     euij = 0.0D0
@@ -283,7 +291,11 @@ Module Outputs
                 iy > nint(GateField(1)) .and. iy <= cgrid%n2-nint(GateField(1)) .and. &
                 iz > nint(GateField(1)) .and. iz <= cgrid%n3-nint(GateField(1))) then
               num = num + 1
-              Observables(j, ifield) = Observables(j, ifield) + FieldsBinary(j,ifield)*Fields(j,ifield,ix,iy,iz)
+              If (ifield .eq. NumField) then
+                Observables(j, ifield) = Observables(j, ifield) + FieldsBinary(j,ifield)*Abs(Fields(j,ifield,ix,iy,iz))
+              else
+                Observables(j, ifield) = Observables(j, ifield) + FieldsBinary(j,ifield)*Fields(j,ifield,ix,iy,iz)
+              End if
             end if
           End do
           End do
@@ -307,13 +319,16 @@ Module Outputs
     Do ifield = 1, NumField
       Write(io_phase, "("//trim(int2str(FieldDim))//"E25.15)") (phase(i, ifield), i=1,FieldDim)
     End do
+    Do ifield = 1, NumField
+      Write(io_phase, "("//trim(int2str(FieldDim))//"E25.15)") ((/0.0, 0.0, 0.0/), i=1,FieldDim)
+    End do
     Close(io_phase)
  
   END Subroutine GetObservables
 
   Subroutine MCMC_log(Fields, e0ij, istep, time, dene, udamp, etadamp)
     implicit none
-    Real*8, Intent(in) :: Fields(FieldDim, NumField, cgrid%n1, cgrid%n2, cgrid%n3)
+    Real*8, Intent(in) :: Fields(FieldDim, NumField, cgrid_a%n1+cgrid_b%n1, cgrid_a%n2+cgrid_b%n2, cgrid_a%n3+cgrid_b%n3)
     Real*8, Intent(in) :: e0ij(3,3), dene, udamp(NumField), etadamp
     Real*4, Intent(in) :: time
     Integer,Intent(in) :: istep
@@ -329,7 +344,7 @@ Module Outputs
     write(*, *) "------------------------------------------------------"
     write(*,'(A15,'//trim(int2str(size(udamp)))//'F10.6,F10.6)') "damp: ", udamp, etadamp
     write(*,'(A15,F10.6,A10,F8.4)') "Epot: ", Epot, "conv: ", dene
-    do ifield = 1, NumField - 1 
+    do ifield = 1, NumField
       write(*,'(A12,I1,A2,'//trim(int2str(FieldDim))//'F10.6)') "op", ifield, ": ", avg(:,ifield)
     end do
     write(*, *) " "
@@ -345,7 +360,7 @@ Module Outputs
 
   Subroutine WLMC_log(Fields, e0ij, istep, ThermoSteps, time, udamp, etadamp, wl_f)
     implicit none
-    Real*8, Intent(in) :: Fields(FieldDim, NumField, cgrid%n1, cgrid%n2, cgrid%n3)
+    Real*8, Intent(in) :: Fields(FieldDim, NumField, cgrid_a%n1+cgrid_b%n1, cgrid_a%n2+cgrid_b%n2, cgrid_a%n3+cgrid_b%n3)
     Real*8, Intent(in) :: e0ij(3,3), udamp(NumField), etadamp, wl_f
     Real*4, Intent(in) :: time
     Integer,Intent(in) :: istep, ThermoSteps
@@ -372,8 +387,8 @@ Module Outputs
   Subroutine MD_log(Fields, e0ij, dFieldsdt, de0ijdt, istep, time, gm)
     Use Lattice
     implicit none
-    Real*8, Intent(in) :: Fields(FieldDim, NumField, cgrid%n1, cgrid%n2, cgrid%n3)
-    Real*8, Intent(in) :: dFieldsdt(FieldDim, NumField, cgrid%n1, cgrid%n2, cgrid%n3)
+    Real*8, Intent(in) :: Fields(FieldDim, NumField, cgrid_a%n1+cgrid_b%n1, cgrid_a%n2+cgrid_b%n2, cgrid_a%n3+cgrid_b%n3)
+    Real*8, Intent(in) :: dFieldsdt(FieldDim, NumField, cgrid_a%n1+cgrid_b%n1, cgrid_a%n2+cgrid_b%n2, cgrid_a%n3+cgrid_b%n3)
     Real*8, Intent(in) :: e0ij(3,3), de0ijdt(3,3), gm(NumField+1)
     Real*4, Intent(in) :: time
     Integer,Intent(in) :: istep
@@ -391,7 +406,7 @@ Module Outputs
     write(*,'(A9,'//trim(int2str(size(gm)))//'F10.6)')"gm: ", gm
     write(*,'(A9,3F10.6)') "Etot: ", Etot, Epot, Ekin(1)
     write(*,'(A9,4F10.6)') "Ekin: ", ResolveEkin(dFieldsdt, de0ijdt)
-    do ifield = 1, NumField - 1
+    do ifield = 1, NumField
       write(*,'(A6,I1,A2,'//trim(int2str(FieldDim))//'F10.6)') "op", ifield, ": ", avg(:,ifield)
     end do
     write(*,'(A9,3F10.6)') "eii: ", e0ij(1,1), e0ij(2,2), e0ij(3,3)
@@ -402,8 +417,8 @@ Module Outputs
 
   Subroutine Solver_finalize(Fields, e0ij, dFieldsdt, de0ijdt)
     implicit none
-    Real*8, Intent(in) :: Fields(FieldDim, NumField, cgrid%n1, cgrid%n2, cgrid%n3)
-    Real*8, Intent(in) :: dFieldsdt(FieldDim, NumField, cgrid%n1, cgrid%n2, cgrid%n3)
+    Real*8, Intent(in) :: Fields(FieldDim, NumField, cgrid_a%n1+cgrid_b%n1, cgrid_a%n2+cgrid_b%n2, cgrid_a%n3+cgrid_b%n3)
+    Real*8, Intent(in) :: dFieldsdt(FieldDim, NumField, cgrid_a%n1+cgrid_b%n1, cgrid_a%n2+cgrid_b%n2, cgrid_a%n3+cgrid_b%n3)
     Real*8, Intent(in) :: e0ij(3,3), de0ijdt(3,3)
     character(len=10)  :: FileIndex
  

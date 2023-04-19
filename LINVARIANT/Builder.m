@@ -63,7 +63,6 @@ GetAcousticEnergy           ::usage "GetAcousticEnergy[spg0, tgrp, LTB, pos0, av
 GetAcousticEps              ::usage "GetAcousticEps[spg0, tgrp, LTB, pos0, avars]"
 BuildHeterostructureStrain  ::usage "BuildHeterostructureStrain[dir]"
 ExportHamiltonian           ::usage "ExportHamiltonian[dir, fullmodel, vars, svars]"
-ExportSolvers               ::usage "ExportSolvers[dir, EwaldField]"
 ExportIO                    ::usage "ExportIO[dir]"
 BuildLINVARIANT             ::usage "BuildLINVARIANT[dir0, fullmodel, vars, svars, EwaldFieldQ]"
 ImposeAcousticSumRule       ::usage "ImposeAcousticSumRule[Hacoustic]"
@@ -71,7 +70,9 @@ UpdatePT                    ::usage "UpdatePT[dir, file, WriteQ]"
 SqueezeCell                 ::usage "SqueezeCell[dir0, pos0, eta, nstrain, qgrid]"
 FromJij2Energy              ::usage "FromJij2Energy[model, grid]"
 BasisInSupercell            ::usage "BasisInSupercell[pos0, Basis, vars, NSC, SymmetricQ]"
-FitSupercellHessian         ::usage " FitSupercellHessian[Basis, Fij, qgrid, HJij, pos0, vars]"
+FitSupercellHessian         ::usage "FitSupercellHessian[Basis, Fij, qgrid, HJij, pos0, vars]"
+CookModel                   ::usage "CookModel[fullmodel, vars]"
+OriginShiftFC               ::usage "OriginShiftFC[pos0, Fij0, NSC, shift]"
 
 (*--------- Plot and Manipulate Crystal Structures -------------------- ----------------*)
 
@@ -142,7 +143,7 @@ ExportPhononBasis[dir_, cif_, sites0_, phonon_] := Module[{i, phononordered, cif
   phononordered = SortIR2POSCAR[latt, sites, sites0, phonon\[Transpose]]\[Transpose];
 
   Table[Export[dir <> "/phonon-" <> ToString[i] <> ".dat", cif2mcif[cif, i, phononordered, sites]];
-        Run["mv " <> dir <> "/phonon-" <> ToString[i] <> ".dat " <> dir <> "/phonon-" <> ToString[i] <> ".mcif"], {i, Length@phonon}];
+        Run["mv " <> dir <> "/phonon-" <> ToString[i] <> ".dat " <> dir <> "/phonon-" <> ToString[i] <> ".mcif"], {i, Length@Transpose[phonon]}];
 ]
 
 ExportBasis[dir_, basis_] := Module[{data},
@@ -247,8 +248,8 @@ ExportTrainingSet[dir_, data_, tau_] := Module[{ts, weight},
 ]
 
 BoundHighOrderTerm[invariants_, expr_, vars_, cuts_] := Module[{exprnew, invnew},
-  exprnew = SimplifyCommonFactor[NOrderResponse[expr, vars, 1]];
-  invnew = SimplifyCommonFactor[NOrderResponse[expr, vars, 1] /. cuts];
+  exprnew = SimplifyCommonFactor[NOrderResponse[expr, vars, 1], 10^-6];
+  invnew = SimplifyCommonFactor[NOrderResponse[expr, vars, 1] /. cuts, 10^-6];
   If[DisjointQ[Flatten[invariants], {invnew,-invnew}], BoundHighOrderTerm[invariants, exprnew, vars, cuts], exprnew /. cuts]
 ]
 
@@ -291,10 +292,14 @@ FetchSeeds[inv_, vars_, n_, OptionsPattern[{"zero" -> False, "log"->0}]] := Modu
   Return[seeds0\[Transpose]]
 ]
 
-SeedsByInvariants[invariants_, vars_, svars_, OptionsPattern[{"table"->True, "exseeds"->None, "odd"->False, "exclude"->{}}]] := Module[{id, inv, sub, i, seeds, s, dict, sampleseeds, tab, tabdata, color, fullvars, simplifytab, varlabels, exseeds, invdict, models, t},
+SeedsByInvariants[invariants_, vars_, svars_, OptionsPattern[{"table"->True, "exseeds"->None, "odd"->False, "exclude"->{}}]] := Module[{id, inv, sub, i, seeds, s, dict, sampleseeds, tab, tabdata, color, fullvars, simplifytab, varlabels, exseeds, invdict, models, t, spinv, pinv, sinv},
   fullvars = Append[vars, svars];
 
-  models = Flatten[SortInvariants[#, Flatten@fullvars] & /@ GatherBy[Flatten[invariants], StrainInvQ[#, svars[[1, 1]]] &]];
+  sinv = Select[Flatten[invariants], And @@ XInvQ[#, {svars[[1, 1]]}, ContainsExactly] &];
+  pinv = Select[Flatten[invariants], And @@ XInvQ[#, {svars[[1, 1]]}, ContainsNone] &];
+  spinv = Complement[Flatten[invariants], Join[sinv, pinv]];
+  
+  models = Flatten[SortInvariants[#, Flatten@fullvars] & /@ {pinv, spinv, sinv}];
 
   varlabels = MapIndexed["(" <> ToString[First@#2] <> ")" &, Flatten@fullvars];
   simplifytab = {-1 -> Style["-1", Bold, Blue], 1 -> Style["1", Bold, Red], 0 -> "-"};
@@ -333,7 +338,7 @@ BasisComplement[BasisMatrix_, FullBasis_] := Module[{ind, FullBasisMatrix, Compl
   Return[{ComplementBasisMatrix, exlabels}]
 ]
 
-ImportDMDPath[dir0_, vars_, svars_, BasisMatrix_, FullBasis_, seeds_, OptionsPattern[{"fontsize"->12, "ts"->{}, "table"->True, "pdf"->True, "plot"->True, "interpolate"->0}]] := Module[{run, vasprun, lattices, sites, forces, stress, ene0, ene, coordinates, labels, color, iscf, j, i, path, epsplot, scfplot, roseplot, out, eta, fullvars, OtherBasisMatrix, ind, exlabels, FullBasisMatrix, ExInfo, plots, tsdata, data, ts, ibrion, inv, plt, pos0, nvars},
+ImportDMDPath[dir0_, vars_, svars_, BasisMatrix_, FullBasis_, seeds_, OptionsPattern[{"fontsize"->12, "ts"->{}, "table"->True, "pdf"->True, "plot"->True, "interpolate"->0, "chop" -> 0.01}]] := Module[{run, vasprun, lattices, sites, forces, stress, ene0, ene, coordinates, labels, color, iscf, j, i, path, epsplot, scfplot, roseplot, out, eta, fullvars, OtherBasisMatrix, ind, exlabels, FullBasisMatrix, ExInfo, plots, tsdata, data, ts, ibrion, inv, plt, pos0, nvars},
   pos0 = ImportPOSCAR[dir0 <> "/POSCAR0"];
   FullBasisMatrix = Flatten[FullBasis, 1]\[Transpose][[4]]\[Transpose];
   OtherBasisMatrix = Complement[FullBasisMatrix\[Transpose], BasisMatrix\[Transpose], SameTest -> (Chop[Norm[#1 - #2]] == 0 &)];
@@ -358,20 +363,27 @@ ImportDMDPath[dir0_, vars_, svars_, BasisMatrix_, FullBasis_, seeds_, OptionsPat
 
         inv = ToString[seeds[[ts,2]], StandardForm];
         vasprun = Table[Import[dir0<>"/seeds/seed"<>ToString[ts]<>"/vasprun_ibrion"<>ToString[ibrion]<>".xml"], {ibrion, {3, 1}}];
-        sites = Flatten[Table[ParseXMLData[ParseXML[ParseXML[run, "structure", {}], "varray", {"name", "positions"}], "v"], {run, vasprun}], 1];
-        forces = Flatten[Table[ParseXMLData[ParseXML[run, "varray", {"name", "forces"}], "v"], {run, vasprun}], 1];
-        stress = Flatten[Table[ParseXMLData[ParseXML[run, "varray", {"name", "stress"}], "v"], {run, vasprun}], 1];
-        lattices = Flatten[Table[ParseXMLData[ParseXML[ParseXML[run, "structure", {}], "varray", {"name", "basis"}], "v"], {run, vasprun}], 1];
-        eta = N@Round[eij2eta[GetStrainTensor[pos0[[1]], #, "iso" -> False]], 10^-4]&/@lattices;
-        ene = Chop[Flatten[Table[ParseFortranNumber@Flatten[ParseXML[Last[ParseXML[#, "energy", {}]], "i", {"name", "e_fr_energy"}] & /@ ParseXML[run, "calculation", {}]], {run, vasprun}], 1] - ene0, 10^-6];
-        coordinates = Table[Join[Flatten[{ISODISTORT[pos0[[1]], pos0[[2]], {sites[[iscf]], pos0[[2]]\[Transpose][[2]]}\[Transpose], BasisMatrix, Range[Length[BasisMatrix\[Transpose]]], "round"->10.0^-3]\[Transpose][[4]], eta[[iscf]]}], ISODISTORT[pos0[[1]], pos0[[2]], {sites[[iscf]], pos0[[2]]\[Transpose][[2]]}\[Transpose], OtherBasisMatrix, exlabels, "round"->10.0^-3]\[Transpose][[4]]], {iscf, Length[sites]}]\[Transpose];
+        sites = Join[ParseXMLData[ParseXML[ParseXML[vasprun[[1]], "structure", {}], "varray", {"name", "positions"}], "v"],
+                     {Last@ParseXMLData[ParseXML[ParseXML[vasprun[[2]], "structure", {}], "varray", {"name", "positions"}], "v"]}];
+        forces = Join[ParseXMLData[ParseXML[vasprun[[1]], "varray", {"name", "forces"}], "v"],
+                     {Last@ParseXMLData[ParseXML[vasprun[[2]], "varray", {"name", "forces"}], "v"]}];
+        stress = Join[ParseXMLData[ParseXML[vasprun[[1]], "varray", {"name", "stress"}], "v"],
+                      {Last@ParseXMLData[ParseXML[vasprun[[2]], "varray", {"name", "stress"}], "v"]}];
+        lattices = Join[ParseXMLData[ParseXML[ParseXML[vasprun[[1]], "structure", {}], "varray", {"name", "basis"}], "v"],
+                        {Last@ParseXMLData[ParseXML[ParseXML[vasprun[[2]], "structure", {}], "varray", {"name", "basis"}], "v"]}];
+        eta = Round[eij2eta[GetStrainTensor[pos0[[1]], #, "iso" -> False]], 10.0^-4]&/@lattices;
+        ene = Chop[ParseFortranNumber@Join[Flatten[ParseXML[Last[ParseXML[#, "energy", {}]], "i", {"name", "e_fr_energy"}] & /@ ParseXML[vasprun[[1]], "calculation", {}]], {Last@Flatten[ParseXML[Last[ParseXML[#, "energy", {}]], "i", {"name", "e_fr_energy"}] & /@ ParseXML[vasprun[[2]], "calculation", {}]]}] - ene0, 10^-6];
+        coordinates = Table[Join[Flatten[{ISODISTORT[pos0[[1]], pos0[[2]], {sites[[iscf]], pos0[[2]]\[Transpose][[2]]}\[Transpose], BasisMatrix, Range[Length[BasisMatrix\[Transpose]]]]\[Transpose][[4]], eta[[iscf]]}], ISODISTORT[pos0[[1]], pos0[[2]], {sites[[iscf]], pos0[[2]]\[Transpose][[2]]}\[Transpose], OtherBasisMatrix, exlabels]\[Transpose][[4]]], {iscf, Length[sites]}]\[Transpose];
 
-        coordinates = Transpose[Join[Transpose[coordinates][[1;;-2]],
-                                     {Flatten[{Chop[Last[Transpose[coordinates]][[1;;nvars]], 10^-3],
-                                               Chop[Last[Transpose[coordinates]][[nvars+1;;nvars+6]], 10^-3],
-                                               Chop[Last[Transpose[coordinates]][[nvars+7;;]], 10^-3]}]}]];
+        coordinates = Transpose[Join[{Flatten[{Chop[First[Transpose[coordinates]][[1;;nvars]], OptionValue["chop"]],
+                                               Chop[First[Transpose[coordinates]][[nvars+1;;nvars+6]], OptionValue["chop"]/10],
+                                               Chop[First[Transpose[coordinates]][[nvars+7;;]], 10.0^-3]}]},
+                                     Transpose[coordinates][[2;;-2]],
+                                     {Flatten[{Chop[Last[Transpose[coordinates]][[1;;nvars]], OptionValue["chop"]/20],
+                                               Chop[Last[Transpose[coordinates]][[nvars+1;;nvars+6]], 10.0^-3],
+                                               Chop[Last[Transpose[coordinates]][[nvars+7;;]], 10.0^-3]}]}]];
 
-        path = Grid[Prepend[Prepend[Prepend[coordinates, ene], Range[Length[ene]]]\[Transpose], Join[{"#", "energy"}, labels, exlabels]],
+        path = Grid[Prepend[Prepend[Prepend[Round[coordinates, 10.0^-3], ene], Range[Length[ene]]]\[Transpose], Join[{"#", "energy"}, labels, exlabels]],
                     Background -> {Join[{Gray,LightBlue}, Flatten[Table[color = If[OddQ[j], Yellow, Pink];
                                    ConstantArray[color, Length[fullvars[[j]]]], {j, Length@fullvars}]], 
                                    Flatten[Table[ConstantArray[If[OddQ[j], Gray, LightGray], ExInfo[[j,2]]], {j,Length[ExInfo]}]]],
@@ -503,7 +515,7 @@ SamplingByDMDPathOld[dir0_, dmdpath_, invariants_, vars_, svars_, Basis_, boundi
   Print["Total number of samples: " <> ToString[numsamples]];
 ]
 
-SamplingByDMDPath[dir0_, DMDPath_, vars_, svars_, BasisMatrix_, FullBasis_, seeds_, OptionsPattern[{"SlaveFreeQ"->False, "FrozenHiddenQ"->True, "spline" -> 0, "osparse" -> 10^-2, "ssparse" -> 10^-2, "sigma" -> 1.1, "extension"->0, "table"->False, "fontsize"->12, "write"->True, "plot"->True, "imagesize"->200, "interpolate"->3}]] := Module[{mim0, character, scharacter, fullvars, excharacter, miminfo, data, i, j, k, samples, DMDSamples, InterpolatedSamples, nvars, dft, sigma, osparse, ssparse, plt, plots, pos0, pos, FullBasisMatrix, ComplementBasisMatrix, tcount, scount, dir, shiftmode, shifteij, latt, sites, PickQ, imd, dmd, inv, exlabels, labels, info, numsamples, data2d, enedata, exi, exene, exvars, exsvars, exovars, extension, exseeds, s, s1, bsplinepath, nsamples, splinedata, tab, color, slavemode, primarymode, hiddenmode, mask, primarymask, slavemask, hiddenmask},
+SamplingByDMDPath[dir0_, DMDPath_, vars_, svars_, opotim_, spotim_, BasisMatrix_, FullBasis_, seeds_, OptionsPattern[{"SlaveFreeQ"->False, "FrozenHiddenQ"->True, "spline" -> 0, "mddensity" -> 1.0, "sigma" -> 1.1, "extension"->0, "table"->False, "fontsize"->12, "write"->True, "plot"->True, "imagesize"->200, "interpolate"->3}]] := Module[{ref, mim0, character, scharacter, fullvars, excharacter, miminfo, data, i, j, k, samples, DMDSamples, InterpolatedSamples, nvars, dft, sigma, osparse, ssparse, plt, plots, pos0, pos, FullBasisMatrix, ComplementBasisMatrix, tcount, scount, dir, shiftmode, shifteij, latt, sites, PickQ, imd, dmd, inv, exlabels, labels, info, numsamples, data2d, enedata, exi, exene, exvars, exsvars, exovars, extension, exseeds, s, s1, bsplinepath, nsamples, splinedata, tab, color, slavemode, primarymode, hiddenmode, mask, primarymask, slavemask, hiddenmask, tsdata, ts, t, pickQ},
   If[! DirectoryQ[dir0 <> "/trainingset"], CreateDirectory[dir0 <> "/trainingset"]; Run["chmod o-w " <> dir0 <> "/trainingset"]];
   fullvars = Append[vars, svars];
   pos0 = ImportPOSCAR[dir0 <> "/POSCAR0"];
@@ -514,9 +526,10 @@ SamplingByDMDPath[dir0_, DMDPath_, vars_, svars_, BasisMatrix_, FullBasis_, seed
   nvars = Length[Flatten[vars]];
 
   sigma = OptionValue["sigma"];
-  osparse = OptionValue["osparse"];
-  ssparse = OptionValue["ssparse"];
+  osparse = Flatten[ConstantArray[#2, Length[#1]] & @@@ ({vars, opotim}\[Transpose])];
+  ssparse = Join[ConstantArray[spotim[[1]], 3], ConstantArray[spotim[[2]], 3]];
 
+  tsdata = {};
   plots = {};
   info = {};
   numsamples = 0;
@@ -537,7 +550,10 @@ SamplingByDMDPath[dir0_, DMDPath_, vars_, svars_, BasisMatrix_, FullBasis_, seed
 
      mask = Sign@Mean@Abs[dft[[;;,2;;]]];
      hiddenmask = Join[ConstantArray[0, nvars+6], ConstantArray[1, Length[Flatten@exlabels]]];
-     primarymask = Sign@Chop[Abs[First[dft][[2;;]]], 0.01]*(1-hiddenmask);
+     primarymask = Sign@Join[Chop[Abs[First[dft][[2;;1+nvars]]], 0.01], 
+                             Chop[Abs[First[dft][[2+nvars;;6+nvars+1]]], 0.001],
+                             Chop[Abs[First[dft][[6+nvars+2;;]]]]]*(1-hiddenmask);
+
      slavemask = (mask - primarymask)*(1-hiddenmask);
      hiddenmode = hiddenmask*mim0[[2;;]];
 
@@ -551,11 +567,17 @@ SamplingByDMDPath[dir0_, DMDPath_, vars_, svars_, BasisMatrix_, FullBasis_, seed
                         shiftmode = primarymode + slavemode + If[OptionValue["FrozenHiddenQ"], hiddenmode, hiddenmask*dft[[i,2;;]]];
                         {i, 
                          dft[[i]][[1]], 
-                         Table[N@Round[shiftmode[[j]], osparse], {j, nvars}], 
-                         Table[N@Round[shiftmode[[nvars + j]], ssparse], {j, 6}],
+                         Table[N@Round[shiftmode[[j]], osparse[[j]]], {j, nvars}], 
+                         Table[N@Round[shiftmode[[nvars + j]], ssparse[[j]]], {j, 6}],
                          shiftmode[[nvars + 7 ;;]]}, 
                         ## &[]], {i, Length[dft]}];
 
+     ts = {};
+     ref = mim0;
+     Do[i = Length@dft - j + 1;
+        pickQ = ! And @@ Thread[Part[Abs[(dft[[i]] - ref)], Span[2, 1 + nvars + 6]] <= OptionValue["mddensity"]*Join[osparse, ssparse]];
+        If[pickQ, AppendTo[ts, dft[[i]]]; ref = dft[[i]]], {j, Length@dft}];
+     AppendTo[tsdata, Table[Flatten[{imd, i, Reverse[ts][[i]]}], {i, Length@ts}]];
 
      exene   = dft[[1]][[1]] - dft[[2]][[1]];
      exvars  = (Sign[dft[[1]][[2;;nvars+7]]]*(miminfo\[Transpose][[3]][[2;;]]))[[1;;nvars]];
@@ -653,6 +675,9 @@ SamplingByDMDPath[dir0_, DMDPath_, vars_, svars_, BasisMatrix_, FullBasis_, seed
         If[OptionValue["write"],  ExportPOSCAR[dir, "sample." <> ToString[scount] <> ".vasp", pos]], {s, InterpolatedSamples}];
 
      AppendTo[info, "ts-" <> ToString[tcount] <> " (" <> ToString[scount] <> "): " <> inv], {imd, Length@DMDPath}];
+
+     tsdata = MapIndexed[{First@#2, #1[[1]], #1[[2]], #1[[3]], #1[[4;;3+nvars]], #1[[4+nvars;;9+nvars]], #1[[10+nvars;;]]}&, Flatten[tsdata, 1]];
+     Export[dir0 <> "/trainingset/tsmd.dat", GatherBy[tsdata, #[[2]] &], "ExpressionML"];
   
   Print[Grid[Join[{{"Total number of samples: "<>ToString[numsamples]}}, Partition[info, UpTo[5]]], ItemSize -> Full, Alignment -> ":"]];
 ]
@@ -669,12 +694,13 @@ DMDPath2ts[dmd_, vars_, svars_] := Module[{npath, nsample, ncount, ts, tsdata, d
   Return[out]
 ]
 
-SamplePhaseSpace[dir0_, s0_, spgmat_, Basis_, potim_, OptionsPattern[{"seeds" -> {}}]] := Module[{BasisDim, NumBasis, modesets, seeds, modes, m, i, pos, pos0, eij, strainlatt, potim0},
+SamplePhaseSpace[dir0_, s0_, spgmat_, Basis_, vars_, opotim_, spotim_, OptionsPattern[{"seeds" -> {}}]] := Module[{BasisDim, NumBasis, modesets, seeds, modes, m, i, pos, pos0, eij, strainlatt, potim, seedname},
+  seedname = StringRiffle[Join[opotim, spotim], "_"];
   {BasisDim, NumBasis} = Dimensions[Basis];
-  potim0 = If[ListQ[potim], Mean[potim[[1;;NumBasis]]], potim];
-  If[! DirectoryQ[dir0<>"/seeds"<>"-"<>ToString[potim0]], 
-     CreateDirectory[dir0<>"/seeds"<>"-"<>ToString[potim0]]; 
-     Run["chmod o-w " <> dir0<>"/seeds"<>"-"<>ToString[potim0]]];
+  potim = Flatten[ConstantArray[#2, Length[#1]] & @@@ ({vars, opotim}\[Transpose])];
+  If[! DirectoryQ[dir0<>"/seeds"<>"-"<>seedname], 
+     CreateDirectory[dir0<>"/seeds"<>"-"<>seedname]; 
+     Run["chmod o-w " <> dir0<>"/seeds"<>"-"<>seedname]];
   pos0 = ImportPOSCAR[dir0 <> "/" <> s0];
 
   If[OptionValue["seeds"] == {}, 
@@ -683,13 +709,13 @@ SamplePhaseSpace[dir0_, s0_, spgmat_, Basis_, potim_, OptionsPattern[{"seeds" ->
      seeds = OptionValue["seeds"]
   ];
 
-  Print["Number of seeds: " <> ToString[Length[seeds]]<>" (potim="<>ToString[potim0]<>")"];
-  Do[eij=Chop@eta2eij[If[ListQ[potim], potim[[-6;;]], potim]*seeds[[i]][[-6;;]]]/Norm[pos0[[1]]];
+  Print["Number of seeds: " <> ToString[Length[seeds]]<>" (potim="<>seedname<>")"];
+  Do[eij=Chop@eta2eij[Flatten[ConstantArray[#, 3]&/@spotim]*seeds[[i]][[-6;;]]];
      strainlatt=(eij+IdentityMatrix[3]).Transpose[pos0[[1]]];
      modes = Table[{m, "modes", 1, potim[[m]] seeds[[i, m]]}, {m, NumBasis}]; 
      pos = {strainlatt, ImposeMode[pos0[[1]], pos0[[2]], Basis, modes, 1.0]}; 
-     ExportPOSCAR[dir0<>"/seeds"<>"-"<>ToString[potim0], "seed." <> ToString[i] <> ".vasp", pos];
-     ExportOPTCELL[dir0<>"/seeds"<>"-"<>ToString[potim0]<>"/OPTCELL." <> ToString[i] <> ".inp", Abs[seeds[[i]][[-6;;]]], "constrain"->False], {i, Length@seeds}]
+     ExportPOSCAR[dir0<>"/seeds"<>"-"<>seedname, "seed." <> ToString[i] <> ".vasp", pos];
+     ExportOPTCELL[dir0<>"/seeds"<>"-"<>seedname<>"/OPTCELL." <> ToString[i] <> ".inp", Abs[seeds[[i]][[-6;;]]], "constrain"->False], {i, Length@seeds}]
 ]
 
 CollectSeeds[dir0_, vars_, svars_, BasisMatrix_, FullBasis_, seeds_, OpMat_, OptionsPattern[{"round"->10^-6, "file"->"POSCAR", "all"->False, "table" -> True, "fontsize"->12}]] := Module[{pos, mode, eta, pos0, NumDim, NumBasis, Basislabel, i, file, phases, m, ind, OtherBasisMatrix, ExMode, ExBasislabel, out, FullBasisMatrix, ExInfo, t, ene, ene0, isg0, isg, sg0, sg, sginfo, data, fullvars},
@@ -961,44 +987,59 @@ PlanFittingOld[invariants_, ts_, vars_, svars_] := Module[{p, m, invdict, t, i, 
   Return[plan]
 ]
 
-GetPolynomialTrainingSet[polynomial_, tsdata_, vars_, svars_] := Module[{out, m, t, fullvars, characters, tcharacter, p, tsp1},
+GetPolynomialTrainingSet[polynomial_, tsdata_, vars_, svars_, OptionsPattern[{"chop" -> 0.09999}]] := Module[{out, m, t, fullvars, characters, tcharacter, p, tsp1, dft0},
   fullvars = Append[vars, svars];
-  tsp1 = Select[tsdata, (Flatten[Sign@Abs@First[#][[5]]] Flatten[vars] === Flatten[vars]) &];
+  tsp1 = Select[tsdata, (Flatten[Sign@Abs@Chop[First[#][[5]], OptionValue["chop"]]] Flatten[vars] === Flatten[vars]) &];
   m = If[Head[polynomial]===Plus, polynomial[[1]], polynomial];
   characters = InvariantCharacter[m, Flatten@fullvars];
-  out = Table[tcharacter = Sign@Flatten[First[Abs[t\[Transpose][[5 ;; 6]]\[Transpose]]]];
+  out = Table[dft0 = Flatten[{Chop[First[t][[5]], OptionValue["chop"]], Chop[First[t][[6]], OptionValue["chop"]/10]}];
+              tcharacter = Sign@Abs[dft0];
               If[MemberQ[characters, tcharacter], t, ## &[]], {t, tsdata}];
   If[out === {}, out = tsp1];
   Return[out]
 ]
 
-PlanFitting[invariants_, modelfixed_, ts_, vars_, svars_, OpMat_, TRules_, lvar_, mvar_, ordercut_, OptionsPattern[{"optimization" -> False, "call" -> 0, "fontsize" -> 12, "table" -> True}]] := Module[{p, ip, invdict, v, v1, v2, t, i, j, m, models, tcharacter, vcharacter, characters, modes, plan0, plan1, plan2, plan3, plan4, fullvars, minimums, color, simplifytab, mim, tmask, dependency, PEM, sol, PrimaryPolynomial, SlavePolynomial, HiddenPolynomial, tmp, sorted, len, foundQ, SilentQ, tab, prefix, polynomials, tsdata, tag, slavets, OptPlan, mimlist, tmpmodel, initmodel, optmodel, submodel}, 
+PlanFitting[invariants_, modelfixed_, ts_, vars_, svars_, OpMat_, TRules_, lvar_, mvar_, ordercut_, OptionsPattern[{"optimization" -> False, "call" -> 0, "fontsize" -> 12, "table" -> True}]] := Module[{p, ip, invdict, v, v1, v2, t, i, j, m, models, tcharacter, vcharacter, characters, modes, plan0, plan1, plan2, plan3, plan4, fullvars, minimums, color, simplifytab, mim, tmask, dependency, PEM, sol, PrimaryPolynomial, SlavePolynomial, HiddenPolynomial, tmp, sorted, len, foundQ, PickQ, tab, prefix, polynomials, tsdata, tag, slavets, OptPlan, mimlist, tmpmodel, initmodel, optmodel, submodel, sinv, pinv, spinv, inv2befit, equi0, dft}, 
+
+  equi0[dft_] := Flatten[Table[tmask = Flatten[If[Norm[#] != 0, ConstantArray[1, Length[#]], Chop@#] & /@ CloneReshape2D[vars, Last[t][[5]]]];
+                               mim = Sign@Chop[Mean[#[[5]] tmask & /@ t], 0.05];
+                               Round[m] . mim, {t, dft}, {m, OpMat}], 1];
+
   tag = ToString[OptionValue["call"]];
   simplifytab = {-1 -> Style["-1", Bold, Blue], 1 -> Style["1", Bold, Red], 0 -> "-"};
   fullvars = Append[vars, svars];
-  models = Flatten[SortInvariants[#, Flatten@fullvars] & /@ Reverse@GatherBy[Flatten[invariants], StrainInvQ[#, svars[[1, 1]]] &], 1];
-  prefix = (Flatten[#] &/@ (modelfixed\[Transpose]))\[Transpose];
+
+  prefix = (Flatten[#] & /@ (modelfixed\[Transpose]))\[Transpose];
+  inv2befit = Complement[Flatten[invariants], Transpose[prefix][[2]]];
+
+  sinv = Select[inv2befit, And @@ XInvQ[#, {svars[[1, 1]]}, ContainsExactly] &];
+  pinv = Select[inv2befit, And @@ XInvQ[#, {svars[[1, 1]]}, ContainsNone] &];
+  spinv = Complement[inv2befit, Join[sinv, pinv]];
+
+  models = Flatten[SortInvariants[#, Flatten@fullvars] & /@ {sinv, pinv, spinv}, 1];
+
   If[OptionValue["table"], Print["Number of invariants : " <> ToString[Length[Flatten@models]]]];
   
+  (* polynomials <-> trainingset by First *)
   plan0 = Table[{m, GetPolynomialTrainingSet[m[[1]], ts, vars, svars]}, {m, models}];
-
-  plan1 = Gather[plan0, IntersectingQ[Flatten[Table[tmask = Flatten[If[Norm[#] != 0, ConstantArray[1, Length[#]], Chop@#] & /@ CloneReshape2D[vars, Last[t][[5]]]];
-                                                    mim = Sign@Mean[#[[5]] tmask & /@ t];
-                                                    Round[m] . mim, {t, #1[[2]]}, {m, OpMat}], 1], 
-                                      Flatten[Table[tmask = Flatten[If[Norm[#] != 0, ConstantArray[1, Length[#]], Chop@#] & /@ CloneReshape2D[vars, Last[t][[5]]]];
-                                                    mim = Sign@Mean[#[[5]] tmask & /@ t];
-                                                    Round[m] . mim, {t, #2[[2]]}, {m, OpMat}], 1]] &];
+  (* polynomials by minimums *)
+  plan1 = Gather[plan0, IntersectingQ[equi0[#1[[2]]], equi0[#2[[2]]]] &];
 
   dependency = Table[PEM = Flatten[{#5, #6, #4}] & @@@ Flatten[plan1[[mim]]\[Transpose][[2]], 2];
+                     (* polynomial to be fitted /  starting seed *)
+                     PrimaryPolynomial = Flatten[plan1[[mim]]\[Transpose][[1]]];
+                     (* primary polynomials couple to other modes *)
                      HiddenPolynomial = Table[vcharacter = InvariantCharacter[v, Flatten@fullvars];
                                               tcharacter = Sign@Abs@PEM[[;; , 1 ;; -2]];
-                                              SilentQ = FreeQ[Flatten@Table[v1 . v2 == Total[v1], {v1, vcharacter}, {v2, tcharacter}], True];
-                                              If[SilentQ, v, ## &[]], {v, Flatten@invariants}];
-                     sol = Quiet[LinearModelFit[PEM, Complement[Flatten@invariants, HiddenPolynomial], Flatten@fullvars, IncludeConstantBasis -> False][{"BestFitParameters", "BasisFunctions"}]]\[Transpose];
-                     PrimaryPolynomial = Flatten[plan1[[mim]]\[Transpose][[1]]];
-                     SlavePolynomial = If[! MemberQ[PrimaryPolynomial, #2], #2, ## &[]] & @@@ sol;
-                     {Complement[DeleteDuplicates[First@First@Position[Table[Flatten[plan1[[i]]\[Transpose][[1]]], {i, Length@plan1}], #, {2}] & /@ SlavePolynomial], {mim}], 
-                      mim, SlavePolynomial}, {mim, Length@plan1}];
+                                              PickQ = FreeQ[Flatten@Table[v1 . v2 == Total[v1], {v1, vcharacter}, {v2, tcharacter}], True];
+                                              If[PickQ, v, ## &[]], {v, Flatten@invariants}];
+                     sol = Quiet[LinearModelFit[PEM, Complement[Flatten@invariants, HiddenPolynomial], Flatten@fullvars, 
+                                                IncludeConstantBasis -> False][{"BestFitParameters", "BasisFunctions"}]]\[Transpose];
+                     (* couplings inside the primary polynomial *)
+                     SlavePolynomial = Complement[If[! MemberQ[PrimaryPolynomial, #2], #2, ## &[]] & @@@ sol, Transpose[prefix][[2]]];
+    {Complement[DeleteDuplicates[First@First@Position[Table[Flatten[plan1[[i]]\[Transpose][[1]]], {i, Length@plan1}], #, {2}] & /@ SlavePolynomial], {mim}], 
+    mim, 
+    SlavePolynomial}, {mim, Length@plan1}];
 
   Print[dependency];
 
@@ -1793,20 +1834,20 @@ FitHessian[Basis_, LTB_, HJij_, pos_, vars_, OptionsPattern[{"unit"->"atomic"}]]
   Return[{out, out2}]
 ]
 
-FitSupercellHessian[Basis_, Fij_, qgrid_, TRules4Jij_, pos0_, vars_, OptionsPattern[{"sort"->True, "rotate"->True, "SymmetricBasisQ" -> True, "unit"->"atomic"}]]:=Module[{TB, HR, latt, sites, EPhonon, ECCC, FCC, FCCC, shift, t, d, v, i, j, h, vl, vr, var2, out1, out2, out, alat, ev2hartree, na, nb, cbasis, param, terms, supervars, FC, SupercellFC},
+FitSupercellHessian[Basis_, Fij_, qgrid_, TRules4Jij_, pos0_, vars_, OptionsPattern[{"sort"->True, "rotate"->True, "SymmetricBasisQ" -> True, "unit"->"atomic"}]]:=Module[{TB, HR, latt, sites, EPhonon, ECCC, FCC, FCCC, shift, t, d, v, i, j, h, vl, vr, var2, out1, out2, out, alat, ev2hartree, na, nb, cbasis, param, terms, supervars, FC, SFC},
   {latt, sites} = pos0;
   {na, nb} = Dimensions[Basis];
-  cbasis = Table[Flatten[latt\[Transpose].# & /@ Partition[Basis\[Transpose][[i]], 3]], {i, nb}]\[Transpose];
   {cbasis, supervars} = BasisInSupercell[pos0, Basis, vars, qgrid, OptionValue["SymmetricBasisQ"], "rotate" -> OptionValue["rotate"]];
-  If[OptionValue["unit"]==="evangstrom", alat = 1.0; ev2hartree=1.0, alat=Mean[Norm[#] & /@ latt]; ev2hartree=1/27.2114];
+ If[OptionValue["unit"]==="evangstrom", alat = 1.0; ev2hartree=1.0, alat=Mean[Norm[#] & /@ latt]; ev2hartree=1/27.2114];
 
-  SupercellFC = cbasis\[Transpose].ArrayFlatten[Fij].cbasis;
-  SupercellFC = Chop[0.5 ev2hartree alat^2 (SupercellFC\[Transpose] + SupercellFC)];
+  (*SFC = 0.5*cbasis\[Transpose].(ArrayFlatten[Fij]+ArrayFlatten[Fij]\[Transpose]).cbasis;*)
+  SFC = cbasis\[Transpose].ArrayFlatten[Fij].cbasis;
+  SFC = Chop[0.5 ev2hartree alat^2 (SFC\[Transpose] + SFC)];
   
-  EPhonon = Expand[supervars[[1;;nb]].SupercellFC[[1;;nb,;;]].supervars];
+  EPhonon = Expand[supervars[[1;;nb]].SFC[[1;;nb,;;]].supervars];
   EPhonon = Total[If[OnSiteExprQ[#], 0.5, 1] # & /@ Level[EPhonon, {1}]];
 
-  out = CollectPolynomial[EPhonon, TRules4Jij, "round" -> 1.0*10^-6, "sort"->OptionValue["sort"]];
+  out = CollectPolynomial[EPhonon, TRules4Jij, "round" -> 1.0*10^-9, "sort"->OptionValue["sort"]];
 
   Return[out]
 ]
@@ -1952,7 +1993,7 @@ ExportHamiltonianOld[dir_, fullmodel_, vars_, svars_, ie_, EwaldField_:True] := 
   h12 = Select[hmodel, (Or@@XInvQ[Variables[#[[2]]], {ToExpression["u"]}]) && (Or@@XInvQ[Variables[#[[2]]], {ToExpression["\[Epsilon]"]}]) &];
   h2 = Select[hmodel, Nor@@XInvQ[Variables[#[[2]]], {ToExpression["\[Epsilon]"], ToExpression["\[Epsilon]0"], ToExpression["u"]}] &];
   h3 = Expand[Complement[hmodel, Join[h11, h12, h2]] /. totstrainsub];
-  h12 = {#1, SimplifyCommonFactor[#2]} & @@@ (h12 /. eps0sub);
+  h12 = {#1, SimplifyCommonFactor[#2, 10^-6]} & @@@ (h12 /. eps0sub);
   h1 = Join[h11, h12];
   h3u = Expand[h3 /. eusub /. e0mute /. varsmute];
 
@@ -1966,7 +2007,7 @@ ExportHamiltonianOld[dir_, fullmodel_, vars_, svars_, ie_, EwaldField_:True] := 
                  {"CoeffHprimary",    h2\[Transpose][[1]]}, 
                  {"CoeffHpscoupling", h3\[Transpose][[1]]}};
 
-  WriteLatticeModelF90[dir<>"/src/hamiltonian", "GetVariationGstrain",   "Variation", {{"Gstrain",      g1\[Transpose][[2]]}}, dfields];
+  WriteLatticeModelF90[dir<>"/src/hamiltonian", "GetVariationGstrain",   "Variation", {{"Gstrain",      g1\[Transpose][[2]]}}, dfields, "LineLimit"->OptionValue["LineLimit"]];
   WriteLatticeModelF90[dir<>"/src/hamiltonian", "GetVariationGprimary",  "Variation", {{"Gprimary",     g2\[Transpose][[2]]}}, dfields];
   WriteLatticeModelF90[dir<>"/src/hamiltonian", "GetVariationGpscoupling","Variation", {{"Gpscoupling", g3\[Transpose][[2]] 
                                                                                                        +g3u\[Transpose][[2]]}}, dfields];
@@ -2054,167 +2095,234 @@ ExportHamiltonianOld[dir_, fullmodel_, vars_, svars_, ie_, EwaldField_:True] := 
   Return[{{g1, g2, g3, h1, h2, h3}, coefficients}]
 ]
 
-ExportHamiltonian[dir_, fullmodel_, vars_, svars_, ie_, EwaldField_:True] := Module[{gmodelextend, hmodel, gmodel, x0, y0, z0, ix, iy, iz, dx, dy, dz, Gs, Gp, Gsp, Hu, Hp, Hup, Hsu, Hsp, d, v, var0sub, varxsub, xyzsub, dfields, eu, eusub, e0mute, varsmute, site0sub, uxsub, coefficients, eps0sub, nn, ExprFunc},
+CookModel[fullmodel_, vars_] := Module[{gmodel, hmodel, v, d, i, j, xyzsub, site0sub, var0sub, eps0sub, Gs, Gp, Gsp, Hu, Hp, Hup, Hsu, Hsp, Hsup},
 
-  xyzsub = {ToExpression["x"] -> 1, ToExpression["y"] -> 2, ToExpression["z"] -> 3};
-  site0sub = {Subscript[v_, d_] -> Subscript[v, d, 0, 0, 0], Subscript[v_, i_, j_] -> Subscript[v, i, j, 0, 0, 0]};
-  var0sub = Thread[(Flatten[vars] /. xyzsub) -> Flatten[vars /. xyzsub /. site0sub]];
-  eps0sub = {Subscript[ToExpression["\[Epsilon]"], i_, j_] :> Subscript[ToExpression["\[Epsilon]0"], i, j]};
+   xyzsub = {ToExpression["x"] -> 1, ToExpression["y"] -> 2, ToExpression["z"] -> 3};
+   site0sub = {Subscript[v_, d_] -> Subscript[v, d, 0, 0, 0], Subscript[v_, i_, j_] -> Subscript[v, i, j, 0, 0, 0]};
+   var0sub = Thread[(Flatten[vars] /. xyzsub) -> Flatten[vars /. xyzsub /. site0sub]];   
+   eps0sub = {Subscript[ToExpression["\[Epsilon]"], i_, j_] :> Subscript[ToExpression["\[Epsilon]0"], i, j]};
 
-  dfields = Join[vars /. site0sub /. xyzsub, {ToExpression[#] & /@ {"\!\(\*SubscriptBox[\(u\), \(1, 0, 0, 0\)]\)",
-                                                                    "\!\(\*SubscriptBox[\(u\), \(2, 0, 0, 0\)]\)",
-                                                                    "\!\(\*SubscriptBox[\(u\), \(3, 0, 0, 0\)]\)"}},
-                                              {ToExpression[#] & /@ {"\!\(\*SubscriptBox[\(\[Epsilon]0\), \(1, 1\)]\)",
-                                                                     "\!\(\*SubscriptBox[\(\[Epsilon]0\), \(2, 2\)]\)",
-                                                                     "\!\(\*SubscriptBox[\(\[Epsilon]0\), \(3, 3\)]\)",
-                                                                     "\!\(\*SubscriptBox[\(\[Epsilon]0\), \(2, 3\)]\)",
-                                                                     "\!\(\*SubscriptBox[\(\[Epsilon]0\), \(1, 3\)]\)",
-                                                                     "\!\(\*SubscriptBox[\(\[Epsilon]0\), \(1, 2\)]\)"}}];
+   hmodel = Select[Model2List[fullmodel /. xyzsub], JijInvQ[#[[2]]] &];
+   gmodel = Select[Model2List[fullmodel /. xyzsub], ! JijInvQ[#[[2]]] &];
+ 
+   Gs   = Expand[Select[gmodel, And@@XInvQ[#[[2]], {ToExpression["\[Epsilon]"]}, ContainsExactly] &]];
+   Gp   = Expand[Select[gmodel, And@@XInvQ[#[[2]], {ToExpression["\[Epsilon]"]}, ContainsNone] &]];
+   Gsp  = Expand[Complement[gmodel, Join[Gs, Gp]]];
+ 
+   Gs   = Gs  /. eps0sub;
+   Gp   = Gp  /. var0sub;
+   Gsp  = Gsp /. var0sub /. eps0sub;
+ 
+   Hu   = Select[hmodel, And@@XInvQ[#[[2]], {ToExpression["u"]}, ContainsExactly] &];
+   Hp   = Select[hmodel, And@@XInvQ[#[[2]], {ToExpression["\[Epsilon]"], ToExpression["u"]}, ContainsNone] &];
+ 
+   Hsu  = Select[hmodel, And@@XInvQ[#[[2]], {ToExpression["u"], ToExpression["\[Epsilon]"]}, ContainsExactly] &];
+   Hup  = Select[Expand[Complement[hmodel, Join[Hu, Hp, Hsu]]], And@@XInvQ[#[[2]], {ToExpression["\[Epsilon]"]}, ContainsNone] &];
+   Hsp  = Select[Expand[Complement[hmodel, Join[Hu, Hp, Hsu, Hup]]], And@@XInvQ[#[[2]], {ToExpression["u"]}, ContainsNone] &];
+   Hsup = Expand[Complement[hmodel,        Join[Hu, Hp, Hsu, Hup, Hsp]]];
+ 
+   Hsu  = Hsu /. eps0sub;
+   Hsp  = Hsp /. eps0sub;
+   Hsup = Hsup /. eps0sub;
 
-  hmodel = Select[Model2List[fullmodel /. xyzsub], JijInvQ[#[[2]]] &];
-  gmodel = Select[Model2List[fullmodel /. xyzsub], ! JijInvQ[#[[2]]] &];
+   Gs   = ReverseSortBy[Gs,   Abs[#[[1]]]&];
+   Gp   = ReverseSortBy[Gp,   Abs[#[[1]]]&];
+   Gsp  = ReverseSortBy[Gsp,  Abs[#[[1]]]&];
+ 
+   Hu   = ReverseSortBy[Hu,   Abs[#[[1]]]&];
+   Hp   = ReverseSortBy[Hp,   Abs[#[[1]]]&];
+   Hup  = ReverseSortBy[Hup,  Abs[#[[1]]]&];
+   Hsu  = ReverseSortBy[Hsu,  Abs[#[[1]]]&];
+   Hsp  = ReverseSortBy[Hsp,  Abs[#[[1]]]&];
+   Hsup = ReverseSortBy[Hsup, Abs[#[[1]]]&];
+ 
+   If[Hsu  === {}, Hsu  = {{0, 1}}];
+   If[Hsp  === {}, Hsp  = {{0, 1}}];
+   If[Hsup === {}, Hsup = {{0, 1}}];
 
-  Gs  = Expand[Select[gmodel, And@@StrainInvQ[Variables[#[[2]]], ToExpression["\[Epsilon]"]] &]];
-  Gp  = Expand[Select[gmodel, Nor@@StrainInvQ[Variables[#[[2]]], ToExpression["\[Epsilon]"]] &]];
-  Gsp = Expand[Complement[gmodel, Join[Gs, Gp]]];
+   Return[{Gs, Gp, Gsp, Hu, Hp, Hup, Hsu, Hsp, Hsup}]
+]
 
-  Gs  = Gs  /. eps0sub;
-  Gsp = Gsp /. var0sub /. eps0sub;
-  Gp  = Gp  /. var0sub;
+ExportHamiltonian[dir_, fullmodel_, vars_, svars_, ie_, EwaldField_:True, OptionsPattern[{"LineLimit"->500}]] := Module[{gmodelextend, hmodel, gmodel, x0, y0, z0, ix, iy, iz, dx, dy, dz, Gs, Gp, Gsp, Hu, Hp, Hup, Hsu, Hsp, Hsup, d, v, varxsub, dfields, eu, eusub, e0mute, varsmute, site0sub, uxsub, coefficients, nn, ExprFunc},
 
-  Hu = Select[hmodel, And @@ XInvQ[Variables[#[[2]]], {ToExpression["u"]}] &];
-  Hp = Select[hmodel, Nor @@ XInvQ[Variables[#[[2]]], {ToExpression["\[Epsilon]"], ToExpression["u"]}] &];
-  Hsu = Select[hmodel, (Or @@ XInvQ[Variables[#[[2]]], {ToExpression["u"]}]) && (Or @@ XInvQ[Variables[#[[2]]], {ToExpression["\[Epsilon]"]}]) &];
-  Hsp = Select[Expand[Complement[hmodel, Join[Hu, Hsu, Hp]]], Or @@ XInvQ[Variables[#[[2]]], {ToExpression["\[Epsilon]"]}] &];
-  Hup = Select[Expand[Complement[hmodel, Join[Hu, Hsu, Hp]]], Or @@ XInvQ[Variables[#[[2]]], {ToExpression["u"]}] &];
+  site0sub = {Subscript[v_, d_] -> Subscript[v, d, 0, 0, 0]};
+  dfields = Join[vars /. site0sub, {ToExpression[#] & /@ {"\!\(\*SubscriptBox[\(u\), \(1, 0, 0, 0\)]\)",
+                                                          "\!\(\*SubscriptBox[\(u\), \(2, 0, 0, 0\)]\)",
+                                                          "\!\(\*SubscriptBox[\(u\), \(3, 0, 0, 0\)]\)"}},
+                                   {ToExpression[#] & /@ {"\!\(\*SubscriptBox[\(\[Epsilon]0\), \(1, 1\)]\)",
+                                                          "\!\(\*SubscriptBox[\(\[Epsilon]0\), \(2, 2\)]\)",
+                                                          "\!\(\*SubscriptBox[\(\[Epsilon]0\), \(3, 3\)]\)",
+                                                          "\!\(\*SubscriptBox[\(\[Epsilon]0\), \(2, 3\)]\)",
+                                                          "\!\(\*SubscriptBox[\(\[Epsilon]0\), \(1, 3\)]\)",
+                                                          "\!\(\*SubscriptBox[\(\[Epsilon]0\), \(1, 2\)]\)"}}];
 
-  Hsu = Hsu /. eps0sub;
-  Hsp = Hsp /. eps0sub;
-
-  Gs  = Transpose@SortBy[Transpose[Gs], #[[2]]&];
-  Gp  = Transpose@SortBy[Transpose[Gp], #[[2]]&];
-  Gsp = Transpose@SortBy[Transpose[Gsp], #[[2]]&];
-
-  Hu  = Transpose@SortBy[Transpose[Hu], #[[2]]&];
-  Hp  = Transpose@SortBy[Transpose[Hp], #[[2]]&];
-  Hup = Transpose@SortBy[Transpose[Hup], #[[2]]&];
-  Hsu = Transpose@SortBy[Transpose[Hsu], #[[2]]&];
-  Hsp = Transpose@SortBy[Transpose[Hsp], #[[2]]&];
-
-  If[Hsu === {}, Hsu = {{0, 1}}];
-  If[Hsp === {}, Hsp = {{0, 1}}];
+  {Gs, Gp, Gsp, Hu, Hp, Hup, Hsu, Hsp, Hsup} = CookModel[fullmodel, vars];
 
   nn = Max[Max[#] & /@ (Abs@Cases[Variables@Hu, Subscript[ToExpression["\[Epsilon]u"], __, __, ix_, iy_, iz_] -> {ix, iy, iz}]\[Transpose])];
   BuildHeterostructureStrain[dir, vars, svars, nn, ie];
 
-  coefficients= {{"CoeffGs",   Gs\[Transpose][[1]]},
-                 {"CoeffGp",   Gp\[Transpose][[1]]},
-                 {"CoeffGsp", Gsp\[Transpose][[1]]},
-                 {"CoeffHu",   Hu\[Transpose][[1]]},
-                 {"CoeffHp",   Hp\[Transpose][[1]]},
-                 {"CoeffHup", Hup\[Transpose][[1]]},
-                 {"CoeffHsp", Hsp\[Transpose][[1]]},
-                 {"CoeffHsu", Hsu\[Transpose][[1]]}};
+  coefficients= {{"CoeffGs",     Gs\[Transpose][[1]]},
+                 {"CoeffGp",     Gp\[Transpose][[1]]},
+                 {"CoeffGsp",   Gsp\[Transpose][[1]]},
+                 {"CoeffHu",     Hu\[Transpose][[1]]},
+                 {"CoeffHp",     Hp\[Transpose][[1]]},
+                 {"CoeffHup",   Hup\[Transpose][[1]]},
+                 {"CoeffHsu",   Hsu\[Transpose][[1]]},
+                 {"CoeffHsp",   Hsp\[Transpose][[1]]},
+                 {"CoeffHsup", Hsup\[Transpose][[1]]}};
 
-  WriteLatticeModelF90[dir<>"/src/hamiltonian", "GetVariationGs",  "Variation",         {{"Gs",   Gs\[Transpose][[2]]}}, dfields];
-  WriteLatticeModelF90[dir<>"/src/hamiltonian", "GetVariationGp",  "Variation",         {{"Gp",   Gp\[Transpose][[2]]}}, dfields];
-  WriteLatticeModelF90[dir<>"/src/hamiltonian", "GetVariationGsp", "Variation",         {{"Gsp", Gsp\[Transpose][[2]]}}, dfields];
+  WriteLatticeModelF90[dir<>"/src/hamiltonian", "GetVariationGs",  "Variation",         {{"Gs",   Gs\[Transpose][[2]]}}, dfields, 
+                       "LineLimit"->OptionValue["LineLimit"]];
+  WriteLatticeModelF90[dir<>"/src/hamiltonian", "GetVariationGp",  "Variation",         {{"Gp",   Gp\[Transpose][[2]]}}, dfields, 
+                       "LineLimit"->OptionValue["LineLimit"]];
+  WriteLatticeModelF90[dir<>"/src/hamiltonian", "GetVariationGsp", "Variation",         {{"Gsp", Gsp\[Transpose][[2]]}}, dfields, 
+                       "LineLimit"->OptionValue["LineLimit"]];
 
   WriteLatticeModelF90[dir<>"/src/hamiltonian", "GetVariationG",   "Variation",         {{"Gs",   Gs\[Transpose][[2]]},
                                                                                          {"Gp",   Gp\[Transpose][[2]]},
-                                                                                         {"Gsp",  Gsp\[Transpose][[2]]}}, dfields];
+                                                                                         {"Gsp",  Gsp\[Transpose][[2]]}}, dfields, 
+                       "LineLimit"->OptionValue["LineLimit"]];
 
-  WriteLatticeModelF90[dir<>"/src/hamiltonian", "GetVariationHu",  "Variation",         {{"Hu",   Hu\[Transpose][[2]]}}, dfields];
-  WriteLatticeModelF90[dir<>"/src/hamiltonian", "GetVariationHp",  "Variation",         {{"Hp",   Hp\[Transpose][[2]]}}, dfields];
-  WriteLatticeModelF90[dir<>"/src/hamiltonian", "GetVariationHup", "Variation",         {{"Hup", Hup\[Transpose][[2]]}}, dfields];
-  WriteLatticeModelF90[dir<>"/src/hamiltonian", "GetVariationHsu", "Variation",         {{"Hsu", Hsu\[Transpose][[2]]}}, dfields];
-  WriteLatticeModelF90[dir<>"/src/hamiltonian", "GetVariationHsp", "Variation",         {{"Hsp", Hsp\[Transpose][[2]]}}, dfields];
+  WriteLatticeModelF90[dir<>"/src/hamiltonian", "GetVariationHu",  "Variation",         {{"Hu",   Hu\[Transpose][[2]]}}, dfields, 
+                       "LineLimit"->OptionValue["LineLimit"]];
+  WriteLatticeModelF90[dir<>"/src/hamiltonian", "GetVariationHp",  "Variation",         {{"Hp",   Hp\[Transpose][[2]]}}, dfields, 
+                       "LineLimit"->OptionValue["LineLimit"]];
+  WriteLatticeModelF90[dir<>"/src/hamiltonian", "GetVariationHup", "Variation",         {{"Hup", Hup\[Transpose][[2]]}}, dfields, 
+                       "LineLimit"->OptionValue["LineLimit"]];
+  WriteLatticeModelF90[dir<>"/src/hamiltonian", "GetVariationHsu", "Variation",         {{"Hsu", Hsu\[Transpose][[2]]}}, dfields, 
+                       "LineLimit"->OptionValue["LineLimit"]];
+  WriteLatticeModelF90[dir<>"/src/hamiltonian", "GetVariationHsp", "Variation",         {{"Hsp", Hsp\[Transpose][[2]]}}, dfields, 
+                       "LineLimit"->OptionValue["LineLimit"]];
+  WriteLatticeModelF90[dir<>"/src/hamiltonian", "GetVariationHsup", "Variation",        {{"Hsup", Hsup\[Transpose][[2]]}}, dfields,
+                       "LineLimit"->OptionValue["LineLimit"]];
 
-  WriteLatticeModelF90[dir<>"/src/hamiltonian", "GetVariationH",   "Variation",         {{"Hu",   Hu\[Transpose][[2]]},
-                                                                                         {"Hp",   Hp\[Transpose][[2]]},
-                                                                                         {"Hup", Hup\[Transpose][[2]]},
-                                                                                         {"Hsu", Hsu\[Transpose][[2]]},
-                                                                                         {"Hsp", Hsp\[Transpose][[2]]}}, dfields];
+  WriteLatticeModelF90[dir<>"/src/hamiltonian", "GetVariationH",   "Variation",         {{"Hu",     Hu\[Transpose][[2]]},
+                                                                                         {"Hp",     Hp\[Transpose][[2]]},
+                                                                                         {"Hup",   Hup\[Transpose][[2]]},
+                                                                                         {"Hsu",   Hsu\[Transpose][[2]]},
+                                                                                         {"Hsp",   Hsp\[Transpose][[2]]},
+                                                                                         {"Hsup", Hsup\[Transpose][[2]]}}, dfields, 
+                       "LineLimit"->OptionValue["LineLimit"]];
 
-  ExprFunc = WriteLatticeModelF90[dir<>"/src/hamiltonian", "GetVariation", "Variation", {{"Gs",   Gs\[Transpose][[2]]},
-                                                                                         {"Gp",   Gp\[Transpose][[2]]},
-                                                                                         {"Gsp", Gsp\[Transpose][[2]]},
-                                                                                         {"Hu",   Hu\[Transpose][[2]]},
-                                                                                         {"Hp",   Hp\[Transpose][[2]]},
-                                                                                         {"Hup", Hup\[Transpose][[2]]},
-                                                                                         {"Hsu", Hsu\[Transpose][[2]]},
-                                                                                         {"Hsp", Hsp\[Transpose][[2]]}}, dfields];
+  WriteLatticeModelF90[dir<>"/src/hamiltonian", "GetVariationEps", "Variation",         {{"Gs",     Gs\[Transpose][[2]]},
+                                                                                         {"Gsp",   Gsp\[Transpose][[2]]},
+                                                                                         {"Hsu",   Hsu\[Transpose][[2]]},
+                                                                                         {"Hsp",   Hsp\[Transpose][[2]]},
+                                                                                         {"Hsup", Hsup\[Transpose][[2]]}}, dfields,
+                       "LineLimit"->OptionValue["LineLimit"]];
+
+  ExprFunc = WriteLatticeModelF90[dir<>"/src/hamiltonian", "GetVariation", "Variation", {{"Gs",     Gs\[Transpose][[2]]},
+                                                                                         {"Gp",     Gp\[Transpose][[2]]},
+                                                                                         {"Gsp",   Gsp\[Transpose][[2]]},
+                                                                                         {"Hu",     Hu\[Transpose][[2]]},
+                                                                                         {"Hp",     Hp\[Transpose][[2]]},
+                                                                                         {"Hup",   Hup\[Transpose][[2]]},
+                                                                                         {"Hsu",   Hsu\[Transpose][[2]]},
+                                                                                         {"Hsp",   Hsp\[Transpose][[2]]}, 
+                                                                                         {"Hsup", Hsup\[Transpose][[2]]}}, dfields, 
+                                  "LineLimit"->OptionValue["LineLimit"]];
 
   MMA2FORTRAN[dir<>"/src/hamiltonian/" <> "VariationExpr", ExprFunc];
 
-  WriteLatticeModelF90[dir<>"/src/hamiltonian","GetForcesGs",  "Forces",            {{"Gs",   Gs\[Transpose][[2]]}}, dfields, "AllSites" -> True];
-  WriteLatticeModelF90[dir<>"/src/hamiltonian","GetForcesGp",  "Forces",            {{"Gp",   Gp\[Transpose][[2]]}}, dfields, "AllSites" -> True];
-  WriteLatticeModelF90[dir<>"/src/hamiltonian","GetForcesGsp", "Forces",            {{"Gsp", Gsp\[Transpose][[2]]}}, dfields, "AllSites" -> True];
+  WriteLatticeModelF90[dir<>"/src/hamiltonian","GetForcesGs",  "Forces",            {{"Gs",   Gs\[Transpose][[2]]}}, dfields, 
+                       "AllSites" -> True, "LineLimit"->OptionValue["LineLimit"]];
+  WriteLatticeModelF90[dir<>"/src/hamiltonian","GetForcesGp",  "Forces",            {{"Gp",   Gp\[Transpose][[2]]}}, dfields, 
+                       "AllSites" -> True, "LineLimit"->OptionValue["LineLimit"]];
+  WriteLatticeModelF90[dir<>"/src/hamiltonian","GetForcesGsp", "Forces",            {{"Gsp", Gsp\[Transpose][[2]]}}, dfields, 
+                       "AllSites" -> True, "LineLimit"->OptionValue["LineLimit"]];
 
   WriteLatticeModelF90[dir<>"/src/hamiltonian","GetForcesG",   "Forces",            {{"Gs",   Gs\[Transpose][[2]]},
                                                                                      {"Gp",   Gp\[Transpose][[2]]},
-                                                                                     {"Gsp", Gsp\[Transpose][[2]]}}, dfields, "AllSites" -> True];
+                                                                                     {"Gsp", Gsp\[Transpose][[2]]}}, dfields, 
+                       "AllSites" -> True, "LineLimit"->OptionValue["LineLimit"]];
 
-  WriteLatticeModelF90[dir<>"/src/hamiltonian","GetForcesHu",  "Forces",            {{"Hu",   Hu\[Transpose][[2]]}}, dfields, "AllSites" -> True];
-  WriteLatticeModelF90[dir<>"/src/hamiltonian","GetForcesHp",  "Forces",            {{"Hp",   Hp\[Transpose][[2]]}}, dfields, "AllSites" -> True];
-  WriteLatticeModelF90[dir<>"/src/hamiltonian","GetForcesHup", "Forces",            {{"Hup", Hup\[Transpose][[2]]}}, dfields, "AllSites" -> True];
-  WriteLatticeModelF90[dir<>"/src/hamiltonian","GetForcesHsu", "Forces",            {{"Hsu", Hsu\[Transpose][[2]]}}, dfields, "AllSites" -> True];
-  WriteLatticeModelF90[dir<>"/src/hamiltonian","GetForcesHsp", "Forces",            {{"Hsp", Hsp\[Transpose][[2]]}}, dfields, "AllSites" -> True];
+  WriteLatticeModelF90[dir<>"/src/hamiltonian","GetForcesHu",  "Forces",            {{"Hu",   Hu\[Transpose][[2]]}}, dfields, 
+                       "AllSites" -> True, "LineLimit"->OptionValue["LineLimit"]];
+  WriteLatticeModelF90[dir<>"/src/hamiltonian","GetForcesHp",  "Forces",            {{"Hp",   Hp\[Transpose][[2]]}}, dfields, 
+                       "AllSites" -> True, "LineLimit"->OptionValue["LineLimit"]];
+  WriteLatticeModelF90[dir<>"/src/hamiltonian","GetForcesHup", "Forces",            {{"Hup", Hup\[Transpose][[2]]}}, dfields, 
+                       "AllSites" -> True, "LineLimit"->OptionValue["LineLimit"]];
+  WriteLatticeModelF90[dir<>"/src/hamiltonian","GetForcesHsu", "Forces",            {{"Hsu", Hsu\[Transpose][[2]]}}, dfields, 
+                       "AllSites" -> True, "LineLimit"->OptionValue["LineLimit"]];
+  WriteLatticeModelF90[dir<>"/src/hamiltonian","GetForcesHsp", "Forces",            {{"Hsp", Hsp\[Transpose][[2]]}}, dfields, 
+                       "AllSites" -> True, "LineLimit"->OptionValue["LineLimit"]];
+  WriteLatticeModelF90[dir<>"/src/hamiltonian","GetForcesHsup", "Forces",           {{"Hsup", Hsup\[Transpose][[2]]}}, dfields,
+                       "AllSites" -> True, "LineLimit"->OptionValue["LineLimit"]];
 
-  WriteLatticeModelF90[dir<>"/src/hamiltonian","GetForcesH",   "Forces",            {{"Hu",   Hu\[Transpose][[2]]},
-                                                                                     {"Hp",   Hp\[Transpose][[2]]},
-                                                                                     {"Hup", Hup\[Transpose][[2]]},
-                                                                                     {"Hsu", Hsu\[Transpose][[2]]},
-                                                                                     {"Hsp", Hsp\[Transpose][[2]]}}, dfields, "AllSites" -> True];
+  WriteLatticeModelF90[dir<>"/src/hamiltonian","GetForcesH",   "Forces",            {{"Hu",     Hu\[Transpose][[2]]},
+                                                                                     {"Hp",     Hp\[Transpose][[2]]},
+                                                                                     {"Hup",   Hup\[Transpose][[2]]},
+                                                                                     {"Hsu",   Hsu\[Transpose][[2]]},
+                                                                                     {"Hsp",   Hsp\[Transpose][[2]]}, 
+                                                                                     {"Hsup", Hsup\[Transpose][[2]]}}, dfields, 
+                       "AllSites" -> True, "LineLimit"->OptionValue["LineLimit"]];
 
-  ExprFunc = WriteLatticeModelF90[dir <> "/src/hamiltonian", "GetForces", "Forces", {{"Gs",   Gs\[Transpose][[2]]},
-                                                                                     {"Gp",   Gp\[Transpose][[2]]},
-                                                                                     {"Gsp", Gsp\[Transpose][[2]]},
-                                                                                     {"Hu",   Hu\[Transpose][[2]]},
-                                                                                     {"Hp",   Hp\[Transpose][[2]]},
-                                                                                     {"Hup", Hup\[Transpose][[2]]},
-                                                                                     {"Hsu", Hsu\[Transpose][[2]]},
-                                                                                     {"Hsp", Hsp\[Transpose][[2]]}}, dfields, "AllSites" -> True];
+  WriteLatticeModelF90[dir<>"/src/hamiltonian", "GetForcesEps", "Forces",           {{"Gs",     Gs\[Transpose][[2]]},
+                                                                                     {"Gsp",   Gsp\[Transpose][[2]]},
+                                                                                     {"Hsu",   Hsu\[Transpose][[2]]},
+                                                                                     {"Hsp",   Hsp\[Transpose][[2]]},
+                                                                                     {"Hsup", Hsup\[Transpose][[2]]}}, dfields,
+                       "AllSites" -> True, "LineLimit"->OptionValue["LineLimit"]];
+
+  ExprFunc = WriteLatticeModelF90[dir <> "/src/hamiltonian", "GetForces", "Forces", {{"Gs",     Gs\[Transpose][[2]]},
+                                                                                     {"Gp",     Gp\[Transpose][[2]]},
+                                                                                     {"Gsp",   Gsp\[Transpose][[2]]},
+                                                                                     {"Hu",     Hu\[Transpose][[2]]},
+                                                                                     {"Hp",     Hp\[Transpose][[2]]},
+                                                                                     {"Hup",   Hup\[Transpose][[2]]},
+                                                                                     {"Hsu",   Hsu\[Transpose][[2]]},
+                                                                                     {"Hsp",   Hsp\[Transpose][[2]]},
+                                                                                     {"Hsup", Hsup\[Transpose][[2]]}}, dfields, 
+                                  "AllSites" -> True, "LineLimit"->OptionValue["LineLimit"]];
+
   MMA2FORTRAN[dir<>"/src/hamiltonian/" <> "ForcesExpr", ExprFunc];
 
-  WriteLatticeModelF90[dir<>"/src/hamiltonian","GetSiteEnergyGs",  "SiteEnergy", {{"Gs",   Gs\[Transpose][[2]]}}, dfields];
-  WriteLatticeModelF90[dir<>"/src/hamiltonian","GetSiteEnergyGp",  "SiteEnergy", {{"Gp",   Gp\[Transpose][[2]]}}, dfields];
+  WriteLatticeModelF90[dir<>"/src/hamiltonian","GetSiteEnergyGs",  "SiteEnergy", {{"Gs",   Gs\[Transpose][[2]]}}, dfields, 
+                       "LineLimit"->OptionValue["LineLimit"]];
+  WriteLatticeModelF90[dir<>"/src/hamiltonian","GetSiteEnergyGp",  "SiteEnergy", {{"Gp",   Gp\[Transpose][[2]]}}, dfields, 
+                       "LineLimit"->OptionValue["LineLimit"]];
   WriteLatticeModelF90[dir<>"/src/hamiltonian","GetSiteEnergyGsp", "SiteEnergy", {{"Gsp", Gsp\[Transpose][[2]]}}, dfields];
 
   WriteLatticeModelF90[dir<>"/src/hamiltonian","GetSiteEnergyG",   "SiteEnergy", {{"Gs",   Gs\[Transpose][[2]]},
                                                                                   {"Gp",   Gp\[Transpose][[2]]},
-                                                                                  {"Gsp", Gsp\[Transpose][[2]]}}, dfields];
+                                                                                  {"Gsp", Gsp\[Transpose][[2]]}}, dfields, 
+                       "LineLimit"->OptionValue["LineLimit"]];
 
-  WriteLatticeModelF90[dir<>"/src/hamiltonian","GetSiteEnergyHu",  "SiteEnergy", {{"Hu",  FixDoubleCounting[Hu\[Transpose][[2]]]}}, dfields];
-  WriteLatticeModelF90[dir<>"/src/hamiltonian","GetSiteEnergyHp",  "SiteEnergy", {{"Hp",  FixDoubleCounting[Hp\[Transpose][[2]]]}}, dfields];
-  WriteLatticeModelF90[dir<>"/src/hamiltonian","GetSiteEnergyHup", "SiteEnergy", {{"Hup", FixDoubleCounting[Hup\[Transpose][[2]]]}}, dfields];
-  WriteLatticeModelF90[dir<>"/src/hamiltonian","GetSiteEnergyHsu", "SiteEnergy", {{"Hsu", FixDoubleCounting[Hsu\[Transpose][[2]]]}}, dfields];
-  WriteLatticeModelF90[dir<>"/src/hamiltonian","GetSiteEnergyHsp", "SiteEnergy", {{"Hsp", FixDoubleCounting[Hsp\[Transpose][[2]]]}}, dfields];
+  WriteLatticeModelF90[dir<>"/src/hamiltonian","GetSiteEnergyHu",  "SiteEnergy", {{"Hu",  FixDoubleCounting[Hu\[Transpose][[2]]]}}, dfields, 
+                       "LineLimit"->OptionValue["LineLimit"]];
+  WriteLatticeModelF90[dir<>"/src/hamiltonian","GetSiteEnergyHp",  "SiteEnergy", {{"Hp",  FixDoubleCounting[Hp\[Transpose][[2]]]}}, dfields, 
+                       "LineLimit"->OptionValue["LineLimit"]];
+  WriteLatticeModelF90[dir<>"/src/hamiltonian","GetSiteEnergyHup", "SiteEnergy", {{"Hup", FixDoubleCounting[Hup\[Transpose][[2]]]}}, dfields, 
+                       "LineLimit"->OptionValue["LineLimit"]];
+  WriteLatticeModelF90[dir<>"/src/hamiltonian","GetSiteEnergyHsu", "SiteEnergy", {{"Hsu", FixDoubleCounting[Hsu\[Transpose][[2]]]}}, dfields, 
+                       "LineLimit"->OptionValue["LineLimit"]];
+  WriteLatticeModelF90[dir<>"/src/hamiltonian","GetSiteEnergyHsp", "SiteEnergy", {{"Hsp", FixDoubleCounting[Hsp\[Transpose][[2]]]}}, dfields, 
+                       "LineLimit"->OptionValue["LineLimit"]];
+  WriteLatticeModelF90[dir<>"/src/hamiltonian","GetSiteEnergyHsup", "SiteEnergy", {{"Hsup", FixDoubleCounting[Hsup\[Transpose][[2]]]}}, dfields,
+                       "LineLimit"->OptionValue["LineLimit"]];
 
-  WriteLatticeModelF90[dir<>"/src/hamiltonian","GetSiteEnergyH",   "SiteEnergy", {{"Hu",  FixDoubleCounting[Hu\[Transpose][[2]]]},
-                                                                                  {"Hp",  FixDoubleCounting[Hp\[Transpose][[2]]]},
-                                                                                  {"Hup", FixDoubleCounting[Hup\[Transpose][[2]]]},
-                                                                                  {"Hsu", FixDoubleCounting[Hsu\[Transpose][[2]]]},
-                                                                                  {"Hsp", FixDoubleCounting[Hsp\[Transpose][[2]]]}}, dfields];
+
+  WriteLatticeModelF90[dir<>"/src/hamiltonian","GetSiteEnergyH",   "SiteEnergy", {{"Hu",   FixDoubleCounting[Hu\[Transpose][[2]]]},
+                                                                                  {"Hp",   FixDoubleCounting[Hp\[Transpose][[2]]]},
+                                                                                  {"Hup",  FixDoubleCounting[Hup\[Transpose][[2]]]},
+                                                                                  {"Hsu",  FixDoubleCounting[Hsu\[Transpose][[2]]]},
+                                                                                  {"Hsp",  FixDoubleCounting[Hsp\[Transpose][[2]]]},
+                                                                                  {"Hsup", FixDoubleCounting[Hsup\[Transpose][[2]]]}}, dfields, 
+                       "LineLimit"->OptionValue["LineLimit"]];
 
   ExprFunc = WriteLatticeModelF90[dir<>"/src/hamiltonian","GetSiteEnergy", "SiteEnergy",{{"Gs",   Gs\[Transpose][[2]]},
                                                                                          {"Gp",   Gp\[Transpose][[2]]},
                                                                                          {"Gsp", Gsp\[Transpose][[2]]},
-                                                                                         {"Hu",  FixDoubleCounting[Hu\[Transpose][[2]]]},
-                                                                                         {"Hp",  FixDoubleCounting[Hp\[Transpose][[2]]]},
-                                                                                         {"Hup", FixDoubleCounting[Hup\[Transpose][[2]]]},
-                                                                                         {"Hsu", FixDoubleCounting[Hsu\[Transpose][[2]]]},
-                                                                                         {"Hsp", FixDoubleCounting[Hsp\[Transpose][[2]]]}}, dfields];
+                                                                                         {"Hu",   FixDoubleCounting[Hu\[Transpose][[2]]]},
+                                                                                         {"Hp",   FixDoubleCounting[Hp\[Transpose][[2]]]},
+                                                                                         {"Hup",  FixDoubleCounting[Hup\[Transpose][[2]]]},
+                                                                                         {"Hsu",  FixDoubleCounting[Hsu\[Transpose][[2]]]},
+                                                                                         {"Hsp",  FixDoubleCounting[Hsp\[Transpose][[2]]]},
+                                                                                         {"Hsup", FixDoubleCounting[Hsup\[Transpose][[2]]]}}, dfields, 
+                                  "LineLimit"->OptionValue["LineLimit"]];
   MMA2FORTRAN[dir<>"/src/hamiltonian/" <> "SiteEnergyExpr", ExprFunc];
 
-  Return[{{Gs, Gp, Gsp, Hu, Hp, Hup, Hsu, Hsp}, coefficients}]
-]
-
-
-ExportSolvers[dir_, EwaldField_ : True] := Module[{},
-  MMA2FORTRAN[dir <> "/src/solvers/pt", FortranLatticePTSwap[]]; 
-  MMA2FORTRAN[dir <> "/src/solvers/mc", FortranLatticeMCStep["EwaldField" -> EwaldField]]; 
-  MMA2FORTRAN[dir <> "/src/solvers/md", FortranLatticeTikTok["AllSites" -> False]];
+  Return[{{Gs, Gp, Gsp, Hu, Hp, Hup, Hsu, Hsp, Hsup}, coefficients}]
 ]
 
 ExportIO[dir_] := Module[{},
@@ -2224,7 +2332,7 @@ ExportIO[dir_] := Module[{},
   MMA2FORTRAN[dir <> "/src/io/Outputs",    FortranOutputs[]];
 ]
 
-BuildLINVARIANT[dir0_, pos0_, fullmodel_, vars_, svars_, ie_, param_, ndipoles_, EwaldFieldQ_:True] := Module[{dir, d, latt, sites, modelextend, coefficients, f90dir, angstrom2bohr, nn, ix, iy, iz},
+BuildLINVARIANT[dir0_, pos0_, fullmodel_, vars_, svars_, ie_, param_, ndipoles_, EwaldFieldQ_:True, OptionsPattern[{"LineLimit"->500}]] := Module[{dir, d, latt, sites, modelextend, coefficients, f90dir, angstrom2bohr, nn, ix, iy, iz},
   angstrom2bohr = 1.88973;
   {latt, sites} = pos0;
   dir = dir0 <> "/LINVARIANT";
@@ -2253,11 +2361,10 @@ BuildLINVARIANT[dir0_, pos0_, fullmodel_, vars_, svars_, ie_, param_, ndipoles_,
   Run["sed -i 's/neighbourcut/" <> ToString[nn] <> "/g' "   <> dir <> "/src/main.f90"];
   Run["sed -i 's/NumIRFields/" <> ToString[ndipoles+1] <> "/g' "   <> dir <> "/src/solvers/mc.f90"];
   Run["sed -i 's/NumIRFields/" <> ToString[ndipoles] <> "/g' "   <> dir <> "/src/core/Ewald.f90"];
+  Run["sed -i 's/NumIRFields/" <> ToString[ndipoles] <> "/g' "   <> dir <> "/src/core/LINVARIANT.f90"];
   Run["sed -i 's/FrozenQ           =.*/FrozenQ           = "<> "(\/" <> StringRiffle[ConstantArray[".false.", Length[vars]+1], ", "] <> "\/)" <>"/g' " <> dir <> "/src/io/" <> "/Inputs.f90"];
 
-  (*MMA2FORTRAN[dir <> "src/main", FortranMain[]];*)
-
-  {modelextend, coefficients} = ExportHamiltonian[dir, fullmodel, vars, svars, ie, EwaldFieldQ];
+  {modelextend, coefficients} = ExportHamiltonian[dir, fullmodel, vars, svars, ie, EwaldFieldQ, "LineLimit"->OptionValue["LineLimit"]];
   MMA2FORTRAN[dir <> "/src/core/ReadCoefficients", FortranReadCoeff[Join[coefficients, param]]];
   MMA2FORTRAN[dir <> "/src/core/Parameters", FortranParamModule[Join[coefficients, param], vars]];
   GenerateCoefficientsFile[dir, angstrom2bohr*latt, Join[coefficients, param]];
@@ -2311,28 +2418,20 @@ FitHoppingModelOld[dir_, pos0_, spg0_, tgrp_, TRules_, Basis_, nn_, qgrid_, vars
   Return[out]
 ]
 
-FitHoppingModel[dir_, Fij_, pos0_, spg0_, tgrp_, TRules_, Basis_, nn_, qgrid_, vars_, svars_, ie_, OptionsPattern[{"sort"->True, "rotate"->True, "MatRound" -> 10^-6, "neps" -> 6, "epsmax" -> 0.03, "SymmetricBasisQ" -> True, "Hu" -> {}, "Hup" -> {}}]] := Module[{neps, epsmax, lvar, mvar, HJij, Hp, Hu, Hup, Hsu, Hsp, uvar, eu, x, dd, \[Sigma], v, \[Alpha], \[Beta], i, j, k, ii, jj, t, CoeffFunc, dispeps11, dispeps12, Hepsu, ueps11, ueps12, HepsuCoeff, out, ux, uy, uz, inv, farray, FullBasis, FullOpMat, TRules4Jij, FullTRules, terms, AcousticBasis, Heff, BoolQ, param, expr},
+FitHoppingModel[dir_, Fij_, pos0_, spg0_, tgrp_, TRules4Jij_, Basis_, nn_, qgrid_, vars_, svars_, ie_, OptionsPattern[{"sort"->True, "rotate"->True, "SymmetricBasisQ" -> True, "Hu" -> {}, "Hup" -> {}}]] := Module[{neps, epsmax, HJij, Hp, Hu, Hup, Hsu, Hsp, uvar, eu, x, dd, \[Sigma], v, \[Alpha], \[Beta], i, j, k, ii, jj, t, CoeffFunc, dispeps11, dispeps12, Hepsu, ueps11, ueps12, HepsuCoeff, out, ux, uy, uz, inv, farray, FullBasis, terms, AcousticBasis, Heff, BoolQ, param, expr},
   
-  neps = OptionValue["neps"];
-  epsmax = OptionValue["epsmax"];
   uvar = Subscript[ToExpression["u"], #] & /@ Range[3];
-  lvar = Subscript[ToExpression["Iso"], #] & /@ Range[Length[Basis\[Transpose]] + 3];
-  mvar = Flatten[Join[vars, uvar]];
  
   AcousticBasis = (Normalize[#] & /@ (Flatten[Table[1.0 IdentityMatrix[3], {Length[pos0[[2]]]}], 1]\[Transpose]))\[Transpose];
   FullBasis = Transpose@Join[Basis\[Transpose], AcousticBasis\[Transpose]];
-  FullOpMat = Round[GetMatrixRep[spg0, tgrp, pos0, FullBasis, Range[Length[Flatten@vars] + 3], "disp"], 1.0 OptionValue["MatRound"]];
-  FullTRules = Rationalize@Chop[Join[#1, #2] & @@@ ({GetIsoTransformRules[FullOpMat, "disp"], GetIsoStrainTransformRules[pos0[[1]], spg0]}\[Transpose])];
-  TRules4Jij = JijTRules[pos0, spg0, FullTRules, Basis, nn] /. Var2Var[lvar, mvar, 2, "site" -> True] /. {Subscript[ToExpression["Epsilon"], i_, j_] -> Subscript[ToExpression["\[Epsilon]"], i, j]};
 
-  (*Heff = FitHessian[FullBasis, LTB, {}, pos0, Append[vars, uvar], "unit" -> "atomic"][[1]];*)
-  Heff = FitSupercellHessian[FullBasis, Fij, {3, 3, 3}, {}, pos0, Append[vars, uvar], 
+  Heff = FitSupercellHessian[FullBasis, Fij, qgrid, TRules4Jij, pos0, Append[vars, uvar], 
                              "sort"->OptionValue["sort"], "SymmetricBasisQ" -> OptionValue["SymmetricBasisQ"], "rotate" -> OptionValue["rotate"]];
-  Hu = Table[BoolQ = DeleteDuplicates[First[#] &/@ Variables[t[[2]]]] === {ToExpression["u"]};
-             If[BoolQ, t, ##&[]], {t, Heff}];
-  Hp = Table[BoolQ = SubsetQ[DeleteDuplicates[First@# &/@ Flatten[vars]], DeleteDuplicates[First[#] &/@ Variables[t[[2]]]]];
-             If[BoolQ, t, ##&[]], {t, Heff}];
-  Hup = Complement[Heff, Join[Hu, Hp]];
+
+  Hu   = Select[Heff, And@@XInvQ[#[[2]], DeleteDuplicates[First[#] & /@ uvar], ContainsExactly] &];
+  Hp   = Select[Heff, And@@XInvQ[#[[2]], DeleteDuplicates[First[#] & /@ uvar], ContainsNone] &];
+  Hup  = Complement[Heff, Join[Hu, Hp]];
+ 
   Heff = {If[OptionValue["sort"], ReverseSortBy[Hu,  Abs[#[[1]]]&], SortBy[Hu,  #[[2]]&]],
           If[OptionValue["sort"], ReverseSortBy[Hp,  Abs[#[[1]]]&], SortBy[Hp,  #[[2]]&]],
           If[OptionValue["sort"], ReverseSortBy[Hup, Abs[#[[1]]]&], SortBy[Hup, #[[2]]&]]};
@@ -2363,39 +2462,39 @@ FitHoppingModel[dir_, Fij_, pos0_, spg0_, tgrp_, TRules_, Basis_, nn_, qgrid_, v
   Return[out]
 ]
 
-FitSHoppingModel[dir0_, pos0_, spg0_, tgrp_, TRules_, Basis_, nn_, qgrid_, vars_, svars_, ie_, npt_, maxeps_, OptionsPattern[{"chop"->1.0*10^-6, "MatRound" -> 2.0 10^-2, "rotate" -> True, "SymmetricBasisQ" -> True}]] := Module[{uvar, lvar, mvar, AcousticBasis, FullBasis, FullOpMat, FullTRules, TRules4Jij, x, t, i, j, \[Delta], eps, Hepp, eijsub, Fij, Hij, ts, param, model, expr3, out, isosub, etasub, fcfile, eta}, 
+FitSHoppingModel[dir0_, pos0_, spg0_, tgrp_, TRules4Jij_, Basis_, nn_, qgrid_, vars_, svars_, ie_, npt_, maxeps_, OptionsPattern[{"chop"->1.0*10^-6, "originshift"->{0,0,0}, "rotate" -> True, "SymmetricBasisQ" -> True}]] := Module[{x, t, i, j, d, eps, Hepp, eijsub, Fij, Hij, ts, param, model, expr3, out, fcfile, eta}, 
 
-  uvar = Subscript[ToExpression["u"], #] & /@ Range[3];
-  lvar = Subscript[ToExpression["Iso"], #] & /@ Range[Length[Basis\[Transpose]] + 3];
-  mvar = Flatten[Join[vars, uvar]];
-  isosub = Var2Var[lvar, mvar, 2, "site" -> True];
-  etasub = {Subscript[ToExpression["Epsilon"], i_, j_] -> Subscript[ToExpression["\[Epsilon]"], i, j]};
   eijsub = Flatten@Table["e" <> ToString[i] <> ToString[j] -> Subscript[ToExpression["\[Epsilon]"], i, j], {i, 3}, {j, 3}];
   eta = {"e11", "e22", "e33", "e23", "e13", "e12"};
-  
-  TRules4Jij = JijTRules[pos0, spg0, {}, Basis, nn] /. isosub /. etasub;
-  
-  expr3 = Sum[Hepp = Table[fcfile = dir0 <> "/supercell_" <> StringRiffle[qgrid, "x"] <> "/FORCE_CONSTANTS_" <> eps <> "." <> ToString[\[Delta]];
-                           Fij = ReadForceConstants[fcfile];
-                           Hij = FitHoppingModel[dir0, Fij, pos0, spg0, tgrp, TRules, Basis, nn, qgrid, vars, svars, ie, 
+
+  expr3 = Sum[Hepp = Table[fcfile = dir0 <> "/supercell_" <> StringRiffle[qgrid, "x"] <> "/FORCE_CONSTANTS_" <> eps <> "." <> ToString[d];
+                           Fij = OriginShiftFC[pos0, ReadForceConstants[fcfile], qgrid, OptionValue["originshift"], "rotate" -> OptionValue["rotate"]];
+                           Hij = FitHoppingModel[dir0, Fij, pos0, spg0, tgrp, {}, Basis, nn, qgrid, vars, svars, ie, 
                                                  "sort" -> False, 
                                                  "rotate" -> OptionValue["rotate"], 
-                                                 "MatRound" -> 0.02, 
                                                  "SymmetricBasisQ" -> OptionValue["SymmetricBasisQ"]];
-                           Table[{\[Delta] maxeps/npt, #1, #2} & @@@ Model2P1[Hij[[i]]], {i, 3}], {\[Delta], Range[-npt, npt]}]\[Transpose];
-    
-              Table[Total@Table[ts = If[Length[t] == 2 npt + 1, t, Insert[t, {0, 0, t[[1, 3]]}, npt + 1]];
-                                param = LinearModelFit[ts[[;; , 1 ;; 2]], x, x, IncludeConstantBasis -> False]["BestFitParameters"][[1]];
-                                model = ({param, ts[[1, 3]] eps} /. eijsub);
-                                Chop[Times @@ model], {t, GatherBy[Flatten[Hepp[[i]], 1], Last]}], {i, 3}], {eps, eta}];
-  
-  out = CollectPolynomial[#, TRules4Jij, "sort" -> True, "chop"->OptionValue["chop"]] & /@ expr3;
+                           Table[{d maxeps/npt, #1, #2} & @@@ Model2P1[Hij[[i]]], {i, 3}], {d, -npt, npt}]\[Transpose];
+              
+              Table[Chop@Expand@Total@Table[ts = If[Length[t] == 2 npt + 1, t, Append[t, {0, 0, t[[1, 3]]}]];
+                                            param = LinearModelFit[ts[[;; , 1 ;; 2]], x, x, IncludeConstantBasis -> False]["BestFitParameters"][[1]];
+                                            model = {param, ts[[1, 3]] eps /. eijsub};
+                                            Expand[Chop[Times @@ model]], {t, GatherBy[Flatten[Hepp[[i]], 1], Last]}], {i, 3}], {eps, eta}];
+ 
+  out = CollectPolynomial[#, TRules4Jij, "sort" -> True, "chop"->OptionValue["chop"], "SymmetricQ"->True] & /@ expr3;
   Return[out]
 ]
 
-ImposeAcousticSumRule[model_] := Module[{HacousticCoeff, Hacoustic, terms, out, residule, ind, t, i, j, k, v, x},
+ImposeAcousticSumRule[model0_] := Module[{model1, v, a, ix, iy, iz, out, sub, Etot},
+  sub = {Subscript[v_, a_, ix_, iy_, iz_] -> Subscript[v, a, 0, 0, 0]};
+  Etot = Total[Times @@@ ({model0\[Transpose][[1]], FixDoubleCounting[model0\[Transpose][[2]]]}\[Transpose])];
+  model1 = {-#1, #2} & @@@ CollectPolynomial[Chop@Expand[Etot] /. sub];
+  out = Model2List[AdjustModel[{model0\[Transpose]}, {model1\[Transpose]}]];
+  Return[out]
+]
+
+ImposeAcousticSumRuleOld[model_] := Module[{HacousticCoeff, Hacoustic, terms, out, residule, ind, t, i, j, k, v, x},
   {HacousticCoeff, Hacoustic} = model\[Transpose];
-  terms = {(# /. Subscript[__] -> 1), SimplifyCommonFactor@#} & /@ Level[Expand[HacousticCoeff . Hacoustic], {1}];
+  terms = {(# /. Subscript[__] -> 1), SimplifyCommonFactor[#, 10^-6]} & /@ Level[Expand[HacousticCoeff . Hacoustic], {1}];
   residule = Merge[Table[ind = (Variables[t[[2]]] /. Subscript[_, i_, __] -> i);
                          ind = If[Length[ind] == 1, {First@ind, First@ind}, ind];
                          ind -> t[[1]], {t, terms}], Mean];
@@ -2441,15 +2540,17 @@ SqueezeCell[dir0_, pos0_, nstrain_, ds_, qgrid_] := Module[{\[Delta], s, i, latt
         ExportPOSCAR[dir0 <> "/supercell_" <> StringRiffle[qgrid, "x"] <> "/" <> exx, "POSCAR." <> exx <> "." <> ToString[i] <> ".vasp", {latt, sites0}], {s, eta}, {i, -nstrain, nstrain}];
 ]
 
-FromJij2Energy[model_, grid_] := Module[{Nx, Ny, Nz, Heff0, ene, v, a, x0, y0, z0, dx, dy, dz, Etot, sub},
+FromJij2Energy[model_, grid_, PBCS_] := Module[{Nx, Ny, Nz, Heff0, ene, v, a, x0, y0, z0, dx, dy, dz, Etot, sub},
   {Nx, Ny, Nz} = grid;
-  sub = {Subscript[v_, a_, x0_, y0_, z0_] -> Subscript[v, a, Mod[x0 + dx, Nx, 1], Mod[y0 + dy, Ny, 1], Mod[z0 + dz, Nz, 1]]};
+  sub = {Subscript[v_, a_, x0_, y0_, z0_] -> Subscript[v, a, If[PBCS[[1]], Mod[x0 + dx, Nx, 1], x0 + dx], 
+                                                             If[PBCS[[2]], Mod[y0 + dy, Ny, 1], y0 + dy], 
+                                                             If[PBCS[[3]], Mod[z0 + dz, Nz, 1], z0 + dz]]};
   Heff0 = Expand[model\[Transpose][[1]] . FixDoubleCounting[model\[Transpose][[2]]]];
   Etot = Sum[Heff0 /. sub, {dx, Nx}, {dy, Ny}, {dz, Nz}];
   Return[Etot]
 ]
 
-BasisInSupercell[pos0_, Basis_, vars_, NSC_, SymmetricQ_ : True, OptionsPattern[{"round" -> 1.0*10^-6, "rotate"->False}]] := Module[{Nij, Nx, Ny, Nz, latt, sites, ia, i, j, k, s, g, ppos, spos, p2s, s2p, shift, multiplicity, BasisTemplates, SuperBasis, bm, cell0sites, BoolQ, NumBasis, LengthBasis, SuperVars, NumPpos, NumSpos},
+BasisInSupercell[pos0_, Basis_, vars_, NSC_, SymmetricQ_ : True, OptionsPattern[{"round" -> 1.0*10^-6, "rotate"->False}]] := Module[{Nij, Nx, Ny, Nz, latt, sites, ia, i, j, k, s, g, ppos, spos, p2s, s2p, shift, multiplicity, BasisTemplates, SuperBasis, bm, cell0sites, BoolQ, NumBasis, LengthBasis, SuperVars, NumPpos, NumSpos, NeighborList},
   {LengthBasis, NumBasis} = Dimensions@Basis;
   Nij = DiagonalMatrix[NSC];
   {latt, sites} = pos0;
@@ -2472,7 +2573,7 @@ BasisInSupercell[pos0_, Basis_, vars_, NSC_, SymmetricQ_ : True, OptionsPattern[
   multiplicity = If[SymmetricQ, 1/Power[2, Count[Chop[Mod[#1, 1]], 0]] & @@@ (spos[[2]]), 1];
   
   
-  BasisTemplates = Table[ multiplicity Partition[Flatten[ConstantArray[latt\[Transpose] . #, Times @@ NSC] & /@ Partition[Basis[[;; , i]], 3]], 3], {i, NumBasis}];
+  BasisTemplates = Table[multiplicity Partition[Flatten[ConstantArray[latt\[Transpose].#, Times @@ NSC] & /@ Partition[Basis[[;; , i]], 3]], 3], {i, NumBasis}];
   
   SuperBasis = Table[bm = Table[{g, ia} = s2p[s];
                                 BoolQ = Or @@ (Chop@Norm[spos[[2]][[s]][[1]] - Mod[# + shift, NSC]] == 0 & /@ (cell0sites[[ia]]));
@@ -2483,6 +2584,30 @@ BasisInSupercell[pos0_, Basis_, vars_, NSC_, SymmetricQ_ : True, OptionsPattern[
                             # /. {Subscript[v_, d_] :> Subscript[v, d, s[[1]], s[[2]], s[[3]]]} & /@ Flatten[vars], {shift, Keys[p2s]}], 1];
   
   Return[{Flatten[SuperBasis, 1]\[Transpose], SuperVars}]
+]
+
+OriginShiftFC[pos0_, Fij0_, NSC_, shift_, OptionsPattern[{"rotate" -> True}]] := Module[{Nij, latt, sites, Nx, Ny, Nz, NeighborList, i, j, k, s, ppos, spos, NumPpos, NumSpos, p2s, Fij, ind},
+  Nij = DiagonalMatrix[NSC];
+  {latt, sites} = pos0;
+  {Nx, Ny, Nz} = NSC; 
+  NeighborList = If[OptionValue["rotate"], 
+                    Flatten[Table[{k, j, i} - {1, 1, 1}, {i, Nz}, {j, Ny}, {k, Nx}], 2], 
+                    Flatten[Table[{i, j, k} - {1, 1, 1}, {i, Nx}, {j, Ny}, {k, Nz}], 2]];
+  
+  ppos = {pos0[[1]], {Mod[#1 + shift, {1, 1, 1}], #2} & @@@ (pos0[[2]])};
+  spos = If[OptionValue["rotate"], 
+            {Nij . latt, Flatten[Table[{#[[1]] + {k - 1, j - 1, i - 1}, #[[2]]}, {i, Nz}, {j, Ny}, {k, Nx}] & /@ (ppos[[2]]), 3]}, 
+            {Nij . latt, Flatten[Table[{#[[1]] + {i - 1, j - 1, k - 1}, #[[2]]}, {i, Nx}, {j, Ny}, {k, Nz}] & /@ (ppos[[2]]), 3]}];
+  
+  NumPpos = Length[ppos[[2]]];
+  NumSpos = Length[spos[[2]]];
+  
+  p2s = Association[Table[{i,s}->First@First@Position[Rationalize[Chop@Norm[Mod[sites[[i]][[1]]+s+shift,NSC]-#1]] &@@@ (spos[[2]]), 0], {i, NumPpos}, {s, NeighborList}]];
+  
+  ind = Flatten[Table[p2s[{i, s}], {i, NumPpos}, {s, NeighborList}]];
+  Fij = Chop@Table[Fij0[[i, j]], {i, ind}, {j, ind}];
+  
+  Return[Fij]
 ]
 
 (*-------------------------- Attributes ------------------------------*)

@@ -186,7 +186,7 @@ CheckTBInvariants[def_, rules_, sub_] := Module[{s, orb, ind, vars, tb, invarian
     ind = First@First@Position[Values[sub], orb];
     Subscript[ToExpression["eIso"], ind], {i, Length[def]}];
   invariants = Expand[Total[Times @@ vars /. # & /@ rules] /. sub];
-  tb = If[invariants===0, 0, SimplifyCommonFactor[invariants]];
+  tb = If[invariants===0, 0, SimplifyCommonFactor[invariants, 10^-6]];
   Return[tb]
 ]
 

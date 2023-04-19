@@ -1,24 +1,30 @@
 BeginPackage["LINVARIANT`MathematicaPlus`"]
 
 (*--------- Load, Save and Modify Crystal Structure Libraries ------------*)
-NOrderResponse         ::usage "NOrderResponse[eqn, var, n]"
-GetVariationVar        ::usage "GetVariationVar[var]"
-Complex2Exp            ::usage "Complex2Exp[exp]"
-Exp2Complex            ::usage "Exp2Complex[exp]"
-GetSubscriptInfo       ::usage "GetSubscriptInfo[atom]"
-ReadNonEmptyLine       ::usage "ReadNonEmptyLine[stream]"
-PermuteThrough         ::usage "PermuteThrough[tab]"
-Var2Var                ::usage "Var2Var[var1, var2, dir]"
-ParseFortranNumber     ::usage "ParseFortranNumber[stream]"
-MakeMatrixBlock        ::usage "MakeMatrixBlock[mat, dim]"
-SimpsonIntegrate       ::usage "SimpsonIntegrate[f, x]"
-RectangleIntPath       ::usage "ComplexIntegratePath[spt, ept, npt, ratio]"
-partitionBy            ::usage "partitionBy[l, p]"
-CloneReshape2D         ::usage "CloneReshape2D[array0, array1]"
-Model2P1               ::usage "Model2P1[model]"
-FixDoubleCounting      ::usage "FixDoubleCounting[expr]"
-OnSiteExprQ            ::usage "OnSiteExprQ[expr]"
-MyTime                 ::usage "MyTime[inp, NewProjQ]"
+NOrderResponse              ::usage "NOrderResponse[eqn, var, n]"
+GetVariationVar             ::usage "GetVariationVar[var]"
+Complex2Exp                 ::usage "Complex2Exp[exp]"
+Exp2Complex                 ::usage "Exp2Complex[exp]"
+GetSubscriptInfo            ::usage "GetSubscriptInfo[atom]"
+ReadNonEmptyLine            ::usage "ReadNonEmptyLine[stream]"
+PermuteThrough              ::usage "PermuteThrough[tab]"
+Var2Var                     ::usage "Var2Var[var1, var2, dir]"
+ParseFortranNumber          ::usage "ParseFortranNumber[stream]"
+MakeMatrixBlock             ::usage "MakeMatrixBlock[mat, dim]"
+SimpsonIntegrate            ::usage "SimpsonIntegrate[f, x]"
+RectangleIntPath            ::usage "ComplexIntegratePath[spt, ept, npt, ratio]"
+partitionBy                 ::usage "partitionBy[l, p]"
+CloneReshape2D              ::usage "CloneReshape2D[array0, array1]"
+Model2P1                    ::usage "Model2P1[model]"
+FixDoubleCounting           ::usage "FixDoubleCounting[expr]"
+OnSiteExprQ                 ::usage "OnSiteExprQ[expr]"
+MyTime                      ::usage "MyTime[inp, NewProjQ]"
+ColorPots                   ::usage "ColorPots[v, n, tol]"
+SimplifyTensorCommonFactor  ::usage "SimplifyTensorCommonFactor[mat]"
+SimplifyTensor              ::usage "SimpifyTensor[T0, TT]"
+NumberCommonDivisor         ::usage "NumberCommonDivisor[NumList, prec_:10^-12]"
+GetConstantFactor           ::usage "GetConstantFactor[expr]"
+SimplifyCommonFactor        ::usage "SimplifyCommonFactor[expr, prec]"
 
 (*--------- Plot and Manipulate Crystal Structures -------------------- ----------------*)
 
@@ -195,6 +201,52 @@ MyTime[inp_, NewProjQ_] := Module[{proj, txt, wedge, dir0, projects0, projects, 
   wedge = Grid@{{TabView[TabData, ImageSize -> {500, 300}], "        ", chart}};
   Print[wedge];
   Export[dir0 <> "/MyTime.dat", Flatten[Table[Transpose[{#}] & /@ Insert[projects[[ip]], {"-----"}, {{1}, {2}}], {ip, Length[projects]}], 2]];
+]
+
+ColorPots[v_, n_, tol_ : 10^-6] := Module[{c, test, vc}, 
+   c = Association[Append[{#1, #2, #3} -> RGBColor[(#1 + 1)/2, (#2 + 1)/2, (#3 + 1)/2, 0.75] & @@@ Select[Tuples[{0, 1, -1}, 3], Count[Abs@#, 1] == n &], {0, 0, 0} -> RGBColor[0.5, 0.5, 0.5, 0.75]]];
+   test = Min[TakeLargest[Abs@Chop[v, tol], n]];
+   vc = If[Abs@# >= test, Sign[#], 0] & /@ v;
+   Return[c[vc]]
+];
+
+NumberCommonDivisor[NumList_,prec_:10^-12] := Module[{TempList, DenominatorLCM},
+ TempList = Which[Head[#] === Real, Round[#,prec], Head[#] === Integer, #, Head[#] === Times, First@Level[#, {1}], Head[#] === Power, 1, Head[#] === Rational, #, (Head[#] === Complex)&&(Re[#]!=0), Abs[#], (Head[#] === Complex)&&(Re[#]==0), #] &/@ NumList;
+ DenominatorLCM = If[MemberQ[TempList, _Rational], LCM @@ (Denominator[#] & /@ Extract[TempList, Position[TempList, _Rational]]), 1];
+ DenominatorLCM = If[AllTrue[TempList, Negative], -DenominatorLCM, DenominatorLCM];
+ Return[{DenominatorLCM, GCD @@ (TempList DenominatorLCM)}]
+]
+
+GetConstantFactor[expr_] := Module[{},
+  If[ListQ[expr],  GetConstantFactor[#] & /@ expr, Return[(If[MatchQ[Expand@expr, Plus[_, __]], Level[Expand@expr, {1}], Level[Expand@expr, {0}]] /. Thread[Variables[Expand@expr] -> ConstantArray[1, Length[Variables[Expand@expr]]]])]]
+]
+
+SimplifyCommonFactor[expr_, prec_] := Module[{factorLCM, factorGCD},
+  Which[ListQ[expr],
+        SimplifyCommonFactor[#, prec] & /@ expr,
+        expr === 0,
+        Return[0],
+        True,
+        {factorLCM, factorGCD} = NumberCommonDivisor[GetConstantFactor[Expand[expr]],prec prec];
+        Return[Expand[expr factorLCM/factorGCD]/. x_Real :> Round[x,prec]]
+       ]
+]
+
+SimplifyTensorCommonFactor[mat_] := Module[{factorLCM, factorGCD, out, coeff, f},
+  coeff = Flatten@GetConstantFactor[mat];
+  f = If[DeleteCases[Sign@coeff, 0] ==={}, 1, First@DeleteCases[Sign@coeff, 0]];
+  {factorLCM, factorGCD} = NumberCommonDivisor[f coeff];
+  If[factorGCD == 0, factorGCD = 1];
+  out = Expand[factorLCM mat/factorGCD];
+  Return[out]
+]
+
+SimplifyTensor[T0_, TT_] := Module[{tsub, s, solutions, out, MatReIm},
+  MatReIm = Table[solutions = Transpose[{Flatten[ComplexExpand[f[TT]]], Flatten[ComplexExpand@f[T0]]}];
+                  tsub = Flatten[Table[If[s[[1]] === 0, ## &[], Thread[Flatten[s[[1]] {1, -1}] -> Flatten[s[[2]] {1, -1}]]], {s, solutions}]];
+                  ComplexExpand@f[TT] /. tsub, {f, {Re, Im}}];
+  out = {1, I} . MatReIm;
+  Return[out]
 ]
 
 (*-------------------------- Attributes ------------------------------*)

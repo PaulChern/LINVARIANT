@@ -37,16 +37,21 @@ Module Aux
   Function FieldTo1D(Fields, ifield) Result(Field1D)
     Implicit none
     Integer, Intent(in)    :: ifield
-    Real*8,  Intent(in)    :: Fields(FieldDim, NumField, cgrid%n1, cgrid%n2, cgrid%n3)
-    Real*8                 :: Field1D(FieldDim*NumField*cgrid%npts)
+    Real*8,  Intent(in)    :: Fields(FieldDim, NumField, cgrid_a%n1+cgrid_b%n1, cgrid_a%n2+cgrid_b%n2, cgrid_a%n3+cgrid_b%n3)
+    Real*8                 :: Field1D(FieldDim*NumField*(cgrid_a%npts+cgrid_b%npts))
     Integer                :: ix, iy, iz, i, id
+    Integer                :: NG1, NG2, NG3
 
-    do iz = 1, cgrid%n3
-      do iy = 1, cgrid%n2
-        do ix = 1, cgrid%n1
+    NG1 = cgrid_a%n1+cgrid_b%n1
+    NG2 = cgrid_a%n2+cgrid_b%n2
+    NG3 = cgrid_a%n3+cgrid_b%n3
+
+    do iz = 1, NG3
+      do iy = 1, NG2
+        do ix = 1, NG1
           do i = 1, FieldDim
-            id = (iz-1)*cgrid%n2*cgrid%n1*FieldDim &
-            + (iy-1)*cgrid%n1*FieldDim &
+            id = (iz-1)*NG2*NG1*FieldDim &
+            + (iy-1)*NG1*FieldDim &
             + (ix-1)*FieldDim &
             + i
             Field1D(id) = Fields(i,ifield,ix,iy,iz)
@@ -59,23 +64,27 @@ Module Aux
 
   Function GetSysVector(Fields,e0ij) Result(vector)
     Implicit none
-    Real*8,  Intent(in)    :: Fields(FieldDim, NumField, cgrid%n1, cgrid%n2, cgrid%n3)
+    Real*8,  Intent(in)    :: Fields(FieldDim, NumField, cgrid_a%n1+cgrid_b%n1, cgrid_a%n2+cgrid_b%n2, cgrid_a%n3+cgrid_b%n3)
     Real*8,  Intent(in)    :: e0ij(3,3)
     Real*8                 :: vector(optdim)
     Real*8                 :: eta(6)
     Integer                :: ix, iy, iz, ifield, i, id
+    Integer                :: NG1, NG2, NG3
 
-    do iz = 1, cgrid%n3
-      do iy = 1, cgrid%n2
-        do ix = 1, cgrid%n1
+    NG1 = cgrid_a%n1+cgrid_b%n1
+    NG2 = cgrid_a%n2+cgrid_b%n2
+    NG3 = cgrid_a%n3+cgrid_b%n3
+    id = 0
+
+    do iz = 1, NG3
+      do iy = 1, NG2
+        do ix = 1, NG1
           do ifield = 1, NumField
             do i = 1, FieldDim
-              id = (iz-1)*cgrid%n2*cgrid%n1*NumField*FieldDim &
-              + (iy-1)*cgrid%n1*NumField*FieldDim &
-              + (ix-1)*NumField*FieldDim &
-              + (ifield-1)*FieldDim &
-              + i
-              vector(id) = Fields(i,ifield,ix,iy,iz)
+              If (ix.le.cgrid%n1.and.iy.le.cgrid%n2.and.iz.le.cgrid%n3) then
+                id = id + 1
+                vector(id) = Fields(i,ifield,ix,iy,iz)
+              end if
             end do
           end do
         end do
@@ -93,11 +102,33 @@ Module Aux
     Implicit none
     Real*8,  Intent(in)    :: sysvector(optdim)
     Real*8,  Intent(out)   :: e0ij(3,3)
-    Real*8,  Intent(out)   :: Fields(FieldDim, NumField, cgrid%n1, cgrid%n2,cgrid%n3)
+    Real*8,  Intent(out)   :: Fields(FieldDim, NumField, cgrid_a%n1+cgrid_b%n1, cgrid_a%n2+cgrid_b%n2, cgrid_a%n3+cgrid_b%n3)
+    Real*8                 :: tmp(FieldDim, NumField, cgrid%n1, cgrid%n2, cgrid%n3)
     Integer                :: ix, iy, iz, ifield, i, id
+    Integer                :: NG1, NG2, NG3
 
-    Fields = Reshape(sysvector(1:FieldDim*NumField*cgrid%npts), &
-                               (/FieldDim, NumField, cgrid%n1, cgrid%n2, cgrid%n3/))
+    NG1 = cgrid_a%n1+cgrid_b%n1
+    NG2 = cgrid_a%n2+cgrid_b%n2
+    NG3 = cgrid_a%n3+cgrid_b%n3
+
+    tmp = Reshape(sysvector(1:FieldDim*NumField*cgrid%npts), &
+                            (/FieldDim, NumField, cgrid%n1, cgrid%n2, cgrid%n3/))
+
+    do iz = 1, NG3
+      do iy = 1, NG2
+        do ix = 1, NG1
+          do ifield = 1, NumField
+            do i = 1, FieldDim
+              If (ix.le.cgrid%n1.and.iy.le.cgrid%n2.and.iz.le.cgrid%n3) then
+                Fields(i, ifield, ix, iy, iz) = tmp(i, ifield, ix, iy, iz)
+              else
+                Fields(i, ifield, ix, iy, iz) = 0.0_dp
+              end if
+            end do
+          end do
+        end do
+      end do
+    end do
     e0ij = eta2eij(sysvector(optdim-5:optdim))
 
   End Subroutine SysVector2Fields

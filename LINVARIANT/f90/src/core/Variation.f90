@@ -9,6 +9,7 @@ Module Variation
   Include "VariationExpr.f90" 
 
   Include "GetVariation.f90" 
+  Include "GetVariationEps.f90" 
   Include "GetVariationG.f90"
   Include "GetVariationH.f90"
 
@@ -21,5 +22,6 @@ Module Variation
   Include "GetVariationHup.f90"
   Include "GetVariationHsu.f90"
   Include "GetVariationHsp.f90"
+  Include "GetVariationHsup.f90"
 
 End Module Variation

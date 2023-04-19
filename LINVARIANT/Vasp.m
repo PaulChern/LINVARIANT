@@ -503,8 +503,7 @@ GetDielectricTensor[file_] := Module[{KBar2eV, mat, out, outcar, tmp},
 ReadForceConstants[file_] := Module[{data, NumAtom0, NumAtom, FC},
   data = ReadList[file, Number, RecordLists -> True];
   {NumAtom0, NumAtom} = data[[1]];
-  FC = Association[#1 -> {#2, #3, #4} & @@@
-     Partition[data[[2 ;;]], 4]];
+  FC = Association[#1 -> {#2, #3, #4} & @@@ Partition[data[[2 ;;]], 4]];
   FC = Table[FC[{i, j}], {i, NumAtom0}, {j, NumAtom}];
   Return[FC]
 ]

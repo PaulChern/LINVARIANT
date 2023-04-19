@@ -8,14 +8,15 @@ Module Lattice
 
   Include "GetHeterostructureStrain.f90"
 
-  Subroutine Pbc(x,y,z,x0,y0,z0)
+  Subroutine Pbc(x,y,z,x0,y0,z0, NG1, NG2, NG3)
     Implicit none
     integer, Intent(in)     :: x, y, z
+    integer, Intent(in)     :: NG1, NG2, NG3
     integer, Intent(out)    :: x0, y0, z0
 
-    x0 = (x+1)-floor(real(x)/real(cgrid%n1))*cgrid%n1
-    y0 = (y+1)-floor(real(y)/real(cgrid%n2))*cgrid%n2
-    z0 = (z+1)-floor(real(z)/real(cgrid%n3))*cgrid%n3
+    x0 = (x+1)-floor(real(x)/real(NG1))*NG1
+    y0 = (y+1)-floor(real(y)/real(NG2))*NG2
+    z0 = (z+1)-floor(real(z)/real(NG3))*NG3
 
   End Subroutine Pbc
 

@@ -23,10 +23,11 @@ Module Energy
   Include "GetSiteEnergyHup.f90"
   Include "GetSiteEnergyHsu.f90"
   Include "GetSiteEnergyHsp.f90"
+  Include "GetSiteEnergyHsup.f90"
 
   Function GetEkin(dFieldsdt, de0ijdt) Result(Ekin)
     Implicit none
-    Real*8,  Intent(in)  :: dFieldsdt(FieldDim, NumField, cgrid%n1, cgrid%n2, cgrid%n3)
+    Real*8,  Intent(in)  :: dFieldsdt(FieldDim, NumField, cgrid_a%n1+cgrid_b%n1, cgrid_a%n2+cgrid_b%n2, cgrid_a%n3+cgrid_b%n3)
     Real*8,  Intent(in)  :: de0ijdt(3,3)
     Real*8               :: Ekin(2), detadt(6), etaV
     Integer              :: i, ifield, ix, iy, iz
@@ -65,7 +66,7 @@ Module Energy
 
   Function ResolveEkin(dFieldsdt, de0ijdt) Result(Ekin)
     Implicit none
-    Real*8,  Intent(in)  :: dFieldsdt(FieldDim, NumField, cgrid%n1, cgrid%n2, cgrid%n3)
+    Real*8,  Intent(in)  :: dFieldsdt(FieldDim, NumField, cgrid_a%n1+cgrid_b%n1, cgrid_a%n2+cgrid_b%n2, cgrid_a%n3+cgrid_b%n3)
     Real*8,  Intent(in)  :: de0ijdt(3,3)
     Real*8               :: Ekin(NumField+1), detadt(6), etaV
     Integer              :: i, ifield, ix, iy, iz
@@ -93,7 +94,7 @@ Module Energy
 
   Function GetEtot(Fields, e0ij) Result(Etot)
     Implicit none
-    Real*8,  Intent(in)    :: Fields(FieldDim, NumField, cgrid%n1, cgrid%n2, cgrid%n3)
+    Real*8,  Intent(in)    :: Fields(FieldDim, NumField, cgrid_a%n1+cgrid_b%n1, cgrid_a%n2+cgrid_b%n2, cgrid_a%n3+cgrid_b%n3)
     Real*8,  Intent(in)    :: e0ij(3,3)
     Real*8                 :: Etot
     Integer                :: ix, iy, iz

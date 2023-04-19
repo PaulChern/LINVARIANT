@@ -37,6 +37,7 @@ Program main
   complex(dp)              :: ctest(20), ltest(20)
   logical                  :: file_exists
   Integer                  :: wl_NumSteps
+  Integer                  :: NG1, NG2, NG3
 
   IONODE = 0
   NODE_ME = 0
@@ -55,6 +56,24 @@ Program main
   Call ReadParameters 
   Call ReadCoefficients
   do_io  Call fmkdir(trim(Solver)//".out")
+
+  If (VacuumQ) then
+    cgrid_a%n1   = cgrid%n1 
+    cgrid_a%n2   = cgrid%n2
+    cgrid_a%n3   = cgrid%n3
+    cgrid_a%npts = cgrid%npts
+    cgrid_b%npts = (cgrid%n1 + cgrid_b%n1)*(cgrid%n2 + cgrid_b%n2)*(cgrid%n3 + cgrid_b%n3) -cgrid%npts
+  Else
+    cgrid_a%n1   = cgrid%n1 - cgrid_b%n1
+    cgrid_a%n2   = cgrid%n2 - cgrid_b%n2
+    cgrid_a%n3   = cgrid%n3 - cgrid_b%n3
+    cgrid_a%npts = cgrid_a%n1*cgrid_a%n2*cgrid_a%n3
+    cgrid_b%npts = cgrid%npts - cgrid_a%npts
+  End if
+
+  NG1 = cgrid_a%n1+cgrid_b%n1
+  NG2 = cgrid_a%n2+cgrid_b%n2
+  NG3 = cgrid_a%n3+cgrid_b%n3
 
   If(trim(Solver).eq."TRules") then
     Call MatrixRep
@@ -104,7 +123,7 @@ Program main
   ! Read or Write Ewald Matrix !
   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
-  allocate(EwaldMat(3,3,cgrid%n1,cgrid%n2,cgrid%n3))
+  allocate(EwaldMat(3,3,NG1,NG2,NG3))
 
 #ifdef MPI
   do_io call EwaldMatrix(neighbourcut)
@@ -117,19 +136,20 @@ Program main
   Call MPI_BARRIER(MPI_COMM_WORLD, IERROR)
 #endif
 
-  allocate(EwaldHessian(3*cgrid%npts, 3*cgrid%npts, NumField))
+  allocate(EwaldHessian(3*(cgrid_a%npts+cgrid_b%npts), 3*(cgrid_a%npts+cgrid_b%npts), NumField))
   Call GetHessianEwald(EwaldMat, EwaldHessian)
   
   !!!!!!!!!!!!!!!!!!!!!
   ! Initialize Fields !
   !!!!!!!!!!!!!!!!!!!!!
-  allocate(Fields(FieldDim,NumField,cgrid%n1,cgrid%n2,cgrid%n3))
+  allocate(Fields(FieldDim,NumField,NG1,NG2,NG3))
   Call GetInitConfig(Fields, e0ij, RestartFields, FileIndex)
+  If (VacuumQ) Call ThinFilmBCS(Fields)
 
-  allocate(dFieldsdt(FieldDim,NumField,cgrid%n1,cgrid%n2,cgrid%n3))
+  allocate(dFieldsdt(FieldDim,NumField,NG1,NG2,NG3))
   Call GetInitConfig(dFieldsdt, de0ijdt, RestartVelocity, FileIndex)
  
-  allocate(EwaldField(3,NumField,cgrid%n1,cgrid%n2,cgrid%n3))
+  allocate(EwaldField(3,NumField,NG1,NG2,NG3))
   Call GetEwaldField(Fields, EwaldField)
 
   Call RemoveGridDrifts(Fields)
@@ -188,6 +208,7 @@ Program main
         If(istep.gt.ThermoSteps.and.FrozenQ(i)) dFieldsdt(:,i,:,:,:) = 0.0D0
       end do
       Call TikTok(Fields, dFieldsdt, e0ij, de0ijdt, Temp, gm, TimeNow)
+      If (VacuumQ) Call ThinFilmBCS(Fields)
       if((mod(istep,TapeRate).eq.0).and.(istep.gt.ThermoSteps)) then
         tstart = tend
         Call get_walltime(tend)
@@ -231,11 +252,12 @@ Program main
       end if
       do i_wl = 1, wl_NumSteps
         Call WLMCStep(i_wl, Fields, e0ij, udamp, etadamp, wl_f)
+        If (VacuumQ) Call ThinFilmBCS(Fields)
         if(istep.gt.ThermoSteps) then
           write(ifileno, '(A8,I10)') "WL step:", istep-ThermoSteps
           do i = 1, ContourNPoints(2)
             write(ifileno, "(3E16.8)") wl_s(1,i), wl_h(2,i), wl_s(2,i)
-            write(ifileno, "(3E25.15)") ((Sum(Fields(j,ifield,:,:,:))/cgrid%npts,j=1,FieldDim),ifield=1,NumField)
+            write(ifileno, "(3E25.15)") ((Sum(Fields(j,ifield,1:cgrid%n1,1:cgrid%n2,1:cgrid%n3))/cgrid%npts,j=1,FieldDim),ifield=1,NumField)
           end do 
         end if
       end do
@@ -261,6 +283,7 @@ Program main
     Call random_seed()
     do istep = 1, NumSteps
       Call MCMCStep(istep, Fields, EwaldField, e0ij, Temp, udamp, etadamp, dene)
+      If (VacuumQ) Call ThinFilmBCS(Fields)
       if((mod(istep,TapeRate).eq.0).and.(istep.gt.ThermoSteps)) then
         tstart = tend
         Call get_walltime(tend)
@@ -327,12 +350,13 @@ Program main
       do ireplica = NCPU, 1, -1
         if(trim(Solver).eq."PTMC") then
           do istep = 1, CoolingSteps
-            Call MCMCStep(istep, Fields, EwaldField, e0ij, &
-            TempList(NODE_ME+1), udamp, etadamp, dene)
+            Call MCMCStep(istep, Fields, EwaldField, e0ij, TempList(NODE_ME+1), udamp, etadamp, dene)
+            If (VacuumQ) Call ThinFilmBCS(Fields)
           end do
         else ! PTMD
           do istep = 1, CoolingSteps
             Call TikTok(Fields, dFieldsdt, e0ij, de0ijdt, TempList(NODE_ME+1), gm, TimeNow)
+            If (VacuumQ) Call ThinFilmBCS(Fields)
           end do
         end if
 
@@ -354,8 +378,8 @@ Program main
 
     if(trim(Solver).eq."PTMC") then 
       do istep = 1, NumSteps
-        Call MCMCStep(istep, Fields, EwaldField, e0ij, &
-                      TempList(NODE_ME+1), udamp, etadamp, dene)
+        Call MCMCStep(istep, Fields, EwaldField, e0ij, TempList(NODE_ME+1), udamp, etadamp, dene)
+        If (VacuumQ) Call ThinFilmBCS(Fields)
         if((mod(istep,TapeRate).eq.0).and.(istep.gt.ThermoSteps)) then
           io_begin
             tstart = tend
@@ -384,6 +408,7 @@ Program main
     else ! PTMD
       do istep = 1, NumSteps
         Call TikTok(Fields, dFieldsdt, e0ij, de0ijdt, TempList(NODE_ME+1), gm, TimeNow)
+        If (VacuumQ) Call ThinFilmBCS(Fields)
         if((mod(istep,TapeRate).eq.0).and.(istep.gt.ThermoSteps)) then
           io_begin
             tstart = tend

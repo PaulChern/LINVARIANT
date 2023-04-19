@@ -1,4 +1,4 @@
-BeginPackage["LINVARIANT`Mollweide`", {"LINVARIANT`Boracite`"}]
+BeginPackage["LINVARIANT`Mollweide`"]
 
 (*--------- Load, Save and Modify Crystal Structure Libraries ------------*)
 GetMollweideEne      ::usage "GetImage[Eonsite, vars, init]"

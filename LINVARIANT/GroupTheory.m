@@ -63,6 +63,8 @@ GetSuperCellGrp            ::usage "GetSuperCellGrp[t]"
 GetEulerVector             ::usage "GetEulerVector[ele]"
 GetCellFromGrp             ::usage "GetCellFromGrp[grp]"
 GetDoubleGrp               ::usage "GetDoubleGrp[grp, latt]"
+Dl2El                      ::usage "Dl2El[m, mm]"
+
 (*--------- Plot and Manipulate Crystal Structures -------------------- ----------------*)
 
 (*--------- Point and Space Group Information ---------------------------*)
@@ -78,15 +80,17 @@ GetDoubleGrp               ::usage "GetDoubleGrp[grp, latt]"
 Begin["`Private`"]
 
 (*--------------------------- Modules ----------------------------*)
-ModM4[ele_] := Module[{m4, su2, xyz, xyz0},
+ModM4[ele_] := Module[{m4, xyz, xyz0, dg, TRQ},
   Which[AssociationQ[ele], ModM4[#] &/@ Keys[ele],
         ListQ[ele], ModM4[#] &/@ ele,
         StringQ[ele],
         xyz0 = StringSplit[ele, ","];
+        dg = xyz0[[4]];
+        TRQ = xyz0[[5]];
         m4 = xyz2m4[ele];
         m4[[1 ;; 3, 4]] = Mod[m4[[1 ;; 3, 4]], 1];
         xyz = m42xyz[m4];
-        If[Length@xyz0 > 3, Return[xyz<>","<>xyz0[[4]]], xyz]
+        Return[xyz <> "," <> dg <> "," <> TRQ]
        ]
 ]
 
@@ -103,13 +107,14 @@ GetWyckoffImages[latt_, grp0_, wyckoff_] := Module[{i, j, k, cell, grpt, grp, xy
 GetClasses[latt_, grp0_] := Module[{dgQ, i, j, g, bab, cl, IdentityEle},
   g = Length[grp0];
   dgQ = DoubleGrpQ[grp0];
-  IdentityEle = If[dgQ, {"x,y,z,d"}, {"x,y,z"}];
+  IdentityEle = {"x,y,z,1,False"};
   bab = ParallelTable[ModM4@GTimes[latt, {Keys[grp0][[i]], Keys[grp0][[j]],GInverse[latt, Keys[grp0][[i]]]}], {j, 1, g}, {i, 1, g}, DistributedContexts -> {"LINVARIANT`GroupTheory`Private`"}];
   cl = Flatten[Values[KeySortBy[GroupBy[#, First@Union[GetEulerVector[#]\[Transpose][[2]]] &], Minus]]
                & /@ Values[KeySortBy[GroupBy[#, First@Union[GetEulerVector[#]\[Transpose][[3]]] &], Minus]]
                & /@ Values[KeySort[GroupBy[Union[Map[Union, bab]], Length[#] &]]], 3];
   cl = Flatten[(Values[KeySortBy[GroupBy[#, GetEulerVector[#][[1]] &], Minus]]
                & /@ Values[KeySortBy[GroupBy[#, GetEulerVector[#][[2]] &], Minus]]), 2] & /@ cl;
+  If[! dgQ, cl = Table[Table[StringReplace[cl[[i]][[j]], "True" -> "False"], {j, Length[cl[[i]]]}], {i, Length[cl]}]];
   cl = Prepend[DeleteCases[cl, IdentityEle], IdentityEle];
   Return[cl]
 ]
@@ -168,13 +173,13 @@ CifImportOperators[file_] := Module[{CifData, CifFlags, xyzName, xyzStrData},
   Return[xyzStrData]
 ]
 
-xyz2Expr[xyzStrData_] := Module[{xyzRotTranData, xyzTranslation, xyzRotData, su2, dgQ},
-  dgQ = DoubleGrpQ[xyzStrData];
+xyz2Expr[xyzStrData_] := Module[{xyzRotTranData, xyzTranslation, xyzRotData, dg, TRQ},
   xyzRotTranData = ToExpression["{" <> xyzStrData <> "}"]; 
   xyzTranslation = xyzRotTranData[[1;;3]] /. {ToExpression["x"]->0, ToExpression["y"]->0, ToExpression["z"]->0};
   xyzRotData = xyzRotTranData[[1;;3]] - xyzTranslation;
-  su2 = If[dgQ, ToExpression[StringSplit[xyzStrData, ","][[4]]], Null];
-  Return[{xyzRotData, xyzTranslation, su2}]
+  dg = xyzRotTranData[[4]];
+  TRQ = xyzRotTranData[[5]];
+  Return[{xyzRotData, xyzTranslation, dg, TRQ}]
 ]
 
 ExportGrp[fname_, grp_] := Module[{rot, tran, i, ig, data},
@@ -187,34 +192,34 @@ ExportGrp[fname_, grp_] := Module[{rot, tran, i, ig, data},
   Export[fname, data]
 ]
 
-xyz2m4[xyzStrData_] := Module[{RT, rot, tran, su2},
+xyz2m4[xyzStrData_] := Module[{RT, rot, tran, dg, TRQ},
   Which[AssociationQ[xyzStrData],
         xyz2m4[#] &/@ Keys[xyzStrData],
         ListQ[xyzStrData],
         xyz2m4[#] &/@ xyzStrData,
         StringQ[xyzStrData],
-        {rot, tran, su2} = xyz2Expr[xyzStrData];
+        {rot, tran, dg, TRQ} = xyz2Expr[xyzStrData];
         RT = RotT2m4[Expr2Rot[rot], tran],
         True,
         Print["xyz2m4: Wrong Input type!"];Abort[]
   ]
 ]
 
-xyz2m4su2[latt_, xyzStrData_] := Module[{RT, rot, tran, su2},
+xyz2m4su2[latt_, xyzStrData_] := Module[{RT, rot, tran, dg, TRQ},
   Which[ListQ[xyzStrData], 
         xyz2m4su2[latt, #] &/@ xyzStrData, 
         StringQ[xyzStrData], 
-        {rot, tran, su2} = xyz2Expr[xyzStrData];
+        {rot, tran, dg, TRQ} = xyz2Expr[xyzStrData];
         RT = RotT2m4[Expr2Rot[rot], tran];
-        {RT, If[su2 === Null, Null, xyz2su2[latt, xyzStrData]]},
+        {RT, dg, TRQ},
         True, 
         Print["xyz2m4su2: Wrong Input type!"];Abort[]
   ]
 ]
 
-xyz2RotT[xyzStrData_] := Module[{rot, tran, su2},
+xyz2RotT[xyzStrData_] := Module[{rot, tran, dg, TRQ},
   Which[StringQ[xyzStrData],
-        {rot, tran, su2} = xyz2Expr[xyzStrData];
+        {rot, tran, dg, TRQ} = xyz2Expr[xyzStrData];
         {Expr2Rot[rot], tran},
         ListQ[xyzStrData],
         xyz2RotT[#] &/@ xyzStrData,
@@ -223,12 +228,12 @@ xyz2RotT[xyzStrData_] := Module[{rot, tran, su2},
   ]
 ]
 
-xyz2RotTsu2[latt_, xyzStrData_] := Module[{rot, tran, su2},
+xyz2RotTsu2[xyzStrData_] := Module[{rot, tran, dg, TRQ},
   Which[StringQ[xyzStrData], 
-        {rot, tran, su2} = xyz2Expr[xyzStrData];
-        {Expr2Rot[rot], tran, If[su2 === Null, Null, xyz2su2[latt, xyzStrData]]},
+        {rot, tran, dg, TRQ} = xyz2Expr[xyzStrData];
+        {Expr2Rot[rot], tran, dg, TRQ},
         ListQ[xyzStrData], 
-        xyz2RotTsu2[latt, #] &/@ xyzStrData, 
+        xyz2RotTsu2[#] &/@ xyzStrData, 
         True, 
         Print["xyz2RotTsu2: Wrong Input type!"];Abort[]
   ]
@@ -269,48 +274,39 @@ su2code[su2_] := Module[{out},
   Return[out]
 ]
 
-m4su22xyz[latt_, mat_] := Module[{m4, su2, xyz, su2d},
-  Which[Length@Dimensions[mat]==2,
-        m4su22xyz[latt, #] &/@ mat,
-        Length@Dimensions[mat]==1,
-        {m4, su2} = mat;
+m4su22xyz[latt_, expr_] := Module[{m4, dg, TRQ, xyz},
+  Which[Length@Dimensions[expr]==2,
+        m4su22xyz[latt, #] &/@ expr,
+        Length@Dimensions[expr]==1,
+        {m4, dg, TRQ} = expr;
         xyz = m42xyz[m4];
-        If[su2 === Null,
-           Return[xyz],
-           su2d = Which[su2code[su2] == su2code[xyz2su2[latt, xyz]], "d",
-                        su2code[su2] == su2code[-xyz2su2[latt, xyz]], "-d",
-                        True, Print["m4su22xyz Error: double cover overflow!"];Abort[]
-                  ];
-           Return[xyz<>","<>su2d]
-        ]
+        Return[xyz <> "," <> ToString[dg] <> "," <> ToString[TRQ]]
   ]
 ]
 
 DoubleGrpQ[grp_] := Module[{dgQ},
-  dgQ= Which[AssociationQ[grp], Length@ToExpression["{" <> Keys[grp][[1]] <> "}"] > 3,
-             ListQ[grp], AllTrue[grp, Length[ToExpression["{" <> # <> "}"]] > 3 &],
-             StringQ[grp], Length@ToExpression["{" <> grp <> "}"] > 3];
+  dgQ= Which[AssociationQ[grp], Or@@(ToExpression["{" <> # <> "}"][[4]] == -1 &/@ Keys[grp]),
+             ListQ[grp], Or@@(ToExpression["{" <> # <> "}"][[4]] == -1 &/@ grp),
+             StringQ[grp], ToExpression["{" <> grp <> "}"][[4]] == -1];
   Return[dgQ]
 ]
 
-Expr2Rot[expr_, OptionsPattern[{"latt"->{}}]] := Module[{m, xyz, su2d},
-  m = Which[Length[expr]==3,
-            (Coefficient[#, {ToExpression["x"], ToExpression["y"], ToExpression["z"]}] &/@ expr),
-            Length[expr]==4,
-            xyz = StringRiffle[ToString[#] &/@ expr[[1;;3]], ","];
-            su2d = Coefficient[expr[[4]], ToExpression["d"]];
-            su2d xyz2su2[OptionValue["latt"], xyz],
-            Length[expr]==0,
-            Null];
-  If[(Abs[Det[m]] != 1)&&(m!=Null), Print["Expr2Rot gives wrong determinant "<>ToString[Det[m]]]; Abort[], Unevaluate[Sequence[]]];
+Expr2Rot[expr_] := Module[{m},
+  m = (Coefficient[#, {ToExpression["x"], ToExpression["y"], ToExpression["z"]}] &/@ expr);
+
+  If[Abs[Det[m]] != 1, Print["Expr2Rot gives wrong determinant "<>ToString[Det[m]]]; Abort[], Unevaluate[Sequence[]]];
+
   Return[m]
 ]
 
-CifImportSpg[file_] := Module[{xyzStrData, ele, RT, latt, parent},
+CifImportSpg[file_, OptionsPattern[{"DoubleGroup" -> False, "TimeReversal" -> False}]] := Module[{ele, RT, latt, parent, dgQ, TRQ, xyz, dgxyz},
+  dgQ = OptionValue["DoubleGroup"];
+  TRQ = OptionValue["TimeReversal"];
   parent = ImportIsodistortCIF[file];
   latt = N[parent[[6]] /. parent[[8]]];
-  xyzStrData = CifImportOperators[file];
-  ele = xyz2Grp[latt, ModM4[#] &/@ xyzStrData, "fast"->True];
+  xyz = CifImportOperators[file];
+  dgxyz = If[dgQ, Flatten[{# <> "," <> "1" <> "," <> ToString@TRQ, # <> "," <> "-1" <> "," <> ToString@TRQ} &/@ xyz], # <> "," <> "1" <> "," <> ToString@TRQ &/@ xyz];
+  ele = xyz2Grp[latt, ModM4[#] &/@ dgxyz, "fast"->True];
   Return[SortGrp[latt, ele]]
 ]
 
@@ -346,20 +342,19 @@ GetSiteSymmetry[grp0_, vec0_] := Module[{grp, g, trvec, eq, sol, add, grpout, c,
   Return[grpout]
 ]
 
-GetEleLabel[latt_, xyz_] := Module[{det, m4, su2, axes, phi, T, CS, label, dgQ},
+GetEleLabel[latt_, xyz_] := Module[{det, m4, dg, TRQ, axes, phi, T, CS, label},
   Which[ListQ[xyz],
         GetEleLabel[latt, #] &/@ xyz,
         AssociationQ[xyz],
         GetEleLabel[latt, #] &/@ Keys[xyz],
         StringQ[xyz],
-        {m4, su2} = xyz2m4su2[latt, xyz];
+        {m4, dg, TRQ} = xyz2m4su2[latt, xyz];
         T = Rationalize[m4[[1 ;; 3, 4]]];
-        dgQ = Which[su2===Null, 1, su2code[su2]==su2code[xyz2su2[latt, m42xyz[m4]]], 1, su2code[su2]==su2code[-xyz2su2[latt, m42xyz[m4]]], -1];
         {axes, phi, det} = Mat2EulerVector[m4[[1;;3, 1;;3]]];
         If[phi != 0,
-             CS = If[det == 1, If[dgQ==1, "C", ToString[OverBar["C"], StandardForm]], If[dgQ==1, "S", ToString[OverBar["S"], StandardForm]]]; 
+             CS = If[det == 1, If[TRQ, "T", ""] <> If[dg==1, "C", ToString[OverBar["C"], StandardForm]], If[TRQ, "T", ""] <> If[dg==1, "S", ToString[OverBar["S"], StandardForm]]]; 
              label = \!\(\*TagBox[StyleBox[RowBox[{"\"\<\\!\\(\\*SubsuperscriptBox[\\(\>\"", "<>", "CS", "<>", "\"\<\\), \\(\>\"", "<>", RowBox[{"ToString", "[", RowBox[{"If", "[", RowBox[{RowBox[{"phi", "\\[NotEqual]", "0"}], ",", RowBox[{"2", " ", RowBox[{"Pi", "/", "phi"}]}], ",", "0"}], "]"}], "]"}], "<>", "\"\<\\), \\(\>\"", "<>", RowBox[{"StringReplace", "[", RowBox[{RowBox[{"StringJoin", "[", RowBox[{"Map", "[", RowBox[{"ToString", ",", "axes"}], "]"}], "]"}], ",", RowBox[{"\"\<-1\>\"", "\\[Rule]", "\"\<i\>\""}]}], "]"}], "<>", "\"\<\\)]\\)\>\""}], ShowSpecialCharacters->False,ShowStringCharacters->True, NumberMarks->True], FullForm]\) <> "{" <> StringJoin[Map[ToString, StringRiffle[T, ","]]] <> "}",
-             label = If[det == 1, If[dgQ==1, "E", ToString[OverBar["E"], StandardForm]], If[dgQ==1, "I", ToString[OverBar["I"], StandardForm]]] <> "{" <> StringJoin[Map[ToString, StringRiffle[T, ","]]] <> "}"];
+             label = If[det == 1, If[TRQ, "T", ""] <> If[dg==1, "E", ToString[OverBar["E"], StandardForm]], If[TRQ, "T", ""] <> If[dg==1, "I", ToString[OverBar["I"], StandardForm]]] <> "{" <> StringJoin[Map[ToString, StringRiffle[T, ","]]] <> "}"];
         Return[label]]
 ];
 
@@ -436,14 +431,11 @@ GetSubGrp[latt_, grp_, ord_: {}] := Module[{GrpSub, dgQ, g, div, sub, sg, test, 
   Return[Flatten@sg]
 ]
 
-xyz2Grp[latt_, keys_, OptionsPattern[{"fast"->False}]] := Module[{xyz, dgQ, IdentityEle},
-  dgQ = DoubleGrpQ[keys];
-  IdentityEle = If[dgQ, "x,y,z,d", "x,y,z"];
-  xyz = Prepend[DeleteCases[keys, IdentityEle], IdentityEle];
+xyz2Grp[latt_, keys_, OptionsPattern[{"fast"->False}]] := Module[{},
   If[OptionValue["fast"],
-     Return[Association[Thread[xyz->xyz2m4su2[latt, xyz]]]],
-     If[GrpQ[latt, xyz],
-     Return[Association[Thread[xyz->xyz2m4su2[latt, xyz]]]],
+     Return[Association[Thread[keys->xyz2m4su2[latt, keys]]]],
+     If[GrpQ[latt, keys],
+     Return[Association[Thread[keys->xyz2m4su2[latt, keys]]]],
      Print["keys don't form a group!"];Abort[]]
   ]
 ]
@@ -559,26 +551,28 @@ GetLeftCosetRepr[latt_, grp0_, invsubgrp_] := Module[{ind, g, comp, qel, reordgr
 
 Dl2El[m_, mm_] := Which[m > 0, (-1)^m 1/Sqrt[2] (KroneckerDelta[m, mm] + KroneckerDelta[-m, mm]), m == 0, KroneckerDelta[m, mm], m < 0, (-1)^m 1/(I Sqrt[2]) (KroneckerDelta[m, -mm] - KroneckerDelta[m, mm])]
 
-xyz2su2[latt_, grp_] := Module[{su2, su2d, xyz, rot, tran},
+xyz2su2[latt_, grp_] := Module[{su2, dg, TRQ, xyz, rot, tran},
   Which[AssociationQ[grp], xyz2su2[latt, #] &/@ Keys[grp],
         ListQ[grp], xyz2su2[latt, #] &/@ grp,
         StringQ[grp],
-        su2d = If[DoubleGrpQ[grp], Coefficient[xyz2Expr[grp][[3]], ToExpression["d"]], 1];
+        dg = xyz2Expr[grp][[3]];
+        TRQ = xyz2Expr[grp][[4]];
         {rot, tran} = xyz2RotT[grp];
-        xyz = m42xyz[RotT2m4[Det[rot] rot, tran]];
-        su2 = Simplify[su2d GetAngularMomentumRep[latt, xyz, 1/2, "Spherical"]];
-        Return[su2code[su2code[su2]]]
+        xyz = m42xyz[RotT2m4[Det[rot] rot, tran]] <> "," <> ToString[dg] <> "," <> ToString[TRQ];
+        su2 = Simplify[dg GetAngularMomentumRep[latt, xyz, 1/2, "Spherical"]];
+        Return[su2]
   ]
 ]
 
-GetAngularMomentumRep[latt_, grp_, j_, Harmonic_: "Tesseral"] := Module[{rot, tran, su2, \[Alpha], \[Beta], \[Gamma], \[Epsilon], m1, m2, Dlmn, T},
+GetAngularMomentumRep[latt_, grp_, j_, Harmonic_: "Tesseral"] := Module[{rot, tran, \[Alpha], \[Beta], \[Gamma], \[Epsilon], m1, m2, Dlmn, T, dg, TRQ},
   Which[AssociationQ[grp],
         GetAngularMomentumRep[latt, #, j, Harmonic] &/@ Keys[grp],
         ListQ[grp],
         GetAngularMomentumRep[latt, #, j, Harmonic] &/@ grp,
         StringQ[grp],
-        {rot, tran} = xyz2RotT[grp];
+        {rot, tran, dg, TRQ} = xyz2RotTsu2[grp];
         {{\[Alpha], \[Beta], \[Gamma]}, \[Epsilon]} = Mat2EulerAngles[latt, rot];
+        (*ComplexExpand[\[Epsilon]^j*MatrixExp[-(I/\[HBar])*\[Alpha]*QMJz[1]].MatrixExp[-(I/\[HBar])*\[Beta]*QMJy[1]].MatrixExp[-(I/\[HBar])*\[Gamma]*QMJz[1]]]*)
         Dlmn = Simplify[\[Epsilon]^j Table[WignerD[{j, m1, m2}, \[Alpha], \[Beta], \[Gamma]], {m1, -j, j}, {m2, -j, j}]];
         Which[Harmonic == "Tesseral",
               T = Table[Dl2El[m, mm], {mm, -j, j}, {m, -j, j}];
@@ -589,6 +583,8 @@ GetAngularMomentumRep[latt_, grp_, j_, Harmonic_: "Tesseral"] := Module[{rot, tr
         Return[Rationalize@Chop@Dlmn]
     ]
 ]
+
+
 
 GetAngularMomentumChars[grp_, j_] := Module[{char, jm, mat, axis, \[Phi], \[Epsilon], dgQ},
   Which[AssociationQ[grp],
@@ -609,7 +605,7 @@ GTimes[latt_, list_] := Module[{},
   Fold[GrpMultiply[latt, #1, #2]&, list]
 ]
 
-GrpMultiply[latt_, lgrp_, rgrp_] := Module[{i, j, m4, su2},
+GrpMultiply[latt_, lgrp_, rgrp_] := Module[{i, j, m4, dg, TRQ, AntiUnitaryQ},
   Which[
    AssociationQ[lgrp] && AssociationQ[rgrp],
       Table[GrpMultiply[latt, Keys[lgrp][[i]], Keys[rgrp][[j]]], {i, Length@lgrp}, {j, Length@rgrp}],
@@ -629,10 +625,10 @@ GrpMultiply[latt_, lgrp_, rgrp_] := Module[{i, j, m4, su2},
       GrpMultiply[latt, lgrp, #] &/@ rgrp,
    StringQ[lgrp] && StringQ[rgrp],
       m4 = xyz2m4[lgrp].xyz2m4[rgrp];
-      If[DoubleGrpQ[lgrp] != DoubleGrpQ[rgrp], 
-         su2 = If[DoubleGrpQ[lgrp], xyz2su2[latt, lgrp], xyz2su2[latt, rgrp]],
-         su2 = If[DoubleGrpQ[lgrp], Simplify[xyz2su2[latt, lgrp].xyz2su2[latt, rgrp]], Null]];
-      Return[m4su22xyz[latt, {m4, su2}]]
+      dg = xyz2RotTsu2[lgrp][[3]] xyz2RotTsu2[rgrp][[3]];
+      TRQ = Xor@@{xyz2RotTsu2[lgrp][[4]], xyz2RotTsu2[rgrp][[4]]};
+      AntiUnitaryQ = And@@{xyz2RotTsu2[lgrp][[4]], xyz2RotTsu2[rgrp][[4]]};
+      Return[m4su22xyz[latt, {m4, If[AntiUnitaryQ, -1, 1] dg, TRQ}]]
   ]
 ]
 
@@ -687,15 +683,12 @@ GPower[latt_, grp_, n_] := Module[{},
   ]
 ]
 
-GInverse[latt_, ele_] := Module[{m4, su2, xyz, dgQ},
+GInverse[latt_, ele_] := Module[{m4, dg, TRQ, xyz, dgQ},
   Which[AssociationQ[ele], GInverse[latt, Keys[ele]],
         ListQ[ele], GInverse[latt, #] &/@ ele,
         StringQ[ele], 
-        {m4, su2} = xyz2m4su2[latt, ele];
-        If[su2 === Null, 
-           m4su22xyz[latt, {Simplify@Inverse[m4], Null}], 
-           m4su22xyz[latt, {Simplify@Inverse[m4], Inverse[su2]}]
-        ]
+        {m4, dg, TRQ} = xyz2m4su2[latt, ele];
+        m4su22xyz[latt, {Simplify@Inverse[m4], If[TRQ, -1, 1] dg, TRQ}]
   ]
 ]
 
@@ -924,8 +917,8 @@ GetSuperCellGrp[t_] := Module[{i, xyz, grp, tran},
   tran = Table[Which[#1 == 0, "",
                      #1 != 0 && #2 == 1, If[Sign[#1] > 0, "+", Unevaluated[Sequence[]]] <> ToString[#1],
                      True, If[Sign[#1] > 0, "+", Unevaluated[Sequence[]]] <> ToString[#1] <> "/" <> ToString[#2]] & @@@ (Through[{Numerator, Denominator}[#]] & /@ t[[i]]), {i, Length[t]}];
-  xyz = "x" <> #1 <> "," <> "y" <> #2 <> "," <> "z" <> #3 & @@@ tran;
-  grp = xyz2Grp[latt, m42xyz[xyz2m4[#]] & /@ xyz, "fast"->True];
+  xyz = "x" <> #1 <> "," <> "y" <> #2 <> "," <> "z" <> #3 <> "," <> "1" <> "," <> "False" & @@@ tran;
+  grp = xyz2Grp[latt, m42xyz[xyz2m4[#]] <> "," <> "1" <> "," <> "False" & /@ xyz, "fast"->True];
   Return[grp]
 ]
 
@@ -950,12 +943,12 @@ GetCellFromGrp[grp_] := Module[{cell},
   Return[cell]
 ]
 
-GetDoubleGrp[latt_, grp_] := Module[{su2, so3, grpd},
-  su2 = xyz2su2[latt, grp];
+GetDoubleGrp[latt_, grp_] := Module[{rot, tran, TRQ, dg, so3, dgrp},
+  {rot, tran, dg, TRQ} = xyz2Expr[latt, grp];
   so3 = xyz2m4[grp];
-  grpd = Association[Join[m4su22xyz[latt, #] -> # & /@ Transpose[{so3, su2}], 
-                          m4su22xyz[latt, #] -> # & /@ Transpose[{so3, -su2}]]];
-  Return[grpd]
+  dgrp = Association[Join[m4su22xyz[latt, #] -> # & /@ Transpose[{so3, dg, TRQ}], 
+                          m4su22xyz[latt, #] -> # & /@ Transpose[{so3, -dg, TRQ}]]];
+  Return[dgrp]
 ]
 (*-------------------------- Attributes ------------------------------*)
 

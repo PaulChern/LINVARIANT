@@ -9,8 +9,8 @@ Subroutine MCMCStep(imc, Fields, EwaldField, e0ij, T, udamp, etadamp, dene)
   Real*8,  Intent(in)    :: T
   Integer, Intent(inout) :: imc
   Real*8,  Intent(inout) :: udamp(NumField), etadamp, dene
-  Real*8,  Intent(inout) :: Fields(FieldDim, NumField, cgrid%n1, cgrid%n2, cgrid%n3)
-  Real*8,  Intent(inout) :: EwaldField(3, NumField, cgrid%n1, cgrid%n2, cgrid%n3)
+  Real*8,  Intent(inout) :: Fields(FieldDim, NumField, cgrid_a%n1+cgrid_b%n1, cgrid_a%n2+cgrid_b%n2, cgrid_a%n3+cgrid_b%n3)
+  Real*8,  Intent(inout) :: EwaldField(3, NumField, cgrid_a%n1+cgrid_b%n1, cgrid_a%n2+cgrid_b%n2, cgrid_a%n3+cgrid_b%n3)
   Real*8,  Intent(inout) :: e0ij(3,3)
   Integer                :: i, j, idelta, ix, iy, iz
   Integer                :: idum, acceptedu(NumField), acceptedeta
@@ -130,9 +130,9 @@ Subroutine WLMCStep(imc, Fields, e0ij, udamp, etadamp, wl_s, wl_h, wl_f)
   Implicit none
   Integer, Intent(in)    :: imc
   Real*8,  Intent(inout) :: udamp(NumField), etadamp
-  Real*8,  Intent(inout) :: Fields(FieldDim, NumField, cgrid%n1, cgrid%n2, cgrid%n3)
+  Real*8,  Intent(inout) :: Fields(FieldDim, NumField, cgrid_a%n1+cgrid_b%n1, cgrid_a%n2+cgrid_b%n2, cgrid_a%n3+cgrid_b%n3)
   Real*8,  Intent(inout) :: e0ij(3,3), wl_f, wl_s(2,ContourNPoints(2)), wl_h(2,ContourNPoints(2))
-  Real*8                 :: Fields_tmp(FieldDim, NumField, cgrid%n1, cgrid%n2, cgrid%n3)
+  Real*8                 :: Fields_tmp(FieldDim, NumField, cgrid_a%n1+cgrid_b%n1, cgrid_a%n2+cgrid_b%n2, cgrid_a%n3+cgrid_b%n3)
   Real*8                 :: e0ij_tmp(3,3)
   Integer                :: i, j, idelta, ix, iy, iz, Ei_bin, Ef_bin
   Integer                :: idum, acceptedu(NumField), acceptedeta
