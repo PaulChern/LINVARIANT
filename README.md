@@ -1,5 +1,5 @@
 # LINVARIANT
-![LINVARIANT](https://user-images.githubusercontent.com/12060384/179304207-a81112d9-ec48-47ae-b650-9ea2645d540b.png)
+![LINVARIANT](https://github.com/PaulChern/LINVARIANT/blob/c1c1a07fce9bbb3ae052544d5107c3934f17e3a3/docs/LINVARIANT.png)
 
 **LINVARIANT** is a first-principles-based model effective Hamiltonian software package for the atomistic simulations of realistic materials. The goals are to reach large scales and keep being predictive. <br />
 **INVARIANT** is a property of a mathematical object (or a class of mathematical objects) that remains unchanged after operations or transformations of a certain type are applied to the objects. <br />
@@ -18,7 +18,7 @@
 - Electronic models, such as the Tight-Binding model written in Wannier orbitals.
 - Full models with couplings among lattice, orbitals, and spins.
 - Models in zero-, one-, two, and three-dimension.
-![outline](https://github.com/PaulChern/LINVARIANT/blob/054139cb764192220dd224028c342e7cb463749a/docs/nnp.png)
+![outline](https://github.com/PaulChern/LINVARIANT/blob/c1c1a07fce9bbb3ae052544d5107c3934f17e3a3/docs/nnp.png)
 ### solvers:
 - (1) Finite Element Method (FEM), (2) Minimization, (3) molecular dynamics (MD), (4) Monte Carlo (MC), and (5) Finite Differences nonlinear solver on the large-scale continuous model
 - Parallel tempering algorithm is available with both MC and MD
