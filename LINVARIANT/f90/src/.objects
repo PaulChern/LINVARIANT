@@ -75,4 +75,5 @@ MMA=\
 	GetSiteEnergyHsup.f90 \
 	GetHeterostructureStrain.f90 \
 	ReadCoefficients.f90 \
+	ExportModelData.f90 \
 	GetInitConfig.f90

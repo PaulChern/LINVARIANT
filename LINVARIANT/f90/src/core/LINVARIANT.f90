@@ -8,50 +8,88 @@ Module LINVARIANT
   
   Implicit none
   Contains
- 
-   Subroutine ThinFilmBCS(Fields)
-     Implicit none
-     Real*8,  Intent(inout) :: Fields(FieldDim, NumField, cgrid_a%n1+cgrid_b%n1, cgrid_a%n2+cgrid_b%n2, cgrid_a%n3+cgrid_b%n3)
-     Integer                :: ix, iy, iz, ifield
 
-     If (cgrid_b%n1.ne.0) then
-       do iz = 1, cgrid_a%n3
-         do iy = 1, cgrid_a%n2
-           do ifield = 1, NumIRFields
-             Fields(1, ifield, 1+cgrid_a%n1, iy, iz) = (1 - screening)*Fields(1, ifield, cgrid_a%n1, iy, iz)
-             Fields(1, ifield, cgrid_a%n1+cgrid_b%n1, iy, iz) = (1 - screening)*Fields(1, ifield, 1, iy, iz)
-           End do
-         End do
-       End do
-     End if
+  Subroutine LoadMesh
+    Implicit none
+    logical                  :: file_exists
+    Integer                  :: NGx, NGy, NGz, id, ix, iy, iz, occ
 
-     If (cgrid_b%n2.ne.0) then
-       do iz = 1, cgrid_a%n3
-         do ix = 1, cgrid_a%n1
-           do ifield = 1, NumIRFields
-             Fields(2, ifield, ix, 1+cgrid_a%n2, iz) = (1 - screening)*Fields(2, ifield, ix, cgrid_a%n2, iz)
-             Fields(2, ifield, ix, cgrid_a%n2+cgrid_b%n2, iz) = (1 - screening)*Fields(2, ifield, ix, 1, iz)
-           End do
-         End do
-       End do
-     End If
+    INQUIRE(FILE='Supercell.inp', EXIST=file_exists)
+    GridUnfold = 0
+    GridFold   = 0
 
-     If (cgrid_b%n3.ne.0) then
-       do iy = 1, cgrid_a%n2
-         do ix = 1, cgrid_a%n1
-           do ifield = 1, NumIRFields
-             Fields(3, ifield, ix, iy, 1+cgrid_a%n3) = (1 - screening)*Fields(3, ifield, ix, iy, cgrid_a%n3)
-             Fields(3, ifield, ix, iy, cgrid_a%n3+cgrid_b%n3) = (1 - screening)*Fields(3, ifield, ix, iy, 1)
-           End do
-         End do
-       End do
-     End if
+    If (file_exists) then
+      open(ifileno, file='Supercell.inp', status='old')
+      Read(ifileno, *) NGx, NGy, NGz
+      If (NGx.neqv.cgrid%n1.or.NGy.neqv.cgrid%n2.or.NGz.neqv.cgrid%n3) then
+        write(*,*) "Error: mismatch between Supercell.inp and supercell setup!"
+        Call Abort
+      End if
+      do id = 1, cgrid%npts
+        Read(ifileno, *) ix, iy, iz, occ
+        GridFold(1, id) = ix
+        GridFold(2, id) = iy
+        GridFold(3, id) = iz
+        GridFold(4, id) = occ
+        GridUnfold(1, ix, iy, iz) = id
+        GridUnfold(2, ix, iy, iz) = occ
+      end do
+      close(ifileno)
+    else
+      do iz = 1, cgrid%n3
+        do iy = 1, cgrid%n2
+          do ix = 1, cgrid%n1
+            id = ix + (iy - 1) * cgrid%n1 + (iz - 1) * cgrid%n2 * cgrid%n1
+            GridFold(1, id) = ix
+            GridFold(2, id) = iy
+            GridFold(3, id) = iz
+            GridFold(4, id) = 1
+            GridUnfold(1, ix, iy, iz) = id
+            GridUnfold(2, ix, iy, iz) = 1
+          end do
+        end do
+      end do
+    End if
 
-  End Subroutine ThinFilmBCS
+    cgrid%ncells = Sum(GridFold(4,:))
+
+  End Subroutine LoadMesh
+
+  Subroutine ImposeBCS(Fields)
+    Implicit none
+    Real*8,  Intent(inout) :: Fields(FieldDim, NumField, cgrid%n1, cgrid%n2, cgrid%n3)
+    Integer                :: x0, y0, z0, ifield, id
+    Integer                :: x1, y1, z1, xi1, yi1, zi1
+
+    do id = cgrid%ncells + 1, cgrid%npts
+      x0 = GridFold(1, id)
+      y0 = GridFold(2, id)
+      z0 = GridFold(3, id)
+
+      x1 = (x0+1)-floor(real(x0+1-1)/real(cgrid%n1))*(cgrid%n1)
+      y1 = (y0+1)-floor(real(y0+1-1)/real(cgrid%n2))*(cgrid%n2)
+      z1 = (z0+1)-floor(real(z0+1-1)/real(cgrid%n3))*(cgrid%n3)
+      xi1 = (x0-1)-floor(real(x0-1-1)/real(cgrid%n1))*(cgrid%n1)
+      yi1 = (y0-1)-floor(real(y0-1-1)/real(cgrid%n2))*(cgrid%n2)
+      zi1 = (z0-1)-floor(real(z0-1-1)/real(cgrid%n3))*(cgrid%n3)
+
+      do ifield = 1, 1
+        Fields(1, ifield, x0, y0, z0) = GridUnfold(2, x1, y0, z0)*(1 - screening)*Fields(1, ifield, x1, y0, z0) &
+                                      + GridUnfold(2, xi1, y0, z0)*(1 - screening)*Fields(1, ifield, xi1, y0, z0)
+
+        Fields(2, ifield, x0, y0, z0) = GridUnfold(2, x0, y1, z0)*(1 - screening)*Fields(2, ifield, x0, y1, z0) &
+                                      + GridUnfold(2, x0, yi1, z0)*(1 - screening)*Fields(2, ifield, x0, yi1, z0)
+
+        Fields(3, ifield, x0, y0, z0) = GridUnfold(2, x0, y0, z1)*(1 - screening)*Fields(3, ifield, x0, y0, z1) &
+                                      + GridUnfold(2, x0, y0, zi1)*(1 - screening)*Fields(3, ifield, x0, y0, zi1)
+      end do
+    end do
+
+  End Subroutine ImposeBCS
 
   Subroutine RemoveGridDrifts(Fields)
     Implicit none
-    Real*8,  Intent(inout) :: Fields(FieldDim, NumField, cgrid_a%n1+cgrid_b%n1, cgrid_a%n2+cgrid_b%n2, cgrid_a%n3+cgrid_b%n3)
+    Real*8,  Intent(inout) :: Fields(FieldDim, NumField, cgrid%n1, cgrid%n2, cgrid%n3)
     Real*8                 :: GridDriftx, GridDrifty, GridDriftz
     Integer                :: ix, iy, iz
   
@@ -73,18 +111,13 @@ Module LINVARIANT
   
   Function AllFields1D(Fields) Result(Fields1D)
     Implicit none
-    Real*8,  Intent(in)    :: Fields(FieldDim, NumField, cgrid_a%n1+cgrid_b%n1, cgrid_a%n2+cgrid_b%n2, cgrid_a%n3+cgrid_b%n3)
-    Real*8                 :: Fields1D(FieldDim*NumField*(cgrid_a%npts+cgrid_b%npts))
+    Real*8,  Intent(in)    :: Fields(FieldDim, NumField, cgrid%n1, cgrid%n2, cgrid%n3)
+    Real*8                 :: Fields1D(FieldDim*NumField*(cgrid%npts))
     Integer                :: ix, iy, iz, ifield, i, id
-    Integer                :: NG1, NG2, NG3
 
-    NG1 = cgrid_a%n1+cgrid_b%n1
-    NG2 = cgrid_a%n2+cgrid_b%n2
-    NG3 = cgrid_a%n3+cgrid_b%n3
-
-    do iz = 1, NG3
-      do iy = 1, NG2
-        do ix = 1, NG1
+    do iz = 1, cgrid%n3
+      do iy = 1, cgrid%n2
+        do ix = 1, cgrid%n1
           do ifield = 1, NumField
             do i = 1, FieldDim
               id = (iz-1)*cgrid%n2*cgrid%n1*NumField*FieldDim &
@@ -103,16 +136,16 @@ Module LINVARIANT
   
   Function AllFieldsFrom1D(Fields1D) Result(Fields)
     Implicit none
-    Real*8,  Intent(in)    :: Fields1D(FieldDim*NumField*(cgrid_a%npts+cgrid_b%npts))
-    Real*8                 :: Fields(FieldDim,NumField,cgrid_a%n1+cgrid_b%n1, cgrid_a%n2+cgrid_b%n2, cgrid_a%n3+cgrid_b%n3)
+    Real*8,  Intent(in)    :: Fields1D(FieldDim*NumField*(cgrid%npts))
+    Real*8                 :: Fields(FieldDim,NumField,cgrid%n1, cgrid%n2, cgrid%n3)
   
-    Fields = Reshape(Fields1D, (/FieldDim, NumField, cgrid_a%n1+cgrid_b%n1, cgrid_a%n2+cgrid_b%n2, cgrid_a%n3+cgrid_b%n3/))
+    Fields = Reshape(Fields1D, (/FieldDim, NumField, cgrid%n1, cgrid%n2, cgrid%n3/))
   
   End Function AllFieldsFrom1D
   
   Function Thermometer(dFieldsdt, de0ijdt) Result(TK)
     Implicit none
-    Real*8,  Intent(in) :: dFieldsdt(FieldDim, NumField, cgrid_a%n1+cgrid_b%n1, cgrid_a%n2+cgrid_b%n2, cgrid_a%n3+cgrid_b%n3)
+    Real*8,  Intent(in) :: dFieldsdt(FieldDim, NumField, cgrid%n1, cgrid%n2, cgrid%n3)
     Real*8,  Intent(in) :: de0ijdt(3,3)
     Real*8              :: TK(2), Ekin(2) 
     Integer             :: i, ifield, ix, iy, iz, TotalDim, StrainDim
@@ -135,9 +168,9 @@ Module LINVARIANT
   
   Subroutine AdaptTk(dFieldsdt, de0ijdt)
     Implicit none
-    Real*8,  Intent(inout) :: dFieldsdt(FieldDim, NumField, cgrid_a%n1+cgrid_b%n1, cgrid_a%n2+cgrid_b%n2, cgrid_a%n3+cgrid_b%n3)
+    Real*8,  Intent(inout) :: dFieldsdt(FieldDim, NumField, cgrid%n1, cgrid%n2, cgrid%n3)
     Real*8,  Intent(inout) :: de0ijdt(3,3)
-    Real*8                 :: dFieldsdt_tmp(FieldDim, NumField, cgrid_a%n1+cgrid_b%n1, cgrid_a%n2+cgrid_b%n2, cgrid_a%n3+cgrid_b%n3)
+    Real*8                 :: dFieldsdt_tmp(FieldDim, NumField, cgrid%n1, cgrid%n2, cgrid%n3)
     Real*8                 :: de0ijdt_tmp(3,3), detadt(6)
     Real*8                 :: TK, Ekin(NumField+1)
     Real*8                 :: rand

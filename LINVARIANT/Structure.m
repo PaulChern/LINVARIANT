@@ -260,7 +260,7 @@ ImportIsodistortCIF[file_,OptionsPattern[]] := Module[{CifData, CifFlags, xyzNam
        originstr=StringCases[First@originstr,"("~~Except[")"]..~~","~~Except[")"]..~~","~~Except[")"]..~~")"];
        origin=ToExpression[StringReplace[First@originstr, {"(" -> "{", ")" -> "}"}]]];
 
-    CifData = FixCif[CifData];
+    CifData = StringRiffle[StringTrim[#] &/@ StringSplit[FixCif[CifData], "\n"], "\n"];
 
 	CifData = ImportString[CifData, "CIF"];
 	CifFlags = Table[Level[CifData[[i]], 1][[1]], {i, Length[CifData]}];

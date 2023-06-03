@@ -17,6 +17,7 @@ BoundHighOrderTerm          ::usage "BoundHighOrderTerm[invariants, expr, vars, 
 PlanFitting                 ::usage "PlanFitting[invariants, vars, spgmat, ts, seeds]"
 FitGammaModel               ::usage "FitGammaModel[invariants, vars, order, ts, spgmat]"
 FitHoppingModel             ::usage "FitHoppingModel[dir, pos0, spg0, tgrp, TRules, Basis, nn, qgrid, vars, svars, varmap]"
+DomainGrid                  ::usage "DomainGrid[domains, vars]"
 FitSHoppingModel            ::usage "FitSHoppingModel[dir0, pos0, spg0, tgrp, TRules, Basis, nn, qgrid, vars, svars, ie, npt, maxeps]"
 FetchSeeds                  ::usage "FetchSeeds[inv, vars, n]"
 SeedsByInvariants           ::usage "SeedsByInvariants[invariants, vars]"
@@ -49,7 +50,7 @@ TopOrderQ                   ::usage "TopOrderQ[p, polynomials, vars, svars]"
 Model2List                  ::usage "Model2List[model, vars, svars]"
 ExplosionQ                  ::usage "ExplosionQ[model, vars, svars, inv]"
 EnergyGainQ                 ::usage "EnergyGainQ[model, vars, svars, inv]"
-GetPolynomialTrainingSet    ::usage "GetPolynomialTrainingSet[polynomials, tsdata, vars, svars]"
+GetPolynomialTrainingSet    ::usage "GetPolynomialTrainingSet[polynomials, tsdata]"
 AdjustModel                 ::usage "AdjustModel[model, modeladjust]"
 GetBoundingInvariants       ::usage "GetBoundingInvariants[invariant, vars, svars, cut, TRules, lvar, mvar]"
 GetOptModel                 ::usage "GetOptModel[model, vars, svars, tsused, cut, OpMat, TRules, lvar, mvar]"
@@ -69,10 +70,12 @@ ImposeAcousticSumRule       ::usage "ImposeAcousticSumRule[Hacoustic]"
 UpdatePT                    ::usage "UpdatePT[dir, file, WriteQ]"
 SqueezeCell                 ::usage "SqueezeCell[dir0, pos0, eta, nstrain, qgrid]"
 FromJij2Energy              ::usage "FromJij2Energy[model, grid]"
-BasisInSupercell            ::usage "BasisInSupercell[pos0, Basis, vars, NSC, SymmetricQ]"
 FitSupercellHessian         ::usage "FitSupercellHessian[Basis, Fij, qgrid, HJij, pos0, vars]"
 CookModel                   ::usage "CookModel[fullmodel, vars]"
 OriginShiftFC               ::usage "OriginShiftFC[pos0, Fij0, NSC, shift]"
+TrainingSet2Supercell       ::usage "TrainingSet2Supercell[ts, grid, vars, uvars]"
+FoldGamma                   ::usage "FoldGamma[gmodel, ah]"
+LMesh                       ::usage "LMesh[dir, grid, mfunc]"
 
 (*--------- Plot and Manipulate Crystal Structures -------------------- ----------------*)
 
@@ -257,18 +260,25 @@ RoundPhase[phase_] := Module[{i},
   Table[If[Chop[phase[[i]]] == 0., 0, 1], {i, Length[phase]}]
 ]
 
-SampleAround[pos0_, dir_, fname_, spgmat0_, Basis_, npt_, potim_, OptionsPattern[{"round" -> 10^-8}]] := Module[{BasisDim, NumBasis, modesets, samples, modes, pos, pos1, phase, m, i, spgmat},
+SampleAround[dir0_, its_, pos_, TRules_, Basis_, npt_, potim_, OptionsPattern[{"round" -> 10.^-3}]] := Module[{BasisDim, NumBasis, sets, samples, modes, pos0, pos1, phase, t, m, i, spgmat0, spgmat, vars, eij},
   {BasisDim, NumBasis} = Dimensions[Basis];
-  pos = ImportPOSCAR[dir <> "/" <> fname];
-  phase = ISODISTORT[pos0[[1]], pos0[[2]], pos[[2]], Basis, Range[NumBasis], "round" -> OptionValue["round"]]\[Transpose][[4]];
+  vars = #1 & @@@ (TRules[[1]]);
+  spgmat0 = Table[Coefficient[# /. t, vars] & /@ vars, {t, TRules}];
+  pos0 = ImportPOSCAR[dir0 <> "/POSCAR0"];
+  phase = Join[ISODISTORT[pos0[[1]], pos0[[2]], pos[[2]], Basis, Range[NumBasis], "round" -> OptionValue["round"]]\[Transpose][[4]],
+               eij2eta[Chop@GetStrainTensor[pos0[[1]], pos[[1]], "iso" -> False]]];
   spgmat = Table[If[Chop[Norm[m . Sign[phase] - Sign[phase]], OptionValue["round"]] == 0, m, ## &[]], {m, spgmat0}];
   
-  modesets = DeleteDuplicates[Flatten[Table[SortBy[Tuples[{0, -i, i}, {NumBasis}], Norm[N@#] &], {i, Range[0, npt]}], 1]];
-  samples = Round[DeleteDuplicates[Table[{i, # . modesets[[i]] & /@ spgmat}, {i, Length[modesets]}], Complement[#1[[2]], #2[[2]]] == {} &]\[Transpose][[2]]\[Transpose][[1]]];
+  sets = DeleteDuplicates[Flatten[Table[SortBy[# Sign[Abs[potim]] & /@ Tuples[{0, -i, i}, {NumBasis + 6}], Norm[N@#] &], {i, Range[0, npt]}], 1]];
+  
+  samples = Reverse@Round[DeleteDuplicates[Table[{i, #.(sets[[i]]) & /@ spgmat}, {i, Length[sets]}], Complement[#1[[2]], #2[[2]]] == {} &]\[Transpose][[2]]\[Transpose][[1]]];
+  
   Print["Number of samples: " <> ToString[Length[samples]]];
-  Do[modes = Table[{m, "modes", 1, potim[[m]] samples[[i, m]]}, {m, NumBasis}];
-     pos1 = {pos[[1]], ImposeMode[pos[[1]], pos[[2]], Basis, modes, 1.0]}; 
-     ExportPOSCAR[dir, "sample" <> ToString[i] <> ".vasp", pos1], {i, Length@samples}]
+  
+  Do[modes = Table[{m, "modes", 1, potim[[m]] samples[[i, m]]}, {m, NumBasis + 6}];
+     eij = eta2eij[potim[[NumBasis + 1 ;;]] samples[[i, NumBasis + 1 ;;]]];
+     pos1 = {(eij + IdentityMatrix[3]) . (pos0[[1]]), ImposeMode[pos0[[1]], pos[[2]], Basis, modes[[1 ;; NumBasis]], 1.0]};
+     ExportPOSCAR[dir0, "/trainingset/ts-" <> ToString[its] <> "/sample." <> ToString[i] <> ".vasp", pos1], {i, Length@samples}]
 ]
 
 ImposePhase[pos0_, dir_, fname_, phase_, Basis_] := Module[{m, modes, BasisDim, NumBasis, pos},
@@ -278,18 +288,18 @@ ImposePhase[pos0_, dir_, fname_, phase_, Basis_] := Module[{m, modes, BasisDim, 
   ExportPOSCAR[dir, fname, pos]
 ]
 
-FetchSeeds[inv_, vars_, n_, OptionsPattern[{"zero" -> False, "log"->0}]] := Module[{character, ndigits, shortseed, list, map, seeds0, order}, 
+FetchSeeds[inv_, vars_, n_, OptionsPattern[{"zero" -> False, "log"->0, "limit"->Infinity}]] := Module[{character, ndigits, shortseed, list, map, seeds0, order}, 
   character = First@InvariantCharacter[inv, vars];
   list = If[OptionValue["log"]==0,
             If[OptionValue["zero"], Range[n,-n,-Sign[n]], DeleteCases[Range[n,-n,-Sign[n]],0]],
             Join[-Reverse[OptionValue["log"]^Range[1,n-1]], OptionValue["log"]^Range[1,n-1]]];
   order = Length[list];
   ndigits = Count[character, 1];
-  shortseed = Tuples[list, ndigits]\[Transpose];
+  shortseed = If[order^ndigits < OptionValue["limit"], Tuples[list, ndigits]\[Transpose], DeleteDuplicates@Table[If[# >= 0, 1, -1] & /@ RandomReal[{-1, 1}, ndigits], OptionValue["limit"]]\[Transpose]];
   map = Flatten[Position[character, 1]];
-  seeds0 = Table[If[i == 0, ConstantArray[0, order^ndigits], ## &[]], {i, character}];
+  seeds0 = Table[If[i == 0, ConstantArray[0, Dimensions[shortseed][[2]]], ## &[]], {i, character}];
   Do[seeds0 = Insert[seeds0, shortseed[[i]], map[[i]]], {i, Length@map}];
-  Return[seeds0\[Transpose]]
+  Return[SparseArray[seeds0\[Transpose]]]
 ]
 
 SeedsByInvariants[invariants_, vars_, svars_, OptionsPattern[{"table"->True, "exseeds"->None, "odd"->False, "exclude"->{}}]] := Module[{id, inv, sub, i, seeds, s, dict, sampleseeds, tab, tabdata, color, fullvars, simplifytab, varlabels, exseeds, invdict, models, t, spinv, pinv, sinv},
@@ -338,17 +348,16 @@ BasisComplement[BasisMatrix_, FullBasis_] := Module[{ind, FullBasisMatrix, Compl
   Return[{ComplementBasisMatrix, exlabels}]
 ]
 
-ImportDMDPath[dir0_, vars_, svars_, BasisMatrix_, FullBasis_, seeds_, OptionsPattern[{"fontsize"->12, "ts"->{}, "table"->True, "pdf"->True, "plot"->True, "interpolate"->0, "chop" -> 0.01}]] := Module[{run, vasprun, lattices, sites, forces, stress, ene0, ene, coordinates, labels, color, iscf, j, i, path, epsplot, scfplot, roseplot, out, eta, fullvars, OtherBasisMatrix, ind, exlabels, FullBasisMatrix, ExInfo, plots, tsdata, data, ts, ibrion, inv, plt, pos0, nvars},
+ImportDMDPath[dir0_, vars_, svars_, uvars_, BasisMatrix_, FullBasis_, seeds_, OptionsPattern[{"fontsize"->12, "ts"->{}, "table"->True, "pdf"->True, "plot"->True, "interpolate"->0, "chop" -> 0.01}]] := Module[{run, vasprun, lattices, latt0, sites0, sites, forces, stress, ene0, ene, coordinates, labels, color, iscf, j, i, path, epsplot, scfplot, roseplot, out, eta, fullvars, OtherBasisMatrix, ind, exlabels0, exlabels, FullBasisMatrix, ExInfo, plots, tsdata, data, ts, ibrion, inv, plt, pos, pos0, nvars, grid, ncells, varsub},
   pos0 = ImportPOSCAR[dir0 <> "/POSCAR0"];
+  {latt0, sites0} = pos0;
   FullBasisMatrix = Flatten[FullBasis, 1]\[Transpose][[4]]\[Transpose];
   OtherBasisMatrix = Complement[FullBasisMatrix\[Transpose], BasisMatrix\[Transpose], SameTest -> (Chop[Norm[#1 - #2]] == 0 &)];
   ind = Sort[First@First[Position[FullBasisMatrix\[Transpose], #]] & /@ OtherBasisMatrix];
   ExInfo = Tally[First@First@Position[FullBasis, #] & /@ ind];
   OtherBasisMatrix = (FullBasisMatrix\[Transpose][[#]] & /@ ind)\[Transpose];
-  fullvars = Append[vars, svars];
-  labels = MapIndexed["("<>ToString[First@#2]<>") "<>ToString[#1,StandardForm]&, Flatten@fullvars];
-  exlabels = "("<>ToString[#]<>") "<>(Flatten[FullBasis, 1]\[Transpose][[2]][[#]]) &/@ ind;
-  nvars = Length[Flatten[vars]];
+  exlabels0 = "("<>ToString[#]<>") "<>(Flatten[FullBasis, 1]\[Transpose][[2]][[#]]) &/@ ind;
+  nvars = Length[Flatten[Append[vars, uvars]]];
 
   data = Import[dir0 <> "/seeds/" <> "ene.dat", "Table"];
   ene0 = data[[1,2]];
@@ -361,7 +370,7 @@ ImportDMDPath[dir0_, vars_, svars_, BasisMatrix_, FullBasis_, seeds_, OptionsPat
   out = Table[
         ts = tsdata[[i, 1]];
 
-        inv = ToString[seeds[[ts,2]], StandardForm];
+        inv = If[ts<=Length[seeds], ToString[seeds[[ts,2]], StandardForm], "unknown"];
         vasprun = Table[Import[dir0<>"/seeds/seed"<>ToString[ts]<>"/vasprun_ibrion"<>ToString[ibrion]<>".xml"], {ibrion, {3, 1}}];
         sites = Join[ParseXMLData[ParseXML[ParseXML[vasprun[[1]], "structure", {}], "varray", {"name", "positions"}], "v"],
                      {Last@ParseXMLData[ParseXML[ParseXML[vasprun[[2]], "structure", {}], "varray", {"name", "positions"}], "v"]}];
@@ -371,39 +380,51 @@ ImportDMDPath[dir0_, vars_, svars_, BasisMatrix_, FullBasis_, seeds_, OptionsPat
                       {Last@ParseXMLData[ParseXML[vasprun[[2]], "varray", {"name", "stress"}], "v"]}];
         lattices = Join[ParseXMLData[ParseXML[ParseXML[vasprun[[1]], "structure", {}], "varray", {"name", "basis"}], "v"],
                         {Last@ParseXMLData[ParseXML[ParseXML[vasprun[[2]], "structure", {}], "varray", {"name", "basis"}], "v"]}];
-        eta = Round[eij2eta[GetStrainTensor[pos0[[1]], #, "iso" -> False]], 10.0^-4]&/@lattices;
+        ncells = Times@@Round[(Norm[#] &/@ lattices[[1]])/(Norm[#] &/@ latt0)];
+        eta = Round[eij2eta[GetStrainTensor[latt0, #, "iso" -> False]], 10.0^-4]&/@lattices;
         ene = Chop[ParseFortranNumber@Join[Flatten[ParseXML[Last[ParseXML[#, "energy", {}]], "i", {"name", "e_fr_energy"}] & /@ ParseXML[vasprun[[1]], "calculation", {}]], {Last@Flatten[ParseXML[Last[ParseXML[#, "energy", {}]], "i", {"name", "e_fr_energy"}] & /@ ParseXML[vasprun[[2]], "calculation", {}]]}] - ene0, 10^-6];
-        coordinates = Table[Join[Flatten[{ISODISTORT[pos0[[1]], pos0[[2]], {sites[[iscf]], pos0[[2]]\[Transpose][[2]]}\[Transpose], BasisMatrix, Range[Length[BasisMatrix\[Transpose]]]]\[Transpose][[4]], eta[[iscf]]}], ISODISTORT[pos0[[1]], pos0[[2]], {sites[[iscf]], pos0[[2]]\[Transpose][[2]]}\[Transpose], OtherBasisMatrix, exlabels]\[Transpose][[4]]], {iscf, Length[sites]}]\[Transpose];
+        coordinates = Table[pos = {lattices[[iscf]], {sites[[iscf]], Flatten[ConstantArray[#, ncells] &/@ (Transpose[sites0][[2]])]}\[Transpose]};
+                            Flatten@Join[ModeDecomposition[pos0,pos,BasisMatrix,vars,svars,uvars, 
+                                                           "lattnorm"->False,"table"->False], 
+                                         ModeDecomposition[pos0,pos,OtherBasisMatrix,exlabels0,svars,{}, 
+                                                           "lattnorm"->False,"table"->False][[1]]], {iscf, Length[sites]}];
+        
+        varsub = First[coordinates];
+        grid = VarSubGrid[varsub];
+        ncells = Times@@grid;
+        labels = MapIndexed["("<>ToString[First@#2]<>") "<>ToString[VarBare@#1,StandardForm]&, Sub2List[varsub][[1]][[1;;nvars*ncells+6]]];
+        exlabels = Flatten@ConstantArray[exlabels0, ncells];
+        fullvars = Append[Flatten[ConstantArray[Append[vars, uvars], ncells], 1], svars];
 
-        coordinates = Transpose[Join[{Flatten[{Chop[First[Transpose[coordinates]][[1;;nvars]], OptionValue["chop"]],
-                                               Chop[First[Transpose[coordinates]][[nvars+1;;nvars+6]], OptionValue["chop"]/10],
-                                               Chop[First[Transpose[coordinates]][[nvars+7;;]], 10.0^-3]}]},
-                                     Transpose[coordinates][[2;;-2]],
-                                     {Flatten[{Chop[Last[Transpose[coordinates]][[1;;nvars]], OptionValue["chop"]/20],
-                                               Chop[Last[Transpose[coordinates]][[nvars+1;;nvars+6]], 10.0^-3],
-                                               Chop[Last[Transpose[coordinates]][[nvars+7;;]], 10.0^-3]}]}]];
+        coordinates = Transpose[Join[{Flatten[{Chop[First[coordinates][[1;;nvars*ncells]], OptionValue["chop"]],
+                                               Chop[First[coordinates][[nvars*ncells+1;;nvars*ncells+6]], OptionValue["chop"]/10],
+                                               Chop[First[coordinates][[nvars*ncells+7;;]], 10.0^-3]}]},
+                                     coordinates[[2;;-2]],
+                                     {Flatten[{Chop[Last[coordinates][[1;;nvars*ncells]], OptionValue["chop"]/20],
+                                               Chop[Last[coordinates][[nvars*ncells+1;;nvars*ncells+6]], 10.0^-3],
+                                               Chop[Last[coordinates][[nvars*ncells+7;;]], 10.0^-3]}]}]];
 
-        path = Grid[Prepend[Prepend[Prepend[Round[coordinates, 10.0^-3], ene], Range[Length[ene]]]\[Transpose], Join[{"#", "energy"}, labels, exlabels]],
+        path = Grid[Prepend[Prepend[Prepend[Round[Sub2List[#][[2]]&/@coordinates, 10.0^-3], ene], Range[Length[ene]]]\[Transpose], Join[{"#", "energy"}, labels, exlabels]],
                     Background -> {Join[{Gray,LightBlue}, Flatten[Table[color = If[OddQ[j], Yellow, Pink];
                                    ConstantArray[color, Length[fullvars[[j]]]], {j, Length@fullvars}]], 
-                                   Flatten[Table[ConstantArray[If[OddQ[j], Gray, LightGray], ExInfo[[j,2]]], {j,Length[ExInfo]}]]],
+                                   Flatten[Table[ConstantArray[If[OddQ[j], Gray, LightGray], ExInfo[[Mod[j,Length[ExInfo],1],2]]], {j,ncells*Length[ExInfo]}]]],
                                    None},
                     ItemStyle -> Directive[FontSize -> OptionValue["fontsize"]],
                     ItemSize -> Full
                    ]; 
-        epsplot = Partition[Table[If[Norm[coordinates[[j]]] != 0, ListPlot[{coordinates[[j]], ene}\[Transpose], Frame -> True, GridLines -> Automatic, PlotRange -> All, PlotLabel -> labels[[j]], ImageSize -> 300], ## &[]], {j, Length[Flatten@fullvars]}], UpTo[4]];
-        scfplot = {ListLinePlot[coordinates[[1;;Length[Flatten@vars]]], PlotRange -> All, Frame -> True, PlotMarkers -> Automatic, 
+        epsplot = Partition[Table[If[Norm[Sub2List[coordinates[[j]]][[2]]] != 0, ListPlot[{Sub2List[coordinates[[j]]][[2]], ene}\[Transpose], Frame -> True, GridLines -> Automatic, PlotRange -> All, PlotLabel -> labels[[j]], ImageSize -> 300], ## &[]], {j, Length[labels]}], UpTo[4]];
+        scfplot = {ListLinePlot[Sub2List[#][[2]] &/@ (coordinates[[1;;nvars*ncells]]), PlotRange -> All, Frame -> True, PlotMarkers -> Automatic, 
                                                    GridLines -> Automatic, ImageSize -> 300, ImagePadding -> {{50, 1}, {20, 1}}, 
                                                    PlotLegends -> LineLegend[labels[[;;Length[Flatten@vars]]], LegendLayout -> {"Column", 3}]], 
-                         ListLinePlot[coordinates[[Length[Flatten@vars]+1;;Length[Flatten@vars]+6]], PlotRange -> All, Frame -> True, PlotMarkers -> Automatic,
+                         ListLinePlot[Sub2List[#][[2]] &/@ (coordinates[[nvars*ncells+1;;nvars*ncells+6]]), PlotRange -> All, Frame -> True, PlotMarkers -> Automatic,
                                                     GridLines -> Automatic, ImageSize -> 300, ImagePadding -> {{50, 1}, {20, 1}},
                                                     PlotLegends -> LineLegend[labels[[Length[Flatten@vars]+1;;]], LegendLayout -> {"Column", 2}]],
-                          ListLinePlot[coordinates[[Length[Flatten@vars]+7;;]], PlotRange -> All, Frame -> True, PlotMarkers -> Automatic,
+                          ListLinePlot[Sub2List[#][[2]] &/@ (coordinates[[nvars*ncells+7;;]]), PlotRange -> All, Frame -> True, PlotMarkers -> Automatic,
                                                      GridLines -> Automatic, ImageSize -> 300, ImagePadding -> {{50, 1}, {20, 1}},
                                                      PlotLegends -> LineLegend[exlabels, LegendLayout -> {"Column", 3}]],
                          ListLinePlot[ene, PlotRange -> All, Frame -> True, PlotMarkers -> Automatic, GridLines -> Automatic, 
                                            ImageSize -> 300, ImagePadding -> {{50, 1}, {20, 1}}]};
-        roseplot = Partition[Rasterize[Show[ListPlot3D[{coordinates[[#1]], coordinates[[#2]], ene}\[Transpose], 
+        roseplot = Partition[Rasterize[Show[ListPlot3D[{Sub2List[coordinates[[#1]]][[2]], Sub2List[coordinates[[#2]]][[2]], ene}\[Transpose], 
                                                        AxesLabel -> {labels[[#1]], labels[[#2]], ""}, 
                                                        PlotRange -> All, 
                                                        ColorFunction -> "Rainbow", 
@@ -412,17 +433,17 @@ ImportDMDPath[dir0_, vars_, svars_, BasisMatrix_, FullBasis_, seeds_, OptionsPat
                                                        Mesh -> Length[ene], 
                                                        ViewPoint -> {0, 0, 100}, 
                                                        ImageSize -> 300], 
-                                            ListPointPlot3D[{coordinates[[#1]], coordinates[[#2]], ene}\[Transpose], 
+                                            ListPointPlot3D[{Sub2List[coordinates[[#1]]][[2]], Sub2List[coordinates[[#2]]][[2]], ene}\[Transpose], 
                                                        PlotStyle -> {White, PointSize[Large]}, 
                                                        AxesLabel -> {labels[[#1]], labels[[#2]],""}, 
                                                        PlotRange ->  All, 
                                                        ViewPoint -> {0, 0, 100}, ImageSize -> 300], 
-                                            ParametricPlot3D[BSplineFunction[{coordinates[[#1]],coordinates[[#2]],ene}\[Transpose]][s], {s, 0, 1}, 
+                                            ParametricPlot3D[BSplineFunction[{Sub2List[coordinates[[#1]]][[2]],Sub2List[coordinates[[#2]]][[2]],ene}\[Transpose]][s], {s, 0, 1}, 
                                                        PlotStyle -> Directive[White, Thick], 
                                                        PlotRange -> All, 
                                                        ViewPoint -> {0, 0, 100}]], 
                                                        ImageSize->300] 
-                   & @@@ Subsets[Table[If[Norm[coordinates[[j]]] == 0, ## &[], j], {j, Length[Flatten@fullvars]}], {2}], UpTo[4]];
+                   & @@@ Subsets[Table[If[Norm[Sub2List[coordinates[[j]]][[2]]] == 0, ## &[], j], {j, nvars*ncells+6}], {2}], UpTo[4]];
         plt = {epsplot, scfplot, roseplot};
 
         If[OptionValue["table"], Print[path]];
@@ -515,18 +536,20 @@ SamplingByDMDPathOld[dir0_, dmdpath_, invariants_, vars_, svars_, Basis_, boundi
   Print["Total number of samples: " <> ToString[numsamples]];
 ]
 
-SamplingByDMDPath[dir0_, DMDPath_, vars_, svars_, opotim_, spotim_, BasisMatrix_, FullBasis_, seeds_, OptionsPattern[{"SlaveFreeQ"->False, "FrozenHiddenQ"->True, "spline" -> 0, "mddensity" -> 1.0, "sigma" -> 1.1, "extension"->0, "table"->False, "fontsize"->12, "write"->True, "plot"->True, "imagesize"->200, "interpolate"->3}]] := Module[{ref, mim0, character, scharacter, fullvars, excharacter, miminfo, data, i, j, k, samples, DMDSamples, InterpolatedSamples, nvars, dft, sigma, osparse, ssparse, plt, plots, pos0, pos, FullBasisMatrix, ComplementBasisMatrix, tcount, scount, dir, shiftmode, shifteij, latt, sites, PickQ, imd, dmd, inv, exlabels, labels, info, numsamples, data2d, enedata, exi, exene, exvars, exsvars, exovars, extension, exseeds, s, s1, bsplinepath, nsamples, splinedata, tab, color, slavemode, primarymode, hiddenmode, mask, primarymask, slavemask, hiddenmask, tsdata, ts, t, pickQ},
+SamplingByDMDPath[dir0_, DMDPath_, vars_, svars_, uvars_, opotim_, spotim_, BasisMatrix_, FullBasis_, seeds_, OptionsPattern[{"SlaveFreeQ"->False, "SwitchOffHiddenQ"->False, "FrozenHiddenQ"->True, "spline" -> 0, "mddensity" -> 1.0, "sigma" -> 1.1, "extension"->0, "table"->False, "fontsize"->12, "write"->True, "plot"->True, "imagesize"->200, "interpolate"->3}]] := Module[{ref, mim0, character, scharacter, supervars, fullvars, excharacter, miminfo, data, i, j, k, samples, DMDSamples, InterpolatedSamples, nvars, dft, sigma, osparse, ssparse, plt, plots, pos0, pos, FullBasisMatrix, ComplementBasisMatrix, tcount, scount, dir, shiftmode, shifteij, latt, sites, PickQ, imd, dmd, inv, exlabels, labels, info, numsamples, data2d, enedata, exi, exene, exvars, exsvars, exovars, extension, exseeds, s, s1, bsplinepath, nsamples, splinedata, tab, color, slavemode, primarymode, hiddenmode, mask, primarymask, slavemask, hiddenmask, tsdata, ts, t, pickQ, ncells, grid, ExInfo, ind},
   If[! DirectoryQ[dir0 <> "/trainingset"], CreateDirectory[dir0 <> "/trainingset"]; Run["chmod o-w " <> dir0 <> "/trainingset"]];
-  fullvars = Append[vars, svars];
   pos0 = ImportPOSCAR[dir0 <> "/POSCAR0"];
   FullBasisMatrix = Flatten[FullBasis, 1]\[Transpose][[4]]\[Transpose];
   {ComplementBasisMatrix, exlabels} = BasisComplement[BasisMatrix, FullBasis];
-  labels = MapIndexed["("<>ToString[First@#2]<>") "<>ToString[#1,StandardForm]&, Flatten@fullvars];
   FullBasisMatrix = Join[BasisMatrix\[Transpose], ComplementBasisMatrix\[Transpose]]\[Transpose];
-  nvars = Length[Flatten[vars]];
+
+  ind = Sort[First@First[Position[Flatten[FullBasis, 1]\[Transpose][[4]], #]] & /@ (ComplementBasisMatrix\[Transpose])];
+  ExInfo = Tally[First@First@Position[FullBasis, #] & /@ ind];
+
+  nvars = Length[Flatten[Append[vars, uvars]]];
 
   sigma = OptionValue["sigma"];
-  osparse = Flatten[ConstantArray[#2, Length[#1]] & @@@ ({vars, opotim}\[Transpose])];
+  osparse = Flatten[ConstantArray[#2, Length[#1]] & @@@ ({Append[vars, uvars], Append[opotim, 1]}\[Transpose])];
   ssparse = Join[ConstantArray[spotim[[1]], 3], ConstantArray[spotim[[2]], 3]];
 
   tsdata = {};
@@ -535,10 +558,15 @@ SamplingByDMDPath[dir0_, DMDPath_, vars_, svars_, opotim_, spotim_, BasisMatrix_
   numsamples = 0;
   Do[scount = 0;
      tcount = DMDPath[[imd]][[1]];
-     inv = ToString[seeds[[tcount,2]], StandardForm];
+     inv = If[tcount<=Length[seeds], ToString[seeds[[tcount,2]], StandardForm], "unknown"];
      dir = dir0 <> "/trainingset/ts-" <> ToString[tcount];
      If[! DirectoryQ[dir], CreateDirectory[dir]; Run["chmod o-w " <> dir]];
-     dft = DMDPath[[imd]][[2]]\[Transpose];
+     supervars = First@Sub2List[First[DMDPath[[imd]][[2]]\[Transpose]][[2;;]]];
+     grid = VarSubGrid[First[DMDPath[[imd]][[2]]\[Transpose]][[2;;]]];
+     ncells = Times@@grid;
+     fullvars = Append[Flatten[ConstantArray[Append[vars, uvars], ncells], 1], svars];
+     labels = MapIndexed["("<>ToString[First@#2]<>") "<>ToString[VarBare@#1,StandardForm]&, supervars];
+     dft = Join[{#[[1]]}, Sub2List[#[[2;;]]][[2]]] &/@ (DMDPath[[imd]][[2]]\[Transpose]);
      (*
      character = Sign[Abs@dft[[1]][[2 ;; nvars + 1]]];
      scharacter = Sign[Abs@dft[[1]][[nvars + 2 ;; nvars + 7]]];
@@ -549,46 +577,46 @@ SamplingByDMDPath[dir0_, DMDPath_, vars_, svars_, opotim_, spotim_, BasisMatrix_
      mim0 = Last@dft;
 
      mask = Sign@Mean@Abs[dft[[;;,2;;]]];
-     hiddenmask = Join[ConstantArray[0, nvars+6], ConstantArray[1, Length[Flatten@exlabels]]];
-     primarymask = Sign@Join[Chop[Abs[First[dft][[2;;1+nvars]]], 0.01], 
-                             Chop[Abs[First[dft][[2+nvars;;6+nvars+1]]], 0.001],
-                             Chop[Abs[First[dft][[6+nvars+2;;]]]]]*(1-hiddenmask);
+     hiddenmask = Join[ConstantArray[0, ncells*nvars+6], ConstantArray[1, Length[supervars]-ncells*nvars-6]];
+     primarymask = Sign@Join[Chop[Abs[First[dft][[2;;1+ncells*nvars]]], 0.01], 
+                             Chop[Abs[First[dft][[2+ncells*nvars;;6+ncells*nvars+1]]], 0.001],
+                             Chop[Abs[First[dft][[6+ncells*nvars+2;;]]]]]*(1-hiddenmask);
 
      slavemask = (mask - primarymask)*(1-hiddenmask);
      hiddenmode = hiddenmask*mim0[[2;;]];
 
-     miminfo = Table[{i - 1, mim0[[i]], Sqrt@Mean[(# - mim0[[i]])^2 & /@ (dft\[Transpose][[i]])]}, {i, nvars + 7}]; 
-     samples = Table[PickQ = Fold[And, Table[Abs[dft[[i]][[j + 1]] - miminfo[[j + 1, 2]]] <= sigma*miminfo[[j + 1, 3]], {j, nvars + 6}]];
+     miminfo = Table[{i - 1, mim0[[i]], Sqrt@Mean[(# - mim0[[i]])^2 & /@ (dft\[Transpose][[i]])]}, {i, ncells*nvars + 7}]; 
+     samples = Table[PickQ = Fold[And, Table[Abs[dft[[i]][[j + 1]] - miminfo[[j + 1, 2]]] <= sigma*miminfo[[j + 1, 3]], {j, ncells*nvars + 6}]];
                      If[PickQ, 
                         primarymode = primarymask*dft[[i,2;;]];
                         slavemode = If[OptionValue["SlaveFreeQ"], 0, 1] slavemask*mim0[[2;;]];
                         (*slavemode = If[OptionValue["SlaveFreeQ"], 0, 1] 
                                       MapIndexed[If[Chop[#1]==0., 0, Extract[slavemask*dft[[i,2;;]], #2]]&, slavemask*mim0[[2;;]]];*)
-                        shiftmode = primarymode + slavemode + If[OptionValue["FrozenHiddenQ"], hiddenmode, hiddenmask*dft[[i,2;;]]];
+                        shiftmode = primarymode + slavemode + If[OptionValue["FrozenHiddenQ"], If[OptionValue["SwitchOffHiddenQ"], 0*hiddenmode, hiddenmode], hiddenmask*dft[[i,2;;]]];
                         {i, 
                          dft[[i]][[1]], 
-                         Table[N@Round[shiftmode[[j]], osparse[[j]]], {j, nvars}], 
-                         Table[N@Round[shiftmode[[nvars + j]], ssparse[[j]]], {j, 6}],
-                         shiftmode[[nvars + 7 ;;]]}, 
+                         Table[N@Round[shiftmode[[j]], osparse[[Mod[j,nvars,1]]]], {j, ncells*nvars}], 
+                         Table[N@Round[shiftmode[[ncells*nvars + j]], ssparse[[j]]], {j, 6}],
+                         shiftmode[[ncells*nvars + 7 ;;]]}, 
                         ## &[]], {i, Length[dft]}];
 
      ts = {};
      ref = mim0;
      Do[i = Length@dft - j + 1;
-        pickQ = ! And @@ Thread[Part[Abs[(dft[[i]] - ref)], Span[2, 1 + nvars + 6]] <= OptionValue["mddensity"]*Join[osparse, ssparse]];
+        pickQ = ! And @@ Thread[Part[Abs[(dft[[i]] - ref)], Span[2, 1 + ncells*nvars + 6]] <= OptionValue["mddensity"]*Join[Flatten@ConstantArray[osparse, ncells], ssparse]];
         If[pickQ, AppendTo[ts, dft[[i]]]; ref = dft[[i]]], {j, Length@dft}];
      AppendTo[tsdata, Table[Flatten[{imd, i, Reverse[ts][[i]]}], {i, Length@ts}]];
 
      exene   = dft[[1]][[1]] - dft[[2]][[1]];
-     exvars  = (Sign[dft[[1]][[2;;nvars+7]]]*(miminfo\[Transpose][[3]][[2;;]]))[[1;;nvars]];
-     exsvars = (Sign[dft[[1]][[2;;nvars+7]]]*(miminfo\[Transpose][[3]][[2;;]]))[[nvars+1;;]];
-     exovars = Chop[dft[[-1]][[nvars + 8 ;;]], 0.01];
+     exvars  = (Sign[dft[[1]][[2;;ncells*nvars+7]]]*(miminfo\[Transpose][[3]][[2;;]]))[[1;;ncells*nvars]];
+     exsvars = (Sign[dft[[1]][[2;;ncells*nvars+7]]]*(miminfo\[Transpose][[3]][[2;;]]))[[ncells*nvars+1;;]];
+     exovars = Chop[dft[[-1]][[ncells*nvars + 8 ;;]], 0.01];
 
      extension = Table[{Length[dft]+s, dft[[1]][[1]] + exene*s, exvars*sigma*s, exsvars*sigma*s, exovars}, {s, 1, OptionValue["extension"]}];
 
      DMDSamples = Join[extension,
                        DeleteDuplicates[samples, Chop[Norm[Flatten[#1[[3 ;; 4]] - #2[[3 ;; 4]]]]] == 0 &],
-                       {{Last[samples][[1]]+1, mim0[[1]], mim0[[2;;nvars+1]], mim0[[nvars+2;;nvars+7]], mim0[[nvars+8;;]]}}];
+                       {{Last[samples][[1]]+1, mim0[[1]], mim0[[2;;ncells*nvars+1]], mim0[[ncells*nvars+2;;ncells*nvars+7]], If[OptionValue["SwitchOffHiddenQ"], 0, 1]*mim0[[ncells*nvars+8;;]]}}];
 
      bsplinepath = BSplineFunction[Join[{#2}, #3, #4, #5] &@@@ DMDSamples];
 
@@ -596,16 +624,16 @@ SamplingByDMDPath[dir0_, DMDPath_, vars_, svars_, opotim_, spotim_, BasisMatrix_
                               DMDSamples, 
                               nsamples = Ceiling[Length[DMDSamples]*OptionValue["spline"]];
                               Table[splinedata = bsplinepath[N[i/nsamples]];
-                                    {i, splinedata[[1]], splinedata[[2;;nvars+1]], splinedata[[nvars+2;;nvars+7]], splinedata[[nvars+8;;]]}, {i, 0, nsamples}]
+                                    {i, splinedata[[1]], splinedata[[2;;ncells*nvars+1]], splinedata[[ncells*nvars+2;;ncells*nvars+7]], splinedata[[ncells*nvars+8;;]]}, {i, 0, nsamples}]
                               ];
-     PrependTo[InterpolatedSamples, {0, First[dft][[1]], First[dft][[2;;nvars+1]], First[dft][[nvars+2;;nvars+7]], mim0[[nvars + 8 ;;]]}];
-     PrependTo[InterpolatedSamples, {0, First[dft][[1]], First[dft][[2;;nvars+1]], First[dft][[nvars+2;;nvars+7]], mim0[[nvars + 8 ;;]]}];
-     PrependTo[InterpolatedSamples, {0, First[dft][[1]], First[dft][[2;;nvars+1]], First[dft][[nvars+2;;nvars+7]], 0.0*First[dft][[nvars + 8 ;;]]}];
+     PrependTo[InterpolatedSamples, {0, First[dft][[1]], First[dft][[2;;ncells*nvars+1]], First[dft][[ncells*nvars+2;;ncells*nvars+7]], If[OptionValue["SwitchOffHiddenQ"], 0, 1]*mim0[[ncells*nvars + 8 ;;]]}];
+     PrependTo[InterpolatedSamples, {0, First[dft][[1]], First[dft][[2;;ncells*nvars+1]], First[dft][[ncells*nvars+2;;ncells*nvars+7]], If[OptionValue["SwitchOffHiddenQ"], 0, 1]*mim0[[ncells*nvars + 8 ;;]]}];
+     PrependTo[InterpolatedSamples, {0, First[dft][[1]], First[dft][[2;;ncells*nvars+1]], First[dft][[ncells*nvars+2;;ncells*nvars+7]], 0.0*First[dft][[ncells*nvars + 8 ;;]]}];
 
-     tab = Grid[Prepend[Flatten[#] &/@ InterpolatedSamples, Join[{"#", "energy"}, labels, Flatten@exlabels]],
+     tab = Grid[Prepend[Flatten[#] &/@ InterpolatedSamples, Join[{"#", "energy"}, labels]],
                 Background -> {Join[{Gray,LightBlue}, Flatten[Table[color = If[OddQ[i], Yellow, Pink];
                                ConstantArray[color, Length[fullvars[[i]]]], {i, Length@fullvars}]],
-                               Flatten[Table[ConstantArray[If[OddQ[i], Gray, LightGray], Length[exlabels[[i]]]], {i,Length[exlabels]}]]],
+                               Flatten[Table[ConstantArray[If[OddQ[i], Gray, LightGray], ExInfo[[Mod[i,Length[ExInfo],1],2]]], {i,       ncells*Length[ExInfo]}]]],
                                None},
                 ItemStyle -> Directive[FontSize -> OptionValue["fontsize"]],
                 ItemSize -> Full
@@ -666,17 +694,19 @@ SamplingByDMDPath[dir0_, DMDPath_, vars_, svars_, opotim_, spotim_, BasisMatrix_
 
      Do[scount = scount + 1;
         numsamples = numsamples + 1;
-        shiftmode = Table[{i, "modes", 1, s[[3, i]]}, {i, nvars}];
-        shiftmode = Join[shiftmode, Table[{nvars + i, "modes", 1, s[[5, i]]}, {i, Length[Flatten@exlabels]}]];
+        shiftmode = Table[i = Mod[j, nvars, 1];
+                          If[i <= nvars - 3, {i, supervars[[j]], 1, s[[3, j]]}, ##&[]], {j, ncells*nvars}];
+        shiftmode = Join[shiftmode, 
+                         Table[i = Mod[j, Length[FullBasisMatrix] - nvars + 3, 1];
+                               {i+nvars-3, supervars[[ncells*nvars+6+j]], 1, s[[5, j]]}, {j, Length[supervars]-ncells*nvars-6}]];
+        shiftmode = GroupBy[shiftmode, Mod[VarGrid[#[[2]]] + 1, grid, 1]&];
         shifteij = Chop@eta2eij[s[[4]]];
-        latt = (shifteij + IdentityMatrix[3]).(pos0[[1]]);
-        sites = ImposeMode[pos0[[1]], pos0[[2]], FullBasisMatrix, shiftmode, 1.0];
-        pos = {latt, sites};
+        pos = ImposeDomains[pos0, FullBasisMatrix, shifteij, shiftmode, grid];
         If[OptionValue["write"],  ExportPOSCAR[dir, "sample." <> ToString[scount] <> ".vasp", pos]], {s, InterpolatedSamples}];
 
      AppendTo[info, "ts-" <> ToString[tcount] <> " (" <> ToString[scount] <> "): " <> inv], {imd, Length@DMDPath}];
 
-     tsdata = MapIndexed[{First@#2, #1[[1]], #1[[2]], #1[[3]], #1[[4;;3+nvars]], #1[[4+nvars;;9+nvars]], #1[[10+nvars;;]]}&, Flatten[tsdata, 1]];
+     tsdata = MapIndexed[{First@#2, #1[[1]], #1[[2]], #1[[3]], #1[[4;;3+ncells*nvars]], #1[[4+ncells*nvars;;9+ncells*nvars]], #1[[10+ncells*nvars;;]]}&, Flatten[tsdata, 1]];
      Export[dir0 <> "/trainingset/tsmd.dat", GatherBy[tsdata, #[[2]] &], "ExpressionML"];
   
   Print[Grid[Join[{{"Total number of samples: "<>ToString[numsamples]}}, Partition[info, UpTo[5]]], ItemSize -> Full, Alignment -> ":"]];
@@ -764,7 +794,7 @@ PreparePhases[dir0_, pname_, num_] := Module[{pos0, sites, n, pos},
      ExportPOSCAR[dir0 <> "/phases", "phase." <> ToString[n] <> ".vasp", {pos0[[1]], sites}], {n, num}];
 ]
 
-CollectPhases[dir0_, vars_, svars_, BasisMatrix_, FullBasis_, OptionsPattern[{"round" -> 10^-6, "fontsize" -> 12, "table" -> True, "file"->"POSCAR"}]] := Module[{NumDim, NumBasis, pos0, Basislabel, i, mpdata, pos, sites, eta, ExPhase, phase, simplifytab, fullvars, tab, ind, OtherBasisMatrix, ExBasislabel, color, fname, FullBasisMatrix, ExInfo, data, t, ene, ene0, isg0, sg0, isg, sg, sginfo},
+CollectPhases[dir0_, vars_, svars_, BasisMatrix_, FullBasis_, OptionsPattern[{"AUTable"->True, "round" -> 10^-6, "fontsize" -> 12, "table" -> True, "file"->"POSCAR"}]] := Module[{NumDim, NumBasis, pos0, Basislabel, i, mpdata, pos, sites, eta, ExPhase, phase, simplifytab, fullvars, tab, ind, OtherBasisMatrix, ExBasislabel, color, fname, FullBasisMatrix, ExInfo, data, t, ev2har, ang2latt, ene, ene0, isg0, sg0, isg, sg, sginfo},
 
   FullBasisMatrix = Flatten[FullBasis, 1]\[Transpose][[4]]\[Transpose];
   OtherBasisMatrix = Complement[FullBasisMatrix\[Transpose], BasisMatrix\[Transpose], SameTest -> (Chop[Norm[#1 - #2]] == 0 &)];
@@ -781,6 +811,8 @@ CollectPhases[dir0_, vars_, svars_, BasisMatrix_, FullBasis_, OptionsPattern[{"r
   Basislabel = Table["x" <> ToString[i], {i, NumBasis}];
   ExBasislabel = "("<>ToString[#]<>") "<>(Flatten[FullBasis, 1]\[Transpose][[2]][[#]]) &/@ ind;
   simplifytab = {-1 -> Style["-1", Bold, Blue], 1 -> Style["1", Bold, Red], 0 -> "-"};
+  If[OptionValue["AUTable"], ev2har=1/27.2114;ang2latt=1/Norm[pos0[[1]]], ev2har=1;ang2latt=1];
+
   mpdata = Table[t = data[[i, 1]];
                  ene = data[[i, 2]] - ene0;
                  isg0 = data[[i, 3]];
@@ -795,7 +827,7 @@ CollectPhases[dir0_, vars_, svars_, BasisMatrix_, FullBasis_, OptionsPattern[{"r
                  phase = ISODISTORT[pos0[[1]], pos0[[2]], sites, BasisMatrix, Basislabel, "round" -> OptionValue["round"], "match"->False]\[Transpose][[4]];
                  ExPhase = ISODISTORT[pos0[[1]], pos0[[2]], sites, OtherBasisMatrix, ExBasislabel, "round" -> OptionValue["round"], "match"->False]\[Transpose][[4]];
                  {i, sginfo, ene, phase, eta, ExPhase}, {i, 1, Length[data]}];
-  tab = Grid[Prepend[Flatten[{Join[{#1, StringSplit[#2, "\[RightArrow]"][[2]], #3}, #4, #5, #6], Join[{" ", " ", " "}, Sign[#4], Sign[#5], Sign[#6]] /. simplifytab} & @@@ mpdata, 1], Join[{"#", "sg", "ene"}, Flatten@fullvars, ExBasislabel]],
+  tab = Grid[Prepend[Flatten[{Join[{#1, StringSplit[#2, "\[RightArrow]"][[2]], #3*ev2har}, #4*ang2latt, #5, #6*ang2latt], Join[{" ", " ", " "}, Sign[#4], Sign[#5], Sign[#6]] /. simplifytab} & @@@ mpdata, 1], Join[{"#", "sg", "ene"}, Flatten@fullvars, ExBasislabel]],
              Background -> {Flatten[{{LightGray, LightBlue, Green}, Table[color = If[OddQ[i], Yellow, Pink]; ConstantArray[color, Length[fullvars[[i]]]], {i, Length@fullvars}], Table[ConstantArray[If[OddQ[i], Gray, LightGray], ExInfo[[i,2]]], {i,Length[ExInfo]}]}], Prepend[Flatten[Table[If[EvenQ[i], White, None], {i, 2 Length[data]}]], White]}, 
              Dividers -> {False, Table[If[EvenQ[i], i -> Black, ## &[]], {i, 2 Length[data]}]}, 
              ItemStyle -> Directive[FontSize -> OptionValue["fontsize"]], 
@@ -903,10 +935,9 @@ PlanSampling[dir0_, phases_, invariants_, vars_, svars_, Basis_, spgmat_, npt_, 
   Print[Grid[Partition[info, UpTo[3]], ItemSize -> Full, Alignment -> ":"]];
 ]
 
-LoadTrainingset[dir0_, BasisMatrix_, FullBasis_, vars_, svars_, OptionsPattern[{"round" -> 10^-6, "plot"->False, "pdf"->True, "imagesize"->200, "interpolate"->3}]] := Module[{i, t, s, BasisDim, NumBasis, ene, pos, mode0, vasprun, mode, exmode, data, eta, out, ws, seeds, plan, p, E0, pos0, FullBasisMatrix, ComplementBasisMatrix, exlabels, plt, pdf, fullvars, enedata, data2d},
+LoadTrainingset[dir0_, BasisMatrix_, FullBasis_, vars_, svars_, uvars_, OptionsPattern[{"round" -> 10^-6, "plot"->False, "pdf"->True, "imagesize"->200, "interpolate"->3}]] := Module[{i, t, s, BasisDim, NumBasis, ene, pos, mode0, vasprun, mode, exmode, data, eta, out, ws, seeds, plan, p, E0, pos0, FullBasisMatrix, ComplementBasisMatrix, exlabels, plt, pdf, fullvars, enedata, data2d},
   {BasisDim, NumBasis} = Dimensions[BasisMatrix];
   pos0 = ImportPOSCAR[dir0 <> "/POSCAR0"];
-  fullvars = Flatten[{vars, svars}];
   FullBasisMatrix = Flatten[FullBasis, 1]\[Transpose][[4]]\[Transpose];
   {ComplementBasisMatrix, exlabels} = BasisComplement[BasisMatrix, FullBasis]; 
   FullBasisMatrix = Join[BasisMatrix\[Transpose], ComplementBasisMatrix\[Transpose]]\[Transpose];
@@ -916,18 +947,23 @@ LoadTrainingset[dir0_, BasisMatrix_, FullBasis_, vars_, svars_, OptionsPattern[{
               s = data[[i, 2]]; 
             ene = data[[i, 3]];
             pos = ImportPOSCAR[dir0 <> "/trainingset/ts" <> "-" <> ToString[t] <> "/sample" <> ToString[s] <> "/POSCAR"];
-            eta = Chop[eij2eta[GetStrainTensor[pos0[[1]], pos[[1]], "iso" -> False]]];
+    {mode, eta} = ModeDecomposition[pos0, pos, BasisMatrix, vars, svars, uvars, 
+                                            "lattnorm" -> False, "table" -> False, "round" -> OptionValue["round"]];
+         exmode = ModeDecomposition[pos0, pos, ComplementBasisMatrix, Flatten@exlabels, svars, {}, 
+                                       "lattnorm" -> False, "table" -> False, "round" -> OptionValue["round"]][[1]];
+          (*eta = Chop[eij2eta[GetStrainTensor[pos0[[1]], pos[[1]], "iso" -> False]]];
            mode = ISODISTORT[pos0[[1]], pos0[[2]], pos[[2]], BasisMatrix, Range[NumBasis], "round" -> OptionValue["round"]]\[Transpose][[4]];
-         exmode = ISODISTORT[pos0[[1]], pos0[[2]], pos[[2]], ComplementBasisMatrix, Flatten@exlabels, "round" -> OptionValue["round"]]\[Transpose][[4]];
-         {i, t, s, ene - E0, mode, eta, exmode}, {i, Length[data]}];
+         exmode = ISODISTORT[pos0[[1]], pos0[[2]], pos[[2]], ComplementBasisMatrix, Flatten@exlabels, "round" -> OptionValue["round"]]\[Transpose][[4]];*)
+         {i, t, s, ene - Length[mode]*E0, Flatten[mode], eta, Flatten[exmode]}, {i, Length[data]}];
   out = SortBy[#, First] & /@ GatherBy[out, #[[2]] &];
 
-  pdf = Table[data2d = (Flatten[#] & /@ (t[[3;;]]\[Transpose][[5 ;; 6]]\[Transpose]))\[Transpose];
+  pdf = Table[fullvars = Join[T5Vars[First[t]], svars];
+              data2d = Transpose[T56Data[#] &/@ (t[[3;;]])]; 
               enedata = t[[3;;]]\[Transpose][[4]];
               plt = Join[{ListLinePlot[enedata, PlotRange -> All, Frame -> True, PlotMarkers -> Automatic, GridLines -> Automatic,
                                             ImageSize -> OptionValue["imagesize"], ImagePadding -> {{60, 10}, {40, 10}}]},
-                         Table[If[Norm[t[[3;;]]\[Transpose][[5]]\[Transpose][[i]]] != 0, 
-                                  ListPlot[{t[[3;;]]\[Transpose][[5]]\[Transpose][[i]], enedata}\[Transpose], 
+                         Table[If[Norm[T5Data[#][[i]]&/@(t[[3;;]])] != 0, 
+                                  ListPlot[{T5Data[#][[i]]&/@(t[[3;;]]), enedata}\[Transpose], 
                                            PlotRange -> All,
                                            ImageSize -> OptionValue["imagesize"], 
                                            Frame -> True, 
@@ -935,9 +971,9 @@ LoadTrainingset[dir0_, BasisMatrix_, FullBasis_, vars_, svars_, OptionsPattern[{
                                            PlotMarkers -> Automatic, 
                                            PlotLabel -> "(" <> ToString[i] <> ") " <> ToString[fullvars[[i]], StandardForm], 
                                            FrameLabel -> {"coordinates (\[Angstrom])", "energy (eV)"}, 
-                                           ImagePadding -> {{60, 10}, {40, 10}}], ## &[]], {i, Length[Flatten@vars]}], 
-                         Table[If[Norm[t[[3;;]]\[Transpose][[6]]\[Transpose][[i]]] != 0,
-                                  ListPlot[{t[[3;;]]\[Transpose][[6]]\[Transpose][[i]], enedata}\[Transpose],
+                                           ImagePadding -> {{60, 10}, {40, 10}}], ## &[]], {i, Length[fullvars]-6}], 
+                         Table[If[Norm[T6Data[#][[i]]&/@(t[[3;;]])] != 0,
+                                  ListPlot[{T6Data[#][[i]]&/@(t[[3;;]]), enedata}\[Transpose],
                                            PlotRange -> All,
                                            ImageSize -> OptionValue["imagesize"],
                                            Frame -> True,
@@ -987,27 +1023,31 @@ PlanFittingOld[invariants_, ts_, vars_, svars_] := Module[{p, m, invdict, t, i, 
   Return[plan]
 ]
 
-GetPolynomialTrainingSet[polynomial_, tsdata_, vars_, svars_, OptionsPattern[{"chop" -> 0.09999}]] := Module[{out, m, t, fullvars, characters, tcharacter, p, tsp1, dft0},
-  fullvars = Append[vars, svars];
-  tsp1 = Select[tsdata, (Flatten[Sign@Abs@Chop[First[#][[5]], OptionValue["chop"]]] Flatten[vars] === Flatten[vars]) &];
+GetPolynomialTrainingSet[polynomial_, tsdata_, OptionsPattern[{"chop" -> 0.09999}]] := Module[{out, m, t, characters, tcharacter, p, tsp1, dft0},
+  tsp1 = Select[tsdata, (Flatten[Sign@Abs@Chop[T5Data[First[#]], OptionValue["chop"]]] T5Vars[First[#]] === T5Vars[First[#]]) &];
   m = If[Head[polynomial]===Plus, polynomial[[1]], polynomial];
-  characters = InvariantCharacter[m, Flatten@fullvars];
-  out = Table[dft0 = Flatten[{Chop[First[t][[5]], OptionValue["chop"]], Chop[First[t][[6]], OptionValue["chop"]/10]}];
+  characters = InvariantCharacter[m, Flatten@TSVars[First@tsdata]];
+  out = Table[dft0 = Flatten[{Chop[T5Data[First[t]], OptionValue["chop"]], Chop[T6Data[First[t]], OptionValue["chop"]/10]}];
               tcharacter = Sign@Abs[dft0];
               If[MemberQ[characters, tcharacter], t, ## &[]], {t, tsdata}];
   If[out === {}, out = tsp1];
   Return[out]
 ]
 
-PlanFitting[invariants_, modelfixed_, ts_, vars_, svars_, OpMat_, TRules_, lvar_, mvar_, ordercut_, OptionsPattern[{"optimization" -> False, "call" -> 0, "fontsize" -> 12, "table" -> True}]] := Module[{p, ip, invdict, v, v1, v2, t, i, j, m, models, tcharacter, vcharacter, characters, modes, plan0, plan1, plan2, plan3, plan4, fullvars, minimums, color, simplifytab, mim, tmask, dependency, PEM, sol, PrimaryPolynomial, SlavePolynomial, HiddenPolynomial, tmp, sorted, len, foundQ, PickQ, tab, prefix, polynomials, tsdata, tag, slavets, OptPlan, mimlist, tmpmodel, initmodel, optmodel, submodel, sinv, pinv, spinv, inv2befit, equi0, dft}, 
+PlanFitting[invariants_, modelfixed_, ts_, vars_, svars_, uvars_, OpMat_, TRules_, lvar_, mvar_, ordercut_, OptionsPattern[{"optimization" -> False, "call" -> 0, "fontsize" -> 12, "table" -> True}]] := Module[{p, ip, invdict, v, v1, v2, t, i, j, m, models, tcharacter, vcharacter, characters, modes, plan0, plan1, plan2, plan3, plan4, fullvars, minimums, color, simplifytab, mim, tmask, dependency, PEM, sol, PrimaryPolynomial, SlavePolynomial, HiddenPolynomial, tmp, sorted, len, foundQ, PickQ, tab, prefix, polynomials, tsdata, tag, slavets, OptPlan, mimlist, tmpmodel, initmodel, optmodel, submodel, sinv, pinv, spinv, inv2befit, EquivalentPath, dft, DependencyGraph, gdata, varsub, nvars0, VarTally}, 
 
-  equi0[dft_] := Flatten[Table[tmask = Flatten[If[Norm[#] != 0, ConstantArray[1, Length[#]], Chop@#] & /@ CloneReshape2D[vars, Last[t][[5]]]];
-                               mim = Sign@Chop[Mean[#[[5]] tmask & /@ t], 0.05];
-                               Round[m] . mim, {t, dft}, {m, OpMat}], 1];
+  nvars0 = Length[Flatten[Append[vars, uvars]]];
+  
+  EquivalentPath[dft_] := DeleteDuplicates@Flatten[Table[
+      tmask = Flatten[If[Norm[#] != 0, ConstantArray[1, Length[#]], Chop@#] & /@ Flatten[CloneReshape2D[Append[vars, uvars], #] &/@ Partition[T5Data[Last[t]], Length[Flatten[Append[vars, uvars]]]], 1]];
+      mim = Sign@Chop[Mean[T5Data[#] tmask & /@ t], 0.1];
+      varsub = Thread[T5Vars[Last[t]] -> Flatten[Round[m].# &/@ Partition[mim, nvars0 ]]];
+      Sub2List[#][[2]] &/@ SwapVarSub[varsub], {t, dft}, {m, OpMat}], 2];
 
   tag = ToString[OptionValue["call"]];
   simplifytab = {-1 -> Style["-1", Bold, Blue], 1 -> Style["1", Bold, Red], 0 -> "-"};
-  fullvars = Append[vars, svars];
+  fullvars = TSVars[First@ts];
+  VarTally = Append[Flatten[ConstantArray[Tally[VarHead[#] & /@ Flatten[Append[vars, uvars]]]\[Transpose][[2]], (Length[Flatten@fullvars] - 6)/nvars0]], 6];
 
   prefix = (Flatten[#] & /@ (modelfixed\[Transpose]))\[Transpose];
   inv2befit = Complement[Flatten[invariants], Transpose[prefix][[2]]];
@@ -1021,11 +1061,11 @@ PlanFitting[invariants_, modelfixed_, ts_, vars_, svars_, OpMat_, TRules_, lvar_
   If[OptionValue["table"], Print["Number of invariants : " <> ToString[Length[Flatten@models]]]];
   
   (* polynomials <-> trainingset by First *)
-  plan0 = Table[{m, GetPolynomialTrainingSet[m[[1]], ts, vars, svars]}, {m, models}];
+  plan0 = Table[{m, GetPolynomialTrainingSet[m[[1]], ts]}, {m, models}];
   (* polynomials by minimums *)
-  plan1 = Gather[plan0, IntersectingQ[equi0[#1[[2]]], equi0[#2[[2]]]] &];
+  plan1 = Gather[plan0, IntersectingQ[Abs@EquivalentPath[#1[[2]]], Abs@EquivalentPath[#2[[2]]]] &];
 
-  dependency = Table[PEM = Flatten[{#5, #6, #4}] & @@@ Flatten[plan1[[mim]]\[Transpose][[2]], 2];
+  dependency = Table[PEM = Flatten[{Sub2List[#5][[2]], Sub2List[#6][[2]], #4}] & @@@ Flatten[plan1[[mim]]\[Transpose][[2]], 2];
                      (* polynomial to be fitted /  starting seed *)
                      PrimaryPolynomial = Flatten[plan1[[mim]]\[Transpose][[1]]];
                      (* primary polynomials couple to other modes *)
@@ -1041,29 +1081,45 @@ PlanFitting[invariants_, modelfixed_, ts_, vars_, svars_, OpMat_, TRules_, lvar_
     mim, 
     SlavePolynomial}, {mim, Length@plan1}];
 
-  Print[dependency];
+  gdata = GroupBy[Flatten@Table[If[v[[1]] != {}, DirectedEdge[#, v[[2]]] & /@ (v[[1]]), {v[[2]]}], {v, dependency}], Head];
+  DependencyGraph = Graph[If[MemberQ[Keys@gdata, Integer], gdata[Integer], {}], 
+                          If[MemberQ[Keys@gdata, DirectedEdge], gdata[DirectedEdge], {}], VertexLabels -> "Name"];
 
-  tmp = dependency;
-  sorted = Cases[tmp, {{}, __, {}}];
-  tmp = DeleteCases[tmp, {{}, __, {}}];
-  While[tmp != {}, 
-        len = Length[tmp];
-        foundQ = False;
-        i = 1;
-        While[! foundQ && i <= len, 
-              If[ContainsAll[sorted\[Transpose][[2]], First[tmp[[i]]]], 
-                 AppendTo[sorted, tmp[[i]]]; tmp = Drop[tmp, {i}]; foundQ = True, 
-                 i = i + 1]];
-        If[i > len && ! foundQ, Print["dependency error!"]; Abort[]];];
 
-  plan2 = Append[plan1[[#2]]\[Transpose], #3] &@@@ sorted;
+  Print[Grid[dependency, Frame -> All]];
+  Print[Grid[{Prepend[EquivalentPath[#[[1, 2]]], Flatten[#\[Transpose][[1]], 1]]} & /@ plan1, Frame -> All]];
+  Print[Graph[DependencyGraph, GraphLayout -> "HighDimensionalEmbedding",
+                               EdgeStyle -> Thickness[0.015],
+                               EdgeShapeFunction -> GraphElementData[GraphElementData["EdgeShapeFunction", "FilledArrow"][[4]], "ArrowSize" -> 0.12], 
+                               VertexSize -> Small,
+                               VertexLabels -> (# -> Placed[Style[FromCharacterCode[9311 + #], 48], Center] & /@ Range[Length@dependency])]];
+
+  sorted = Reverse[ConnectedComponents[DependencyGraph]];
+
+  plan2 = Table[tmp = Transpose[Flatten[Part[plan1, Sort@v], 1]];
+                Append[tmp, Complement[Flatten[Part[dependency\[Transpose][[3]], Sort@v]], Flatten[tmp[[1]]]]], {v, sorted}];
+
+  (*tmp = dependency;
+   sorted = Cases[tmp, {{}, __, {}}];
+   tmp = DeleteCases[tmp, {{}, __, {}}];
+   While[tmp != {}, 
+         len = Length[tmp];
+         foundQ = False;
+         i = 1;
+         While[! foundQ && i <= len, 
+               If[ContainsAll[sorted\[Transpose][[2]], First[tmp[[i]]]], 
+                  AppendTo[sorted, tmp[[i]]]; tmp = Drop[tmp, {i}]; foundQ = True, 
+                  i = i + 1]];
+         If[i > len && ! foundQ, Print["dependency error!"]; Abort[]];];
+
+   plan2 = Append[plan1[[#2]]\[Transpose], #3] &@@@ sorted;*)
   
   plan3 = Table[polynomials = Flatten[plan2[[ip]][[1]]];
                 SlavePolynomial = If[NumPolynomialVar[#]>1, #, ##&[]] &/@ Complement[plan2[[ip]][[3]], Keys[Model2Association[modelfixed]]];
-                slavets = Flatten[Table[GetPolynomialTrainingSet[m, tsdata, vars, svars], {m, SlavePolynomial}], 1];
+                slavets = Flatten[Table[GetPolynomialTrainingSet[m, tsdata], {m, SlavePolynomial}], 1];
                 tsdata = Join[Flatten[plan2[[ip]][[2]], 1], slavets];
                 submodel = SortModelData[DeleteCases[{Transpose[MapIndexed[{ToExpression["PLAN"<>tag<>"PEM"<>ToString[ip]<>"Primary"<>ToString[First@#2]], #1}&, 
-                                                             Complement[polynomials, Flatten@prefix]]]}, {}], vars, svars];
+                                                             Complement[polynomials, Flatten@prefix]]]}, {}], Flatten@fullvars];
                 {submodel,
                  DeleteCases[{(If[MemberQ[polynomials, #[[2]]], #, ## &[]] & /@ prefix)\[Transpose]}, {}], 
                  {},
@@ -1073,11 +1129,11 @@ PlanFitting[invariants_, modelfixed_, ts_, vars_, svars_, OpMat_, TRules_, lvar_
   mimlist = {};
   OptPlan = If[OptionValue["optimization"],
      initmodel = {{ConstantArray[2, Length@Flatten[invariants]], Flatten[invariants]}};
-     slavets = ExtractMinimumTS[ts, OpMat];
-     mimlist = Flatten[Sign@Last[#][[5;;6]]] &/@ slavets;
+     slavets = ExtractMinimumTS[ts, TRules, OpMat];
+     mimlist = Flatten[Sign@T56Data[Last[#]]] &/@ slavets;
      SlavePolynomial = DeleteDuplicates@Flatten[DeleteCases[Table[Flatten[GetActivePolynomial[initmodel, vars, svars, m][[2 ;;]], 1]\[Transpose], {m, mimlist}], {}]\[Transpose][[2]]];
      optmodel = GetOptModel[initmodel, vars, svars, ts, ordercut, OpMat, TRules, lvar, mvar];
-     tsdata = Join[slavets, Flatten[GetPolynomialTrainingSet[#, ts, vars, svars] &/@ (Flatten[optmodel, 1][[2]]), 1]];
+     tsdata = Join[slavets, Flatten[GetPolynomialTrainingSet[#, ts] &/@ (Flatten[optmodel, 1][[2]]), 1]];
      {{{}, 
        {},
        optmodel,
@@ -1086,20 +1142,15 @@ PlanFitting[invariants_, modelfixed_, ts_, vars_, svars_, OpMat_, TRules_, lvar_
 
   plan4 = Join[plan3, OptPlan];
 
-  mimlist = Append[Table[Sort[Flatten[Sign@Last[#][[5;;6]]] &/@ ExtractMinimumTS[Flatten[p[[2]],1], TRules, OpMat, "type"->"StrainFree"]], {p, plan2}], mimlist];
+  mimlist = Append[Table[Sort[Sign@T56Data[Last@#] &/@ ExtractMinimumTS[Flatten[p[[2]],1], TRules, OpMat, "type"->"StrainFree"]], {p, plan2}], mimlist];
 
   tab = {};
   If[OptionValue["table"], Print["Number of Potential Energy minimums: " <> ToString[Length[plan4]]]];
   If[OptionValue["table"],
      Do[minimums = mimlist[[i]];
         AppendTo[tab, {Style["Potential Energy minimum " <> ToString[i] <> ":", Bold, Black], Style["Polynomial Group " <> ToString[i] <> ":", Black, Bold]}];
-        AppendTo[tab, {Grid[Prepend[minimums /. simplifytab, Flatten@fullvars],
-                            Background -> {Flatten[Table[color = If[OddQ[i], Yellow, LightBlue];
-                                                         ConstantArray[color, Length[fullvars[[i]]]], {i, Length@fullvars}]],
-                                           Flatten[{Gray, ConstantArray[None, Length[minimums]]}]},
-                            ItemStyle -> Directive[FontSize -> OptionValue["fontsize"]],
-                            ItemSize -> Full],
-                            If[MemberQ[Flatten@prefix,#2],Style[#2,Darker@Gray],#2] &@@@ Model2List@SortModelData[Fold[JoinModels, plan4[[i]][[1;;3]]],vars,svars]}], {i, Length[plan4]}];
+        AppendTo[tab, {DomainGrid[(Prepend[#, "ene"] &/@ minimums) /. simplifytab, fullvars],
+                            If[MemberQ[Flatten@prefix,#2],Style[#2,Darker@Gray],#2] &@@@ Model2List@SortModelData[Fold[JoinModels, plan4[[i]][[1;;3]]],Flatten@fullvars]}], {i, Length[plan4]}];
      Print[Grid[tab, ItemSize -> Automatic, Frame -> All, Alignment -> {Center, Center}]]];
 
   OptPlan = If[OptionValue["optimization"],
@@ -1107,7 +1158,7 @@ PlanFitting[invariants_, modelfixed_, ts_, vars_, svars_, OpMat_, TRules_, lvar_
                mimlist = Flatten[Sign@Last[#][[5;;6]]] &/@ ExtractMinimumTS[ts, TRules, OpMat, "type"->"all"];
                SlavePolynomial = DeleteDuplicates@Flatten[DeleteCases[Table[Flatten[GetActivePolynomial[initmodel, vars, svars, m][[2 ;;]], 1]\[Transpose], {m, mimlist}], {}]\[Transpose][[2]]];
                optmodel = GetFixMimModel[initmodel, vars, 6, ts, OpMat, TRules, lvar, mvar];
-               tsdata = Flatten[GetPolynomialTrainingSet[#, ts, vars, svars] &/@ Join[Keys[Model2Association[optmodel]], SlavePolynomial], 1];
+               tsdata = Flatten[GetPolynomialTrainingSet[#, ts] &/@ Join[Keys[Model2Association[optmodel]], SlavePolynomial], 1];
                {{{},
                  {},
                  optmodel,
@@ -1304,30 +1355,44 @@ LinvariantFitOld[dir0_, invariants_, order_, vars_, svars_, ts_, TRules_, isovar
   Return[{out, AddInvariants}]
 ]
 
-FitGammaModel[dir0_, pos0_, invariants_, vars_, svars_, ts_, OpMat_, TRules_, isovars_, OptionsPattern[{"gseneweight"->1, "mimweight"->1, "exinvariants" -> {}, "ordercut"->8, "nsw"->10^6, "optimization" -> 0, "adjust"->0.1, "round" -> 10^-6.0, "modelfixed" -> {{{}, {}}}, "unit" -> "atomic", "FontSize" -> 12, "constraints" -> 10.0, "imagesize" -> 200, "pdf" -> True, "plot" -> False, "interpolate" -> 3}]] := Module[{latt, sites, alat, ev2hartree, NumBasis, slavemodel, submodel, modelorders, OffsetFunc, FitInfo, logdata, tsdata, seeds, plan, x, i, m, ip, p, t, t1, t2, v, log, tsout, modeladjusted, modelout, minimumtest, mimene, sol, init, model4fit, ModelFuncFitted, modeldata, tsinfo, fullvars, checkQ, character, data2d, enemodel, enedata, plt, lvar, mvar, ExplosionList, ExInvariants, infodata, ModelExplosionQ, AllInvariants, modeltmp, exorder, FoundQ, rsquare, coeff, tmp, FitData, modelfixed, submodelfixed, prefix, lfitvars, lfitpolynomials, constraints, BoundOrder, polyseeds, submodelbound, boundcount, lfitinit, PolyOrderTable, newplan, addts, tsused, poly, PolyCheckList, FoundExplosionQ, lfitadjust, AdjustRate, GF, m1, m2, m3, m4, optts, mimlist, optmodel, var, Ham, tssub},
+FitGammaModel[dir0_, pos0_, invariants_, grid_, vars_, svars_, uvars_, ts_, OpMat_, TRules_, isovars_, OptionsPattern[{"gseneweight"->1, "mimweight"->1, "ahinvariants" -> {}, "exinvariants" -> {}, "ordercut"->8, "nsw"->10^6, "optimization" -> 0, "adjust"->0.1, "round" -> 10^-6.0, "modelfixed" -> {{{}, {}}}, "hmodel" -> {}, "unit" -> "atomic", "FontSize" -> 12, "constraints" -> 10.0, "imagesize" -> 200, "pdf" -> True, "check"->True, "plot" -> False, "interpolate" -> 3}]] := Module[{latt, sites, alat, ev2hartree, slavemodel, submodel, modelorders, offset, OffsetModel, OffsetHam, OffsetFunc, FitInfo, logdata, tsdata, seeds, plan, x, i, m, ip, p, t, t1, t2, v, log, tsout, modeladjusted, modelout, minimumtest, sol, init, model4fit, ModelFuncFitted, modeldata, tsinfo, fullvars, checkQ, character, data2d, enemodel, enedata, plt, lvar, mvar, ExplosionList, ExInvariants, infodata, ModelExplosionQ, AllInvariants, modeltmp, exorder, FoundQ, rsquare, coeff, tmp, FitData, modelfixed, submodelfixed, prefix, lfitvars, lfitpolynomials, constraints, BoundOrder, polyseeds, submodelbound, boundcount, lfitinit, PolyOrderTable, newplan, addts, tsused, poly, PolyCheckList, FoundExplosionQ, lfitadjust, AdjustRate, GF, m1, m2, m3, m4, optts, mimlist, optmodel, var, Ham, tssub, superts, ahinvariants, hmodel, HoppingFix},
+
   {lvar, mvar} = isovars;
-  fullvars = Append[vars, svars];
   {latt, sites} = pos0;
-  NumBasis = Length[Flatten@vars];
   If[OptionValue["unit"]==="evangstrom", alat = 1.0; ev2hartree=1.0, alat=Mean[Norm[#] & /@ latt]; ev2hartree=1/27.2114];
 
-  modelfixed = OptionValue["modelfixed"];
+  ahinvariants = OptionValue["ahinvariants"];
+
+  {OffsetModel, HoppingFix} = If[Times@@grid == 1 || OptionValue["hmodel"] === {},
+                                 {{},{}},
+                                 offset = GroupBy[Flatten[HModelFolding[OptionValue["hmodel"], grid], 1], 
+                                                  OnSiteExprQ[#[[2]]]&&XInvQ[#[[2]], {ToExpression["u"]}, ContainsNone] &];
+                                 {If[MemberQ[Keys@offset, False], offset[False], {}], If[MemberQ[Keys@offset, True], offset[True], {}]}];
+
+  OffsetHam = Expand[Total[Times @@ # & /@ OffsetModel]];
+
+  modelfixed = {Transpose[DeleteDuplicates[Join[HoppingFix, Model2List[Expr2Gamma[OptionValue["modelfixed"], grid]]], #1[[2]] === #2[[2]] &]]};
+
   prefix = Model2List[modelfixed];
-  AllInvariants = DeleteDuplicates[Flatten[{invariants, OptionValue["exinvariants"]}]];
+  AllInvariants = Expr2Gamma[DeleteDuplicates[Flatten[{invariants, OptionValue["exinvariants"], FoldHopping[ahinvariants, grid]}]], grid];
   
   modeldata = Complement[AllInvariants, Keys[Model2Association[modelfixed]]];
-  plan = PlanFitting[AllInvariants, modelfixed, ts, vars, svars, OpMat, TRules, lvar, mvar, OptionValue["ordercut"], 
+
+  superts = TrainingSet2Supercell[ts, grid];
+  fullvars = TSVars[First@superts];
+
+  plan = PlanFitting[AllInvariants, modelfixed, superts, vars, svars, uvars, OpMat, TRules, lvar, mvar, OptionValue["ordercut"], 
                      "table" -> True, "optimization" -> !(OptionValue["optimization"]==0)];
   
-  Print["Checking training set."];
+  Print[Style["Checking training set.", Black, Bold]];
   checkQ = False;
-  Do[If[p[[5]] == {}, checkQ = True; Print["Error! Trainingset is not complete:"]; Print[p[[1]]]], {p, plan}];
-  If[checkQ, Abort[], Print["Training set check passed"]];
+  Do[If[p[[5]] == {}, checkQ = True; Print[Style["Error! Trainingset is not complete:", Black, Bold]]; Print[p[[1]]]], {p, plan}];
+  If[checkQ, Abort[], Print[Style["Training set check passed", Black, Bold]]];
 
   logdata = {};
   AdjustRate = ConstantArray[OptionValue["adjust"], Length@plan];
   If[OptionValue["optimization"] != 0, AdjustRate[[-1]] = OptionValue["optimization"]];
-  modelout = {SortModelData[DeleteCases[{(If[MemberQ[Keys[Model2Association[Flatten[plan\[Transpose][[2]], 1]]], #2], ## &[], {#1, #2}] & @@@ prefix)\[Transpose]}, {}], vars, svars]};
+  modelout = {SortModelData[DeleteCases[{(If[MemberQ[Keys[Model2Association[Flatten[plan\[Transpose][[2]], 1]]], #2], ## &[], {#1, #2}] & @@@ prefix)\[Transpose]}, {}], fullvars]};
   tsout = {};
   
   Do[(* loop plans *)
@@ -1339,8 +1404,14 @@ FitGammaModel[dir0_, pos0_, invariants_, vars_, svars_, ts_, OpMat_, TRules_, is
      (*OffsetFunc = (modelfitted /. Thread[Flatten[fullvars] -> {##}] &);*)
   
      tsused = plan[[ip]][[5]];
-     tsdata = Flatten[{#5/alat, #6, #4*ev2hartree}] & @@@ Flatten[tsused, 1];
-     mimlist = Last[#]*{1, 1, 1, ev2hartree, 1/alat, 1, 1} &/@ ExtractMinimumTS[tsused, TRules, OpMat, "type"->"Strained"];
+     tsdata = Flatten[{Thread[Sub2List[#5][[1]] -> Sub2List[#5][[2]]/alat], #6, #4*ev2hartree}] & @@@ Flatten[tsused, 1];
+
+     mimlist = {Last[#][[1]], 
+                Last[#][[2]], 
+                Last[#][[3]], 
+                Last[#][[4]] ev2hartree, 
+                Thread[Sub2List[Last[#][[5]]][[1]] -> Sub2List[Last[#][[5]]][[2]]/alat],
+                Last[#][[6]]} & /@ ExtractMinimumTS[tsused, TRules, OpMat, "type" -> "all"];
 
      (*{rsquare, coeff} = If[submodel != {},
                            Quiet[LinearModelFit[tsdata, submodel, Flatten[fullvars], 
@@ -1369,11 +1440,11 @@ FitGammaModel[dir0_, pos0_, invariants_, vars_, svars_, ts_, OpMat_, TRules_, is
 
        (* fitting by minimizing GF *)
        model4fit = Fold[JoinModels, {Last@modelout, submodelfixed, submodel, optmodel, slavemodel}];
-       Ham = GetHam[model4fit,vars,svars];
+       Ham = GetHam[model4fit] + OffsetHam;
 
-       GF = Expand[Sum[tssub = Thread[Flatten[fullvars]->t1[[1;;-2]]];
+       GF = Expand[Sum[tssub = Flatten[t1[[1;;-2]]];
                        (Last[t1] - Ham)^2 /. tssub, {t1, tsdata[[2;;]]}] 
-                  + OptionValue["mimweight"]*Sum[tssub = Thread[Flatten[fullvars] -> Flatten[t2[[5;;6]]]];
+                  + OptionValue["mimweight"]*Sum[tssub = Flatten[t2[[5;;6]]];
                              (OptionValue["gseneweight"]*(t2[[4]] - Ham)^2 + Sum[Expand[D[Ham, {var, 1}]]^2, {var, Flatten@fullvars}]) /. tssub, {t2, mimlist}]];
 
        If[submodel === {} && slavemodel === {} && optmodel === {},
@@ -1385,16 +1456,16 @@ FitGammaModel[dir0_, pos0_, invariants_, vars_, svars_, ts_, OpMat_, TRules_, is
                                       <> ", bounding trial step: " 
                                       <> ToString[boundcount-1] 
                                       <> ", add terms: "
-                                      <> ToString[GetHam[submodelbound, vars, svars], StandardForm], Bold, Black]];
+                                      <> ToString[GetHam[submodelbound], StandardForm], Bold, Black]];
 
        (*{rsquare, sol} = If[submodel != {},
                            Quiet[NonlinearModelFit[tsdata, 
-                                                   (GetHam[model4fit, vars, svars] + GetHam[slavemodel, vars, svars]), 
+                                                   (GetHam[model4fit] + GetHam[slavemodel]), 
                                                    lfitinit,
                                                    Flatten[fullvars]][{"RSquared", "BestFitParameters"}]], 
                            {0, {}}];*)
 
-       modeltmp = SortModelData[Fold[JoinModels, {submodelfixed, submodel, optmodel} /. sol], vars, svars];
+       modeltmp = SortModelData[Fold[JoinModels, {submodelfixed, submodel, optmodel} /. sol], fullvars];
        modeladjusted = AdjustModel[Last@modelout, slavemodel /. sol];
 
        (* Interaction terms *)
@@ -1407,11 +1478,11 @@ FitGammaModel[dir0_, pos0_, invariants_, vars_, svars_, ts_, OpMat_, TRules_, is
 
        (* take the first (ordered) explosion polynomial *)
        polyseeds = {};
-       Do[polyseeds = If[ExplosionQ[JoinModels[modeladjusted, modeltmp], vars, svars, poly], {poly}, {}];
+       Do[polyseeds = If[ExplosionQ[Fold[JoinModels, {modeladjusted, modeltmp, {Transpose@CollectPolynomial[OffsetHam]}}], poly], {poly}, {}];
           If[polyseeds != {}, Break[]], {poly, PolyCheckList}];
 
        (* calculate energy invariants on the fly *)
-       ExInvariants = If[polyseeds === {}, {}, GetBoundingInvariants[polyseeds[[1]], vars, svars, OptionValue["ordercut"], TRules, lvar, mvar]];
+       ExInvariants = If[polyseeds === {}, {}, Print[polyseeds];Abort[];GetBoundingInvariants[polyseeds[[1]], vars, svars, OptionValue["ordercut"], TRules, lvar, mvar]];
 
        If[ExInvariants === {} && polyseeds != {},
           {m1, m2, m3, m4} = First@Position[{submodel, slavemodel}, First@polyseeds];
@@ -1446,28 +1517,28 @@ FitGammaModel[dir0_, pos0_, invariants_, vars_, svars_, ts_, OpMat_, TRules_, is
    
      AppendTo[tsout, plan[[ip]][[4]]]; 
    
-     ModelFuncFitted = GetHam[Last@modelout, vars, svars];
+     ModelFuncFitted = GetHam[Last@modelout] + OffsetHam;
    
-     plt = CheckFitting[pos0, Keys@Model2Association[submodel], Last@modelout, tsused, vars, svars, "plot" -> False, "unit" -> OptionValue["unit"]];
+     plt = If[OptionValue["check"], CheckFitting[pos0, Keys@Model2Association[submodel], Append[Last@modelout, Transpose@CollectPolynomial[OffsetHam]], tsused, fullvars, "plot" -> False, "unit" -> OptionValue["unit"]], {}];
 
-     seeds = Join[DeleteDuplicates@Flatten[FetchSeeds[#, Flatten[fullvars], 2, "zero" -> False] & /@ Keys@Model2Association[submodel], 1],
-                  DeleteDuplicates[Flatten[Last[#][[5 ;; 6]]] & /@ ts, Chop[Norm[#1 - #2] Norm[#1 + #2], OptionValue["round"]] == 0. &]];
+     (*seeds = Join[DeleteDuplicates@Fold[Join, FetchSeeds[#, Flatten[fullvars], 1, "zero" -> False] & /@ Keys@Model2Association[submodel]],
+                  DeleteDuplicates[T56Data[Last@#] & /@ superts, Chop[Norm[#1 - #2] Norm[#1 + #2], OptionValue["round"]] == 0. &]];*)
 
-     
+     seeds = Join[Fold[Join, FetchSeeds[#, Flatten[fullvars], 1, "zero" -> False, "limit"->2^10] & /@ Keys@Model2Association[submodel]],
+                  SparseArray@DeleteDuplicates[T56Data[Last@#] & /@ superts, Chop[Norm[#1 - #2] Norm[#1 + #2], OptionValue["round"]] == 0. &]];
+
+     Print[Style["Number of Directions During Explosion Test: " <> ToString@Length@seeds, Black, Bold]]; 
+
      minimumtest = SortBy[DeleteDuplicates[Flatten[Table[init = {Flatten[fullvars], 
                                                                 m s, 
                                                                 ConstantArray[-OptionValue["constraints"], Length@Flatten[fullvars]],                       
                                                                 ConstantArray[OptionValue["constraints"], Length@Flatten[fullvars]]}\[Transpose];
-                                                        sol = Quiet@FindMinimum[ModelFuncFitted, init];
+                                                        sol = Quiet@FindMinimum[ModelFuncFitted, init, MaxIterations->10000];
                                                         Prepend[Chop[Flatten[fullvars] /. (sol[[2]]), OptionValue["round"]], 
                                                                 N@Round[sol[[1]], OptionValue["round"]]], {s, seeds}, {m, {0.5, 3.}}], 1], 
                                           (Chop[Norm[Flatten[#1[[2 ;;]] - #2[[2 ;;]]]], OptionValue["round"]] == 0. || Chop[#1[[1]]-#2[[1]]] == 0.)&], First, Greater];
-     mimene = Split[minimumtest\[Transpose][[1]]];
 
-     FitInfo = Grid@{{FitInfo}, {NumberForm[Grid[Prepend[minimumtest, Join[{"ene"}, Flatten[fullvars]]],
-                                                 Background -> {Flatten[{LightBlue, Table[ConstantArray[If[OddQ[v], Yellow, Pink], Length[Append[vars, svars][[v]]]], {v, Length@Append[vars, svars]}]}],
-                                                                Prepend[Flatten@Table[If[OddQ[i], ConstantArray[Gray, Length[mimene[[i]]]], ConstantArray[None, Length[mimene[[i]]]]], {i, Length[mimene]}], Cyan]},
-                                                 ItemSize -> Full], {4, 4}]}};
+     FitInfo = Grid[{{FitInfo}, {NumberForm[DomainGrid[Join[{First[#]}/(Times@@grid), #[[2;;]]] &/@ minimumtest, fullvars], {4, 4}]}}, Alignment -> Left];
    
      infodata = Join[{FitInfo}, 
                      {tsinfo}, 
@@ -1476,23 +1547,38 @@ FitGammaModel[dir0_, pos0_, invariants_, vars_, svars_, ts_, OpMat_, TRules_, is
    
      AppendTo[logdata, infodata];
    
-     ExplosionList = DeleteDuplicates[Table[If[MemberQ[Abs[minimumtest[[i]]][[2 ;; NumBasis + 1]], 10.], 
-                                              If[Chop[Abs@# - 10.] == 0., 1, 0] & /@ (minimumtest[[i]][[2 ;; NumBasis + 1]]), 
-                                              ## &[]], {i, Length[minimumtest]}]]; 
-     Print["Explosion list:"];
-     Print[Grid[Prepend[Append[ExplosionList, ConstantArray[0,Length@Flatten@fullvars]] /. {0->"-"}, Flatten@fullvars], 
-                Frame->True, 
-                FrameStyle -> If[Length[ExplosionList] > 0, Red, Black]]], {ip, Length@plan}];
+     ExplosionList = Append[DeleteDuplicates[Table[If[MemberQ[Abs[minimumtest[[i]]][[2 ;; Length[Flatten@fullvars] + 1]], 10.], 
+                                                   If[Chop[Abs@# - 10.] == 0., 1, 0] & /@ (minimumtest[[i]][[2 ;; Length[Flatten@fullvars] + 1]]), 
+                                                   ## &[]], {i, Length[minimumtest]}]],
+                           ConstantArray[0,Length@Flatten@fullvars]]; 
+
+     Print[Style["Explosion list:", Black, Bold]];
+     Print[DomainGrid[(Prepend[#, "\[Infinity]"] &/@ ExplosionList) /. {0->"-"}, fullvars, "framecolor" -> If[Length@ExplosionList > 1, Red, Black]]], {ip, Length@plan}];
   
   log = Style[# /. x_Real :> Chop[x, OptionValue["round"]], OptionValue["FontSize"]] &@ Grid[{{"BestFit", "trainingset", "R02", "plots"}, ## & @@ logdata}, Dividers -> All, ItemSize -> Full];
   Print[log];
+  
+  If[OptionValue["pdf"],  Export[dir0 <> "/fitting_info.pdf", CreateDocument[Style[# /. x_Real :> Chop[x, OptionValue["round"]], OptionValue["FontSize"]] &@ Grid[{{"BestFit", "trainingset", "R02", "plots"}, #}\[Transpose], ItemSize -> Full] & /@ logdata, PageBreakBelow -> True, Visible -> False]]];
 
-  Export[dir0 <> "/fitting_info.pdf", CreateDocument[Style[# /. x_Real :> Chop[x, OptionValue["round"]], OptionValue["FontSize"]] &@ Grid[{{"BestFit", "trainingset", "R02", "plots"}, #}\[Transpose], ItemSize -> Full] & /@ logdata, PageBreakBelow -> True, Visible -> False]];
-
-  Return[{modelout, tsout}]
+  Return[{modelout, tsout, OffsetHam}]
 ]
 
-GetHam[models_, vars_, svars_, OptionsPattern[{"subset"->{}}]] := Module[{out, subvars, fixsub, fullvars, polynomials, ham, s},
+DomainGrid[domains_, vars_, OptionsPattern["framecolor"->Black]] := Module[{tmp, data, d, i, thead, VarTally},
+  thead = Join[{"hartree/u.c.", "site"}, VarBare@Flatten[#@vars & /@ {First, Last}]];
+  VarTally = Split[Flatten@VarHead[#@vars & /@ {First, Last}]];
+  data = Flatten[Table[tmp = CloneReshape2D[vars, d[[2 ;;]]];
+                       MapIndexed[Join[If[#2 == {1}, {First@d}, {""}], 
+                                       {MatrixForm[{VarGrid[First[vars[[First@#2]]]]}]}, 
+                                       #1, 
+                                       If[#2 == {1}, Last@tmp, ConstantArray["", 6]]] &, tmp[[;; -2]]], {d, domains}], 1];
+  Grid[Prepend[data, thead], 
+       Frame -> True,
+       FrameStyle -> OptionValue["framecolor"],
+       Background -> {Flatten[{LightBlue, LightPurple, Table[ConstantArray[If[OddQ[i], Yellow, Pink], Length[VarTally[[i]]]], {i, Length@VarTally}]}],
+                     Prepend[Flatten@Table[If[OddQ[i], ConstantArray[Gray, Length@tmp - 1], ConstantArray[None, Length@tmp - 1]], {i, Length[domains]}], Cyan]}, ItemSize -> Full]
+]
+
+GetHamOld[models_, vars_, svars_, OptionsPattern[{"subset"->{}}]] := Module[{out, subvars, fixsub, fullvars, polynomials, ham, s},
   fullvars = Append[vars, svars];
   ham = Total[(Times @@ #) & /@ models, 2];
   polynomials = Flatten[If[Head[#] === Plus, Level[#, 1], {#}] &/@ OptionValue["subset"]];
@@ -1502,18 +1588,31 @@ GetHam[models_, vars_, svars_, OptionsPattern[{"subset"->{}}]] := Module[{out, s
   Return[out]
 ]
 
-Expression2Model[ham_, vars_, svars_] := Module[{data, a, b},
+GetHam[models_, OptionsPattern[{"subset"->{}}]] := Module[{out, subvars, fixsub, fullvars, polynomials, ham, s},
+  fullvars = If[models ==={}, {}, Variables[Model2List[models]\[Transpose][[2]]]];
+  ham = Total[(Times @@ #) & /@ models, 2];
+  polynomials = Flatten[If[Head[#] === Plus, Level[#, 1], {#}] &/@ OptionValue["subset"]];
+
+  subvars = If[polynomials === {}, {fullvars}, Variables[#] &/@ polynomials];
+
+  out = Sum[fixsub = Thread[Complement[fullvars, s] -> 0];
+            ham /. fixsub, {s, subvars}];
+  Return[out]
+]
+
+
+Expression2Model[ham_, fullvars_] := Module[{data, a, b},
   data = If[Head[ham] === Plus,
             Cases[ham, Times[a_, b_] /; And[AtomQ[a], ! AtomQ[b]] -> {a, b}],
             Cases[{ham}, Times[a_, b_] /; And[AtomQ[a], ! AtomQ[b]] -> {a, b}]];
-  Return[SortModelData[DeleteCases[{data\[Transpose]}, {}], vars, svars]]
+  Return[SortModelData[DeleteCases[{data\[Transpose]}, {}], fullvars]]
 ]
 
 GetActivePolynomial[modeldata_, vars_, svars_, mim_] := Module[{fullvars, PolynomialList, FullPolynomialList, i, out, models, tmpvars, subset},
   fullvars = Append[vars, svars];
   tmpvars = DeleteCases[Sign[Chop@mim[[1;;Length[Flatten@fullvars]]]]*Flatten[fullvars], 0];
   subset = Times @@ # & /@ Subsets[tmpvars, {1, Length@tmpvars}];
-  models = Transpose[Flatten[#] &/@ (Expression2Model[GetHam[modeldata, vars, svars, "subset" -> subset], vars, svars]\[Transpose])];
+  models = Transpose[Flatten[#] &/@ (Expression2Model[GetHam[modeldata, "subset" -> subset], vars, svars]\[Transpose])];
   PolynomialList = If[Head[#2] === Plus, Level[#2, 1], {#2}] & @@@ models;
   FullPolynomialList = If[Head[#] === Plus, Level[#, 1], {#}] & /@ Flatten[modeldata\[Transpose][[2]]];
   out = Flatten[Table[If[IntersectingQ[FullPolynomialList[[i]], #], {i, Flatten[modeldata\[Transpose][[2]]][[i]]}, ## &[]], {i, Length@FullPolynomialList}] & /@ PolynomialList, 1];
@@ -1547,29 +1646,30 @@ TrimmedCoefficient[coeff_, trim_, tol_] := Module[{LinearInvQ, trimr, triml, tri
   Return[coeffavg]
 ]
 
-CheckMinimums[models_, seeds_, amp_, vars_, svars_, OptionsPattern[{"round" -> 10^-4, "nsw"->10000, "all"->True}]] := Module[{sol, fullvars, init, s, minimums, simplifytab, a, tabdata},
-  simplifytab = DeleteDuplicates@Flatten[Table[{-1*a -> Style["-1", Bold, Blue], 1*a -> Style["1", Bold, Red], 0 -> "-"}, {a, amp}]];
-  fullvars = Flatten[{vars, svars}];
-  minimums = Table[init = {fullvars, Round[a*s,1], -(Abs[amp]+1)*ConstantArray[1,Length[s]], (Abs[amp]+1)*ConstantArray[1,Length[s]]}\[Transpose];
-                   sol = Quiet@FindMinimum[GetHam[models, vars, svars], init, MaxIterations -> OptionValue["nsw"]];
-                   {Prepend[# & /@ (init\[Transpose][[2]]), " "] /. simplifytab,
-                   Prepend[# & /@ Chop@N@Round[fullvars /. sol[[2]], OptionValue["round"]], Chop[sol[[1]]]]}, {s, seeds}, {a, amp}];
-  tabdata = Flatten[Reverse@SortBy[DeleteDuplicates[Flatten[minimums, 1], (Chop[Norm[#1[[2,1]]-#2[[2,1]]], 10^-6]==0)&], #[[2,1]]&],1];
+CheckMinimums[models_, seeds_, amp_, fullvars_, OptionsPattern[{"round" -> 10^-4, "nsw"->10000, "all"->True}]] := Module[{sol, init, s, minimums, simplifytab, a, tabdata, grid},
+  
+  grid = Length[DeleteDuplicates[#]] & /@ Transpose[VarGrid[#] & /@ Flatten[fullvars[[1 ;; 2]]]];
 
-  Print[Grid[Prepend[If[OptionValue["all"],tabdata,tabdata[[1;;20]]], Prepend[fullvars, "ene"]], 
-             Background -> {Flatten[{LightBlue, Table[ConstantArray[If[OddQ[v], Yellow, Pink], Length[Append[vars, svars][[v]]]], {v, Length@Append[vars, svars]}]}], Prepend[Table[If[OddQ[ibg], White, None], {ibg, 2 Length[minimums]}], Cyan]}, ItemSize -> Full]];
+  simplifytab = DeleteDuplicates@Flatten[Table[{-1*a -> Style["-1", Bold, Blue], 1*a -> Style["1", Bold, Red], 0 -> "-"}, {a, amp}]];
+  minimums = Table[init = {Flatten@fullvars, Round[a*s,1], -(Abs[amp]+1)*ConstantArray[1,Length[s]], (Abs[amp]+1)*ConstantArray[1,Length[s]]}\[Transpose];
+                   sol = Quiet@FindMinimum[GetHam[models], init, MaxIterations -> OptionValue["nsw"]];
+                   Prepend[# & /@ Chop@N@Round[Flatten@fullvars /. sol[[2]], OptionValue["round"]], Chop[sol[[1]]]/(Times@@grid)] /. simplifytab, {s, seeds}, {a, amp}];
+
+  tabdata = Reverse@SortBy[DeleteDuplicates[Flatten[minimums, 1], (Chop[Norm[#1[[1]] - #2[[1]]], 10^-6] == 0) &], #[[1]] &];
+  Print[DomainGrid[tabdata, fullvars]];
+
 ]
 
-CheckFitting[pos0_, invariants_, model_, ts_, vars_, svars_, OptionsPattern[{"imagesize" -> 200, "col" -> 4, "plot" -> True, "plotrange" -> All, "unit" -> "atomic"}]] := Module[{inv, fullvars, character, data2d, enemodel, s, m, i, t, plt, alat, ev2hartree, latt, sites},
-  fullvars = Append[vars, svars];
+CheckFitting[pos0_, invariants_, model_, ts_, fullvars_, OptionsPattern[{"imagesize" -> 200, "col" -> 4, "plot" -> True, "plotrange" -> All, "unit" -> "atomic"}]] := Module[{inv, character, data2d, enemodel, s, m, i, t, plt, alat, ev2hartree, latt, sites},
   {latt, sites} = pos0;
   If[OptionValue["unit"]==="evangstrom", alat = 1.0; ev2hartree=1.0, alat=Mean[Norm[#] & /@ latt]; ev2hartree=1/27.2114];
 
   plt = Flatten@Table[inv = If[MatchQ[Head@m, Plus], m[[1]], m];
                       character = If[MemberQ[Variables@inv, #], 1, 0] & /@ Flatten[fullvars];
-                      Table[If[Sign@Abs@Join[First[ts[[t]]][[5]], First[ts[[t]]][[6]]] == character,
-                               data2d = Flatten[{#5/alat, #6, #4*ev2hartree}] & @@@ (ts[[t]]);
-                               enemodel = (GetHam[model, vars, svars] /. Thread[Flatten[fullvars] -> #[[1 ;; -2]]]) & /@ data2d;
+                      character = First@InvariantCharacter[inv, fullvars];
+                      Table[If[Sign@Abs@Join[T5Data[First[ts[[t]]]], T6Data[First[ts[[t]]]]] == character,
+                               data2d = Flatten[{Sub2List[#5][[2]]/alat, Sub2List[#6][[2]], #4*ev2hartree}] & @@@ (ts[[t]]);
+                               enemodel = (GetHam[model] /. Thread[Flatten[fullvars] -> #[[1 ;; -2]]]) & /@ data2d;
                                Prepend[Table[If[Norm[data2d[[;; , i]]] != 0, 
                                                 ListPlot[{{data2d[[;; , i]], data2d[[;; , -1]]}\[Transpose], {data2d[[;; , i]], enemodel}\[Transpose]}, 
                                                          PlotRange -> OptionValue["plotrange"], 
@@ -1580,7 +1680,7 @@ CheckFitting[pos0_, invariants_, model_, ts_, vars_, svars_, OptionsPattern[{"im
                                                          FrameLabel -> {"(" <> ToString[i] <> ") " <> ToString[Flatten[fullvars][[i]], StandardForm] <> " (\[Angstrom])", "energy (eV)"}, 
                                                          ImagePadding -> {{60, 10}, {40, 10}}], ## &[]], {i, Length[Flatten@fullvars]}], 
                                        If[Chop@Norm[Last[data2d][[1 ;; -2]]] != 0., 
-                                          Plot[GetHam[model, vars, svars] /. Thread[Flatten[fullvars] -> s Normalize[Last[data2d][[1 ;; -2]]]], {s, 0, 1.5 Norm[Last[data2d][[1 ;; -2]]]}, 
+                                          Plot[GetHam[model] /. Thread[Flatten[fullvars] -> s Normalize[Last[data2d][[1 ;; -2]]]], {s, 0, 1.5 Norm[Last[data2d][[1 ;; -2]]]}, 
                                                PlotStyle -> Red, 
                                                PlotRange -> OptionValue["plotrange"], 
                                                ImageSize -> OptionValue["imagesize"], Frame -> True, 
@@ -1588,13 +1688,14 @@ CheckFitting[pos0_, invariants_, model_, ts_, vars_, svars_, OptionsPattern[{"im
                                                PlotLabel -> Style[ToString[inv, StandardForm] <> " (ts-" <> ToString[t] <> ")", Blue, 8], 
                                                FrameLabel -> {ToString[inv, StandardForm] <> " (\[Angstrom])", "energy (eV)"}, 
                                                ImagePadding -> {{60, 10}, {40, 10}}], {}]], ## &[]], {t, Length@ts}], {m, If[ListQ[invariants], invariants, {invariants}]}];
+                                               
   If[OptionValue["plot"], Print[Grid@Partition[plt, UpTo[OptionValue["col"]]]]];
+
   Return[plt]
 ]
 
-SortModelData[modeldata_, vars_, svars_] := Module[{fullvars, sortedinv, out, model},
-  fullvars = Append[vars, svars];
-  out = Table[sortedinv = Flatten[SortInvariants[model[[2]], Flatten@fullvars]];
+SortModelData[modeldata_, vars_] := Module[{sortedinv, out, model},
+  out = Table[sortedinv = Flatten[SortInvariants[model[[2]], Flatten@vars]];
               SortBy[model\[Transpose], Position[sortedinv, #[[2]]] &]\[Transpose], {model, modeldata}];
   Return[out]
 ]
@@ -1634,18 +1735,17 @@ EnergyGainQ[model_, vars_, svars_, invariant_] := Module[{tmpvars, tmpmodel, sad
   fullvars = Append[vars, svars];
   inv = If[Head[invariant] === Plus, invariant[[1]], invariant];
   tmpvars = Variables[inv];
-  tmpmodel = Chop[GetHam[model, vars, svars, "subset" -> {inv}]];
+  tmpmodel = Chop[GetHam[model, "subset" -> {inv}]];
   saddle = NSolve[Table[D[tmpmodel, {xx, 1}] == 0, {xx, tmpvars}], tmpvars, Reals];
   DropDirections = If[(tmpvars Abs@Sign[tmpvars /. #] === tmpvars), #, ## &[]] & /@ saddle;
   outQ = ! DropDirections === {};
   Return[{outQ, DropDirections}]
 ]
 
-ExplosionQ[model_, vars_, svars_, invariant_] := Module[{tmpvars, tmpmodel, saddle, xx, fullvars, sol, s, outQ, inv, DropDirections},
-  fullvars = Append[vars, svars];
+ExplosionQ[model_, invariant_] := Module[{tmpvars, tmpmodel, saddle, xx, sol, s, outQ, inv, DropDirections},
   inv = If[Head[invariant] === Plus, invariant[[1]], invariant];
   tmpvars = Variables[inv];
-  tmpmodel = Chop[GetHam[model, vars, svars, "subset" -> {inv}]];
+  tmpmodel = Chop[GetHam[model, "subset" -> {inv}]];
   saddle = NSolve[Table[D[tmpmodel, {xx, 1}] == 0, {xx, tmpvars}], tmpvars, Reals];
   DropDirections = If[(tmpvars Abs@Sign[tmpvars /. #] === tmpvars), #, ## &[]] & /@ saddle;
   outQ = Or @@ Table[sol = Chop@Quiet@FindMinimum[tmpmodel, {#, 2 # /. s, -10000, 10000} & /@ tmpvars]; 
@@ -1696,7 +1796,7 @@ GetBoundingInvariants[invariant_, vars_, svars_, cut_, TRules_, lvar_, mvar_, Op
 ]
 
 GetOptModelOld[model_, vars_, svars_, tsused_, cut_, OpMat_, TRules_, lvar_, mvar_] := Module[{optts, m, mimlist, PolyCheckList, polyseeds, ExInvariants, submodel},
-  optts = ExtractMinimumTS[tsused, OpMat];
+  optts = ExtractMinimumTS[tsused, TRules, OpMat];
   mimlist = Flatten[Sign@Last[#][[5 ;; 6]]] & /@ optts;
 
   ExInvariants = DeleteDuplicates@Flatten@Table[PolyCheckList = GetActivePolynomial[model, vars, svars, m];
@@ -1710,7 +1810,7 @@ GetOptModelOld[model_, vars_, svars_, tsused_, cut_, OpMat_, TRules_, lvar_, mva
 
 GetOptModel[model_, vars_, svars_, tsused_, cut_, OpMat_, TRules_, lvar_, mvar_] := Module[{optts, m, mimlist, mimjoint, PolyCheckList, polyseeds, ExInvariants, submodel, vcharacters, ActivePolyElementary, ActiveCharacter, tmpvars, ExInvCandidate, exorder, invariants},
   vcharacters = Flatten[InvariantCharacter[#, Flatten@vars] & /@ (Model2List[model]\[Transpose][[2]]), 1];
-  mimlist = Sign@Last[#][[5]] &/@ ExtractMinimumTS[tsused, OpMat];
+  mimlist = Sign@Last[#][[5]] &/@ ExtractMinimumTS[tsused, TRules, OpMat];
   mimjoint = Select[mimlist, ! MemberQ[vcharacters, Abs@#]&];
 
   ExInvariants = Table[tmpvars = DeleteCases[m*Flatten[vars], 0];
@@ -1733,7 +1833,7 @@ GetOptModel[model_, vars_, svars_, tsused_, cut_, OpMat_, TRules_, lvar_, mvar_]
 
 GetFixMimModel[model_, vars_, order_, tsused_, OpMat_, TRules_, lvar_, mvar_, OptionsPattern[{"all"->True}]] := Module[{mimlist, pool, m, ExInvariants, submodel, vcharacters, ch},
   vcharacters = Flatten[InvariantCharacter[#, Flatten@vars] & /@ (Model2List[model]\[Transpose][[2]]), 1];
-  mimlist = Sign@Abs@Last[#][[5]] &/@ ExtractMinimumTS[tsused, OpMat];
+  mimlist = Sign@Abs@Last[#][[5]] &/@ ExtractMinimumTS[tsused, TRules, OpMat];
 
   pool = Flatten@GetInvariants[TRules,
                                vars /. Var2Var[lvar, mvar, 1],
@@ -1749,19 +1849,19 @@ GetFixMimModel[model_, vars_, order_, tsused_, OpMat_, TRules_, lvar_, mvar_, Op
   Return[submodel]
 ]
 
-ExtractMinimumTS[tsdata_, TRules_, OpMat_, OptionsPattern[{"type"->"Strained"}]] := Module[{m, ts, n, ssub, StrainMat, SymMat, tsfull, tscubic},
-  ssub = Cases[#, (Subscript[ToExpression["Epsilon"], i_, j_] -> Subscript[ToExpression["Epsilon"], k_, l_]) :> Subscript[ToExpression["Epsilon"], k, l]] & /@ TRules;
+ExtractMinimumTS[tsdata_, TRules_, OpMat_, OptionsPattern[{"type"->"Strained"}]] := Module[{m, ts, n, ssub, StrainMat, SymMat, tsfull, tscubic, i, j, xx},
+  ssub = Cases[#, (Subscript[ToExpression["Epsilon"], i_, j_] -> xx_) :> xx] & /@ TRules;
   StrainMat = Table[Coefficient[#, ssub[[1]]] &/@ m, {m, ssub}];
-  SymMat = Transpose[{OpMat, StrainMat}];
+  SymMat = Round@Transpose[{OpMat, StrainMat}];
   
   tsfull= Select[DeleteDuplicates[tsdata, 
-                 Complement[Table[Join[Round[m[[1]]].Flatten[Sign@Last[#1][[5]]], Round[m[[2]]].Flatten[Sign@Last[#1][[6]]]], {m, SymMat}],
-                            Table[Join[Round[m[[1]]].Flatten[Sign@Last[#2][[5]]], Round[m[[2]]].Flatten[Sign@Last[#2][[6]]]], {m, SymMat}]] === {} &], 
-                 Norm[Last[#][[5]]] != 0. && Norm[Last[#][[6]]] != 0. &];
+                 Complement[VarSubStar[Last[#1][[5]], Last[#1][[6]], SymMat],
+                            VarSubStar[Last[#2][[5]], Last[#2][[6]], SymMat]] === {} &], 
+                 Norm[T5Data[Last@#]] != 0. && Norm[T6Data[Last@#]] != 0. &];
   tscubic = Select[DeleteDuplicates[tsdata, 
-                   Complement[Table[Join[Round[m[[1]]].Flatten[Sign@Last[#1][[5]]], Round[m[[2]]].Flatten[Sign@Last[#1][[6]]]], {m, SymMat}],
-                              Table[Join[Round[m[[1]]].Flatten[Sign@Last[#2][[5]]], Round[m[[2]]].Flatten[Sign@Last[#2][[6]]]], {m,SymMat}]] === {} &], 
-                   Norm[Last[#][[6]]] == 0. &];
+                   Complement[VarSubStar[Last[#1][[5]], Last[#1][[6]], SymMat],
+                              VarSubStar[Last[#2][[5]], Last[#2][[6]], SymMat]] === {} &], 
+                   Norm[T6Data[Last@#]] == 0. &];
 
   ts = Which[OptionValue["type"]==="StrainFree", tscubic,
              OptionValue["type"]==="Strained", tsfull,
@@ -1785,7 +1885,7 @@ ModelOptimization[model_, adjustlist_, ts_, vars_, svars_, OpMat_, mim_, Options
                           Length[#1] == 2, {ToExpression["Adjust" <> ToString[First@#2]], #1[[1]], #1[[1]], #1[[1]], Last@#1},
                           Length[#1] == 4, {ToExpression["Adjust" <> ToString[First@#2]], #1[[1]], #1[[2]], #1[[3]], Last@#1}] &, adjustlist];
   optmodel = {Transpose[{#1, #5} & @@@ init]};
-  Ham = GetHam[JoinModels[model, optmodel], vars, svars];
+  Ham = GetHam[JoinModels[model, optmodel]];
   GF = Sum[tssub = Thread[Flatten[fullvars] -> Flatten[Last[t][[5 ;; 6]]]];
            (OptionValue["weight"]*(Last[t][[4]] - Ham)^2 + Sum[Expand[D[Ham, {var, 1}]]^2, {var, Flatten@fullvars}]) /. tssub, {t, tsdata}];
   sol = FindMinimum[GF, {#1, #2, #3, #4} & @@@ init];
@@ -1797,7 +1897,7 @@ ModelOptimization[model_, adjustlist_, ts_, vars_, svars_, OpMat_, mim_, Options
 QuickFit[poly_, tsdata_, vars_, svars_, prefix_] := Module[{data, model, OffsetFunc, fullvars},
   fullvars = Append[vars, svars];
   OffsetFunc = (prefix /. Thread[Flatten@fullvars -> {##}] &);
-  data = Flatten[{#5, #6, #4}] & @@@ Flatten[GetPolynomialTrainingSet[#, tsdata, vars, svars] & /@ poly, 2];
+  data = Flatten[{#5, #6, #4}] & @@@ Flatten[GetPolynomialTrainingSet[#, tsdata] & /@ poly, 2];
   model = LinearModelFit[data, poly, Flatten@fullvars, IncludeConstantBasis -> False, LinearOffsetFunction -> OffsetFunc]["BestFit"];
   Return[model]
 ]
@@ -1838,6 +1938,7 @@ FitSupercellHessian[Basis_, Fij_, qgrid_, TRules4Jij_, pos0_, vars_, OptionsPatt
   {latt, sites} = pos0;
   {na, nb} = Dimensions[Basis];
   {cbasis, supervars} = BasisInSupercell[pos0, Basis, vars, qgrid, OptionValue["SymmetricBasisQ"], "rotate" -> OptionValue["rotate"]];
+  cbasis = Transpose[Flatten@Table[Chop[latt.(Partition[#, 3][[i]])], {i, Length@Fij}] &/@ Transpose[cbasis]];
  If[OptionValue["unit"]==="evangstrom", alat = 1.0; ev2hartree=1.0, alat=Mean[Norm[#] & /@ latt]; ev2hartree=1/27.2114];
 
   (*SFC = 0.5*cbasis\[Transpose].(ArrayFlatten[Fij]+ArrayFlatten[Fij]\[Transpose]).cbasis;*)
@@ -2367,6 +2468,7 @@ BuildLINVARIANT[dir0_, pos0_, fullmodel_, vars_, svars_, ie_, param_, ndipoles_,
   {modelextend, coefficients} = ExportHamiltonian[dir, fullmodel, vars, svars, ie, EwaldFieldQ, "LineLimit"->OptionValue["LineLimit"]];
   MMA2FORTRAN[dir <> "/src/core/ReadCoefficients", FortranReadCoeff[Join[coefficients, param]]];
   MMA2FORTRAN[dir <> "/src/core/Parameters", FortranParamModule[Join[coefficients, param], vars]];
+  MMA2FORTRAN[dir <> "/src/io/ExportModelData", FortranWriteMLModel[Join[coefficients, param], vars]];
   GenerateCoefficientsFile[dir, angstrom2bohr*latt, Join[coefficients, param]];
 
   Makefile[dir <> "/build/Makefile", dir];
@@ -2507,6 +2609,7 @@ ImposeAcousticSumRuleOld[model_] := Module[{HacousticCoeff, Hacoustic, terms, ou
 ]
 
 UpdatePT[dir_, file_, WriteQ_, OptionsPattern[{"round" -> 1}]] := Module[{ptdata, ene, func, \[CapitalDelta]x, Tlist, npt, i, out, plt},
+  Run["grep Epot " <> dir <> "/LINVARIANT.PTMC.out | tail -n 120 | awk '{print $6, $9}' > " <> dir <> "/" <> file];
   ptdata = ReadList[dir <> "/" <> file, Number, RecordLists -> True];
   npt = Length[ptdata];
   Tlist = Sort[ptdata\[Transpose][[1]]];
@@ -2550,42 +2653,6 @@ FromJij2Energy[model_, grid_, PBCS_] := Module[{Nx, Ny, Nz, Heff0, ene, v, a, x0
   Return[Etot]
 ]
 
-BasisInSupercell[pos0_, Basis_, vars_, NSC_, SymmetricQ_ : True, OptionsPattern[{"round" -> 1.0*10^-6, "rotate"->False}]] := Module[{Nij, Nx, Ny, Nz, latt, sites, ia, i, j, k, s, g, ppos, spos, p2s, s2p, shift, multiplicity, BasisTemplates, SuperBasis, bm, cell0sites, BoolQ, NumBasis, LengthBasis, SuperVars, NumPpos, NumSpos, NeighborList},
-  {LengthBasis, NumBasis} = Dimensions@Basis;
-  Nij = DiagonalMatrix[NSC];
-  {latt, sites} = pos0;
-  {Nx, Ny, Nz} = NSC; 
-  NeighborList = If[OptionValue["rotate"],
-                    Flatten[Table[{k, j, i} - {1, 1, 1}, {i, Nz}, {j, Ny}, {k, Nx}], 2],
-                    Flatten[Table[{i, j, k} - {1, 1, 1}, {i, Nx}, {j, Ny}, {k, Nz}], 2]];
-  
-   ppos = pos0;
-   spos = If[OptionValue["rotate"], 
-             {Nij.latt, Flatten[Table[{#[[1]] + {k - 1, j - 1, i - 1}, #[[2]]}, {i, Nz}, {j, Ny}, {k, Nx}] & /@ sites, 3]}, 
-             {Nij.latt, Flatten[Table[{#[[1]] + {i - 1, j - 1, k - 1}, #[[2]]}, {i, Nx}, {j, Ny}, {k, Nz}] & /@ sites, 3]}];
-  
-  NumPpos = Length[ppos[[2]]];
-  NumSpos = Length[spos[[2]]]; 
-  p2s = Association[Thread[NeighborList -> Table[Association[Table[i -> First@First@Position[Rationalize[Norm[ppos[[2]][[i]][[1]] + shift - #1]] & @@@ (spos[[2]]), 0], {i, NumPpos}]], {shift, NeighborList}]]];
-  s2p = Association@Flatten[Table[p2s[{ix - 1, iy - 1, iz - 1}][i] -> {{ix - 1, iy - 1, iz - 1}, i}, {iz, Nz}, {iy, Ny}, {ix, Nx}, {i, NumPpos}], 3];
-  
-  cell0sites = If[SymmetricQ, Table[DeleteDuplicates[Chop[# ({1, 1, 1} - Sign[Abs[Chop@s]]) + Chop[s] Sign[Abs[Chop@s]]] & /@ Tuples[{0, 1}, {3}]], {s, sites\[Transpose][[1]]}], {#} & /@ (sites\[Transpose][[1]])];
-  multiplicity = If[SymmetricQ, 1/Power[2, Count[Chop[Mod[#1, 1]], 0]] & @@@ (spos[[2]]), 1];
-  
-  
-  BasisTemplates = Table[multiplicity Partition[Flatten[ConstantArray[latt\[Transpose].#, Times @@ NSC] & /@ Partition[Basis[[;; , i]], 3]], 3], {i, NumBasis}];
-  
-  SuperBasis = Table[bm = Table[{g, ia} = s2p[s];
-                                BoolQ = Or @@ (Chop@Norm[spos[[2]][[s]][[1]] - Mod[# + shift, NSC]] == 0 & /@ (cell0sites[[ia]]));
-                                If[BoolQ, {1, 1, 1}, {0, 0, 0}], {s, NumSpos}];
-                     Table[Flatten[bm  BasisTemplates[[i]]], {i, NumBasis}], {shift, Keys@p2s}];
-  
-  SuperVars = Flatten[Table[s = Mod[{1, 1, 1} + shift, {3, 3, 3}] - {1, 1, 1}; 
-                            # /. {Subscript[v_, d_] :> Subscript[v, d, s[[1]], s[[2]], s[[3]]]} & /@ Flatten[vars], {shift, Keys[p2s]}], 1];
-  
-  Return[{Flatten[SuperBasis, 1]\[Transpose], SuperVars}]
-]
-
 OriginShiftFC[pos0_, Fij0_, NSC_, shift_, OptionsPattern[{"rotate" -> True}]] := Module[{Nij, latt, sites, Nx, Ny, Nz, NeighborList, i, j, k, s, ppos, spos, NumPpos, NumSpos, p2s, Fij, ind},
   Nij = DiagonalMatrix[NSC];
   {latt, sites} = pos0;
@@ -2608,6 +2675,39 @@ OriginShiftFC[pos0_, Fij0_, NSC_, shift_, OptionsPattern[{"rotate" -> True}]] :=
   Fij = Chop@Table[Fij0[[i, j]], {i, ind}, {j, ind}];
   
   Return[Fij]
+]
+
+TrainingSet2Supercell[ts_, grid_] := Module[{tgrid, nts, ndft, enescale, i, j, s, shiftlist, supervarsub, varsub, dgx, dgy, dgz, out},
+  nts = Length[ts];
+  out = Table[tgrid = TSGrid[ts[[i]]];
+              If[! And @@ (IntegerQ[#] & /@ (grid/tgrid)), Print["ERROR: ts is not a divider of supercell!"]; Abort[]];
+              {dgx, dgy, dgz} = grid/tgrid;
+              enescale = (Times @@ grid)/(Times @@ tgrid);
+              shiftlist = Flatten[Table[{ix, iy, iz} - {1, 1, 1}, {iz, dgz}, {iy, dgy}, {ix, dgx}], 2];
+              ndft = Length[ts[[i]]];
+              Table[varsub = ts[[i, j]][[5]];
+                    supervarsub = Flatten@Table[(VarGridShift[#1, s, grid, True] -> #2) & @@@ varsub, {s, shiftlist}];
+                    supervarsub = SortVarSub[supervarsub];
+                    Join[ts[[i, j]][[1 ;; 3]], enescale ts[[i, j]][[4 ;; 4]], {supervarsub}, ts[[i, j]][[6 ;; 6]]], {j, ndft}], {i, nts}];
+  Return[out]
+]
+
+FoldGamma[gmodel_, ah_] := Module[{ahsub, grid, out, v, a, ix, iy, iz},
+  grid = Length@DeleteDuplicates[#] & /@ Transpose[DeleteDuplicates[VarGrid[#] & /@ Variables[Transpose[Model2List[gmodel]][[2]]]]];
+  ahsub = Thread[FoldHopping[ah, grid] -> ah];
+  out = {#1, If[OnSiteExprQ[#2], SimplifyCommonFactor[#2 /. {Subscript[v_, a_, ix_, iy_, iz_] -> Subscript[v, a]}, 10^-9], SimplifyCommonFactor[#2, 10^- 9]]} & @@@ Model2List[gmodel /. ahsub];
+  Return[{out\[Transpose]}]
+]
+
+LMesh[dir_, grid_, mfunc_, OptionsPattern[{"write"->True}]] := Module[{NGx, NGy, NGz, box, boxdata, pltdata, ix, iy, iz},
+  {NGx, NGy, NGz} = grid;
+  pltdata = Table[mfunc[ix, iy, iz], {iz, 1, NGz}, {iy, 1, NGy}, {ix, NGx}];
+  Print[ArrayPlot3D[pltdata, Mesh -> True, PlotRange -> {All, All, All}]];
+  
+  box = Table[{ix, iy, iz, mfunc[ix, iy, iz]}, {iz, NGz}, {iy, NGy}, {ix, NGx}];
+  boxdata = Prepend[Flatten[GatherBy[Flatten[box, 2], Last], 1], grid];
+  If[OptionValue["write"], Export[dir <> "/Supercell.inp", boxdata, "Table", "FieldSeparators" -> " "]];
+  Return[pltdata]
 ]
 
 (*-------------------------- Attributes ------------------------------*)

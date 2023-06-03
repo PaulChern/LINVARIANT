@@ -57,23 +57,13 @@ Program main
   Call ReadCoefficients
   do_io  Call fmkdir(trim(Solver)//".out")
 
-  If (VacuumQ) then
-    cgrid_a%n1   = cgrid%n1 
-    cgrid_a%n2   = cgrid%n2
-    cgrid_a%n3   = cgrid%n3
-    cgrid_a%npts = cgrid%npts
-    cgrid_b%npts = (cgrid%n1 + cgrid_b%n1)*(cgrid%n2 + cgrid_b%n2)*(cgrid%n3 + cgrid_b%n3) -cgrid%npts
-  Else
-    cgrid_a%n1   = cgrid%n1 - cgrid_b%n1
-    cgrid_a%n2   = cgrid%n2 - cgrid_b%n2
-    cgrid_a%n3   = cgrid%n3 - cgrid_b%n3
-    cgrid_a%npts = cgrid_a%n1*cgrid_a%n2*cgrid_a%n3
-    cgrid_b%npts = cgrid%npts - cgrid_a%npts
-  End if
+  allocate(GridFold(4, cgrid%npts))
+  allocate(GridUnfold(2, cgrid%n1, cgrid%n2, cgrid%n3))
+  Call LoadMesh
 
-  NG1 = cgrid_a%n1+cgrid_b%n1
-  NG2 = cgrid_a%n2+cgrid_b%n2
-  NG3 = cgrid_a%n3+cgrid_b%n3
+  NG1 = cgrid%n1
+  NG2 = cgrid%n2
+  NG3 = cgrid%n3
 
   If(trim(Solver).eq."TRules") then
     Call MatrixRep
@@ -136,7 +126,7 @@ Program main
   Call MPI_BARRIER(MPI_COMM_WORLD, IERROR)
 #endif
 
-  allocate(EwaldHessian(3*(cgrid_a%npts+cgrid_b%npts), 3*(cgrid_a%npts+cgrid_b%npts), NumField))
+  allocate(EwaldHessian(3*(cgrid%npts), 3*(cgrid%npts), NumField))
   Call GetHessianEwald(EwaldMat, EwaldHessian)
   
   !!!!!!!!!!!!!!!!!!!!!
@@ -144,7 +134,7 @@ Program main
   !!!!!!!!!!!!!!!!!!!!!
   allocate(Fields(FieldDim,NumField,NG1,NG2,NG3))
   Call GetInitConfig(Fields, e0ij, RestartFields, FileIndex)
-  If (VacuumQ) Call ThinFilmBCS(Fields)
+  Call ImposeBCS(Fields)
 
   allocate(dFieldsdt(FieldDim,NumField,NG1,NG2,NG3))
   Call GetInitConfig(dFieldsdt, de0ijdt, RestartVelocity, FileIndex)
@@ -208,7 +198,6 @@ Program main
         If(istep.gt.ThermoSteps.and.FrozenQ(i)) dFieldsdt(:,i,:,:,:) = 0.0D0
       end do
       Call TikTok(Fields, dFieldsdt, e0ij, de0ijdt, Temp, gm, TimeNow)
-      If (VacuumQ) Call ThinFilmBCS(Fields)
       if((mod(istep,TapeRate).eq.0).and.(istep.gt.ThermoSteps)) then
         tstart = tend
         Call get_walltime(tend)
@@ -252,7 +241,6 @@ Program main
       end if
       do i_wl = 1, wl_NumSteps
         Call WLMCStep(i_wl, Fields, e0ij, udamp, etadamp, wl_f)
-        If (VacuumQ) Call ThinFilmBCS(Fields)
         if(istep.gt.ThermoSteps) then
           write(ifileno, '(A8,I10)') "WL step:", istep-ThermoSteps
           do i = 1, ContourNPoints(2)
@@ -283,7 +271,6 @@ Program main
     Call random_seed()
     do istep = 1, NumSteps
       Call MCMCStep(istep, Fields, EwaldField, e0ij, Temp, udamp, etadamp, dene)
-      If (VacuumQ) Call ThinFilmBCS(Fields)
       if((mod(istep,TapeRate).eq.0).and.(istep.gt.ThermoSteps)) then
         tstart = tend
         Call get_walltime(tend)
@@ -351,16 +338,18 @@ Program main
         if(trim(Solver).eq."PTMC") then
           do istep = 1, CoolingSteps
             Call MCMCStep(istep, Fields, EwaldField, e0ij, TempList(NODE_ME+1), udamp, etadamp, dene)
-            If (VacuumQ) Call ThinFilmBCS(Fields)
           end do
         else ! PTMD
           do istep = 1, CoolingSteps
             Call TikTok(Fields, dFieldsdt, e0ij, de0ijdt, TempList(NODE_ME+1), gm, TimeNow)
-            If (VacuumQ) Call ThinFilmBCS(Fields)
           end do
         end if
 
+
         if(ireplica.eq.NODE_ME+1) then
+          tstart = tend
+          Call get_walltime(tend)
+          Call MCMC_log(Fields, e0ij, ireplica, tend-tstart, dene, udamp, etadamp)
           Call WriteFinal('FinalConfig-'//trim(FileIndex)//'.dat', Fields, e0ij)
           Call WriteFinal('FinalVelocity-'//trim(FileIndex)//'.dat', dFieldsdt, de0ijdt)
         end if
@@ -379,7 +368,6 @@ Program main
     if(trim(Solver).eq."PTMC") then 
       do istep = 1, NumSteps
         Call MCMCStep(istep, Fields, EwaldField, e0ij, TempList(NODE_ME+1), udamp, etadamp, dene)
-        If (VacuumQ) Call ThinFilmBCS(Fields)
         if((mod(istep,TapeRate).eq.0).and.(istep.gt.ThermoSteps)) then
           io_begin
             tstart = tend
@@ -408,7 +396,6 @@ Program main
     else ! PTMD
       do istep = 1, NumSteps
         Call TikTok(Fields, dFieldsdt, e0ij, de0ijdt, TempList(NODE_ME+1), gm, TimeNow)
-        If (VacuumQ) Call ThinFilmBCS(Fields)
         if((mod(istep,TapeRate).eq.0).and.(istep.gt.ThermoSteps)) then
           io_begin
             tstart = tend
@@ -419,7 +406,7 @@ Program main
           Tk = Thermometer(dFieldsdt, de0ijdt)
           do i = 1, NCPU
             if(i == NODE_ME+1) then
-              write(*,'(I5,A1,I10,2F10.4,A1,F10.4,A12,F10.6)') i, "@", istep, Tk, "/", &
+              write(*,'(I5,A1,I10,2F16.4,A3,F16.4,A12,F10.6)') i, "@", istep, Tk, " / ", &
                     TempList(i), "(K)  Epot: ", Epot
             end if
 

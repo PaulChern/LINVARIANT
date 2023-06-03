@@ -39,6 +39,7 @@ HeadTailVariation        ::usage "HeadTailVariation[FunctionName, ReturnVar, Fie
 HeadTailForces           ::usage "HeadTailForces[FunctionName, ReturnVar, FieldDim, nn]"
 HeadTailHessianOnSite    ::usage "HeadTailHessianOnSite[FunctionName, ReturnVar, FieldDim, nn]"
 HeadTailSiteEnergy       ::usage "HeadTailSiteEnergy[FunctionName, ReturnVar, FieldDim, nn]"
+FortranWriteMLModel      ::usage "FortranWriteMLModel[CoeffList, vars]"
 
 
 FWriteArray::usage = "FWriteArray[channel, descriptor, matrix]
@@ -405,7 +406,7 @@ HopingCodeBlock[nn_, OptionsPattern["int"->1]] := Module[{Fint, n, ij, xyz, varx
  Fint[n_] := StringRepeat["  ", n];
  varxyz = Table[StringJoin[Riffle[Flatten[Table[xyz <> i <> ToString[j], {i, {"", "i"}}, {xyz, {"x", "y", "z"}}]], ","]], {j, nn}];
  dvars = Table[{Fint[1] <> "Integer             :: " <> xyz}, {xyz, varxyz}];
- expr = Flatten[Table[s = If[i == "i", "-", "+"]; Table[{Fint[OptionValue["int"]] <> xyz <> i <> ToString[j] <> " = " <> "(" <> xyz <> "0" <> s <> ToString[j] <> ")" <> "-floor(real(" <> xyz <> "0" <> s <> ToString[j] <> "-1" <> ")/real(cgrid_a%n" <> cgrid[xyz] <> "+" <> "cgrid_b%n" <> cgrid[xyz] <> "))*(cgrid_a%n" <> cgrid[xyz] <> "+cgrid_b%n" <> cgrid[xyz] <> ")"}, {j, nn}, {xyz, {"x", "y", "z"}}], {i, {"", "i"}}], 2];
+ expr = Flatten[Table[s = If[i == "i", "-", "+"]; Table[{Fint[OptionValue["int"]] <> xyz <> i <> ToString[j] <> " = " <> "(" <> xyz <> "0" <> s <> ToString[j] <> ")" <> "-floor(real(" <> xyz <> "0" <> s <> ToString[j] <> "-1" <> ")/real(cgrid%n" <> cgrid[xyz] <> "))*(cgrid%n" <> cgrid[xyz] <> ")"}, {j, nn}, {xyz, {"x", "y", "z"}}], {i, {"", "i"}}], 2];
  Return[{varxyz, dvars, expr}]
 ]
 
@@ -464,7 +465,7 @@ HeadTailHJijOnSite[FunctionName_?StringQ, ReturnVar_?StringQ, nn_, OptionsPatter
                {Fint[1]}, 
                {Fint[1] <> "Implicit none"}, 
                {Fint[1] <> "Integer, Intent(in) :: x0, y0, z0"}, 
-               {Fint[1] <> "Real*8,  Intent(in) :: Fields(FieldDim, NumField, cgrid_a%n1+cgrid_b%n1, cgrid_a%n2+cgrid_b%n2, cgrid_a%n3+cgrid_b%n3)"}, 
+               {Fint[1] <> "Real*8,  Intent(in) :: Fields(FieldDim, NumField, cgrid%n1, cgrid%n2, cgrid%n3)"}, 
                {Fint[1] <> "Real*8              :: " <> ReturnVar}}, 
               HopingCodeBlock[nn][[2]], 
               {{Fint[1]}},
@@ -480,11 +481,11 @@ StrainFromuF90[epsilon_, nn_] := Module[{head, tail, Fint, n},
                {Fint[1]},
                {Fint[1] <> "Use Parameters"},
                {Fint[1] <> "Implicit none"},
-               {Fint[1] <> "Real*8,  Intent(in)    :: Fields(FieldDim, NumField, cgrid_a%n1+cgrid_b%n1, cgrid_a%n2+cgrid_b%n2, cgrid_a%n3+cgrid_b%n3)"},
+               {Fint[1] <> "Real*8,  Intent(in)    :: Fields(FieldDim, NumField, cgrid%n1, cgrid%n2, cgrid%n3)"},
                {Fint[1] <> "Integer, Intent(in)    :: xx, yy, zz, ncut"},
                {Fint[1] <> "Integer                :: dx, dy, dz"},
                {Fint[1] <> "Integer                :: x0, y0, z0"},
-               {Fint[1] <> "Real*8                 :: euij(3, 3, cgrid_a%n1+cgrid_b%n1, cgrid_a%n2+cgrid_b%n2, cgrid_a%n3+cgrid_b%n3)"}},
+               {Fint[1] <> "Real*8                 :: euij(3, 3, cgrid%n1, cgrid%n2, cgrid%n3)"}},
                HopingCodeBlock[1][[2]],
               {{Fint[1]},
                {Fint[1] <> "euij = 0.0d0"},
@@ -536,6 +537,41 @@ GenerateCoefficientsFile[dir_, latt_, CoeffList_] := Module[{CoeffOut, c},
   Export[dir<>"/database/"<>"Coefficients.dat", Flatten[#] & /@ Join[Join[{{"lattice    :    "}}, Map[ToString[NumberForm[#, {3, 16}]] &, #] & /@ latt, {{}}], CoeffOut]];
 ]
 
+FortranWriteMLModel[CoeffList_, vars_] := Module[{Fint, n, head, tail, body1, body2, c, Fout, FieldDim, FieldBinary, i, NumField, CoeffFlatten, NumCoeff},
+  Fint[n_] := StringRepeat["  ", n];
+  FieldDim = Max[Append[Length[#] &/@ vars, 3]];
+  NumField = Length[vars] + 1;
+  NumCoeff = Total[Length[#2] & @@@ CoeffList];
+  head ={{"Subroutine ExportMLModel(filename, Epot, avg, eta)"},
+         {Fint[1] <> "use Constants"},
+         {Fint[1] <> "use Parameters"},
+         {Fint[1] <> "use Aux"},
+         {Fint[1] <> "implicit none"},
+         {Fint[1] <> "Real*8, Intent(in)           :: avg(FieldDim, NumField), eta(6)"},
+         {Fint[1] <> "Real*8, Intent(in)           :: Epot"},
+         {Fint[1] <> "character(len=*), intent(in) :: filename"},
+         {Fint[1] <> "Real*8                       :: Coeff1D(" <> ToString[NumCoeff] <> ")"},
+         {Fint[1] <> "Integer                      :: FileHandle = 3131"},
+         {Fint[1] <> "Integer                      :: ifield, i"},
+         {Fint[1]}};
+  tail = {{Fint[1]}, { "End Subroutine ExportMLModel"}};
+  body= {{Fint[1]},
+         {Fint[1] <> "Coeff1D = (/ " <> StringRiffle[#1 & @@@ CoeffList, ","] <> " /)"},
+         {Fint[1] <> "open(FileHandle,file=trim(Solver)//'.out/'//filename,form='formatted',action='write',access='append',status='unknown')"},
+         {Fint[1] <> "write(FileHandle,'(" <> ToString[NumCoeff] <> "F20.10)') Coeff1D"},
+         {Fint[1] <> "write(FileHandle,'(F10.6)') Epot"},
+         {Fint[1] <> "write(FileHandle,'(3F10.6)') eta(1), eta(2), eta(3)"},
+         {Fint[1] <> "write(FileHandle,'(3F10.6)') eta(4), eta(5), eta(6)"},
+         {Fint[1] <> "do ifield = 1, NumField"},
+         {Fint[2] <> "write(FileHandle,'('//trim(int2str(FieldDim))//'F10.6)') avg(:,ifield)"},
+         {Fint[1] <> "end do"},
+         {Fint[1] <> "close(FileHandle)"}};
+
+  Fout = Join[head, body, tail];
+  Return[Fout]
+]
+
+
 FortranParamModule[CoeffList_, vars_] := Module[{Fint, n, head, tail, body1, body2, c, Fout, FieldDim, FieldBinary, i, NumField},
   Fint[n_] := StringRepeat["  ", n];
   FieldDim = Max[Append[Length[#] &/@ vars, 3]];
@@ -581,14 +617,11 @@ FortranParamModule[CoeffList_, vars_] := Module[{Fint, n, head, tail, body1, bod
            {Fint[1] <> "! Geometry and composition"},
            {Fint[1] <> "!---------------------------------------------------------------------------------"},
            {Fint[1] <> "type(s_grid) :: cgrid"},
-           {Fint[1] <> "type(s_grid) :: cgrid_a"},
-           {Fint[1] <> "type(s_grid) :: cgrid_b"},
            {Fint[1] <> "type(s_grid) :: rgrid"},
            {Fint[1] <> "type(s_grid) :: kgrid"},
            {Fint[1] <> "Real(dp), allocatable  ::  kbz(:,:)"},
            {Fint[1] <> "Real(dp)     :: DWq(3," <> ToString[FieldDim] <> "," <> ToString[NumField] <> "), alat"},
            {Fint[1] <> "Real(dp)     :: Screening"},
-           {Fint[1] <> "Logical      :: VacuumQ  !< cgrid_b are for vacuum layers or heterostructure layers"},
            {Fint[1]},
            {Fint[1] <> "!---------------------------------------------------------------------------------"},
            {Fint[1] <> "! External prob"},
@@ -602,7 +635,7 @@ FortranParamModule[CoeffList_, vars_] := Module[{Fint, n, head, tail, body1, bod
            {Fint[1] <> "!---------------------------------------------------------------------------------"},
            {Fint[1] <> "Integer                      :: SpinDim, NumWann, OrbMul"},
            {Fint[1] <> "Integer                      :: NumWannSites, ContourNPoints(3)"},
-           {Fint[1] <> "Integer                      :: supercell(3), gridpadding(3), k_mesh(3), fft_grid(3), Jij_R(3)"},
+           {Fint[1] <> "Integer                      :: supercell(3), k_mesh(3), fft_grid(3), Jij_R(3)"},
            {Fint[1] <> "Integer,allocatable          :: NumRpts(:), WannSiteInd(:), WannBlockInd(:,:), WannDist(:,:,:)"},
            {Fint[1] <> "real(dp)                     :: ContourMin, ContourMax, ContourHeight"},
            {Fint[1] <> "Integer                      :: potim"},
@@ -624,6 +657,7 @@ FortranParamModule[CoeffList_, vars_] := Module[{Fint, n, head, tail, body1, bod
            {Fint[1] <> "character(len=40) :: RestartVelocity  !< restart file"},
            {Fint[1] <> "character(len=10) :: NameSim          !< Name of simulation"},
            {Fint[1] <> "character(len=20) :: CoeffFile        !< Name of coefficient data file"},
+           {Fint[1] <> "character(len=20) :: MLFile           !< Name of coefficient data file"},
            {Fint[1] <> "character(len=20) :: TrajectoryFile   !< Name of Config file"},
            {Fint[1] <> "character(len=1)  :: aunits           !< Atomic units to simulate model Hamiltonians (Y/N)"},
            {Fint[1]},
@@ -644,6 +678,7 @@ FortranParamModule[CoeffList_, vars_] := Module[{Fint, n, head, tail, body1, bod
            {Fint[1] <> "Logical           :: FrozenQ(" <> ToString[NumField] <> ")             !< parameters frozen"},
            {Fint[1] <> "real*8            :: Temp                   !< Temperature"},
            {Fint[1] <> "real*8            :: Pressure               !< Pressure"},
+           {Fint[1] <> "real*8            :: MutationRatio          !< Mutation in PT solver"},
            {Fint[1]},
            {Fint[1] <> "!---------------------------------------------------------------------------------"},
            {Fint[1] <> "! Markov Chain Monte Carlo"},
@@ -935,12 +970,12 @@ HeadTailVariation[FunctionName_?StringQ, ReturnVar_, nn_, OptionsPattern[{"AllSi
                {Fint[1]},
                {Fint[1] <> "Implicit none"},
                {Fint[1] <> "Integer, Intent(in) :: x0, y0, z0, idelta"},
-               {Fint[1] <> "Real*8,  Intent(in) :: Fields(FieldDim, NumField, cgrid_a%n1+cgrid_b%n1, cgrid_a%n2+cgrid_b%n2, cgrid_a%n3+cgrid_b%n3)"},
+               {Fint[1] <> "Real*8,  Intent(in) :: Fields(FieldDim, NumField, cgrid%n1, cgrid%n2, cgrid%n3)"},
                {Fint[1] <> "Real*8,  Intent(in) :: delta(FieldDim)"},
                {Fint[1] <> "Real*8,  Intent(in) :: e0ij(3,3)"},
                If[OptionValue["euij"],
-               {Fint[1] <> "Real*8,  Intent(in) :: euij(3, 3, cgrid_a%n1+cgrid_b%n1, cgrid_a%n2+cgrid_b%n2, cgrid_a%n3+cgrid_b%n3)"},
-               {Fint[1] <> "Real*8              :: euij(3, 3, cgrid_a%n1+cgrid_b%n1, cgrid_a%n2+cgrid_b%n2, cgrid_a%n3+cgrid_b%n3)"}],
+               {Fint[1] <> "Real*8,  Intent(in) :: euij(3, 3, cgrid%n1, cgrid%n2, cgrid%n3)"},
+               {Fint[1] <> "Real*8              :: euij(3, 3, cgrid%n1, cgrid%n2, cgrid%n3)"}],
                {Fint[1] <> "Real*8              :: eij(3,3)"},
                {Fint[1] <> "Integer             :: ncut = " <> ToString[nn]}},
                {Fint[1] <> "Real*8              :: " <> #} & /@ DeleteDuplicates[Join[{res}, reslist]],
@@ -965,15 +1000,15 @@ HeadTailForces[FunctionName_?StringQ, ReturnVar_, nn_, OptionsPattern[{"AllSites
       func,
       {{Fint[1]},
        {Fint[1] <> "Implicit none"},
-       {Fint[1] <> "Real*8,  Intent(in) :: Fields(FieldDim, NumField, cgrid_a%n1+cgrid_b%n1, cgrid_a%n2+cgrid_b%n2, cgrid_a%n3+cgrid_b%n3)"},
+       {Fint[1] <> "Real*8,  Intent(in) :: Fields(FieldDim, NumField, cgrid%n1, cgrid%n2, cgrid%n3)"},
        {Fint[1] <> "Real*8,  Intent(in) :: e0ij(3,3)"},
        If[OptionValue["euij"],
-       {Fint[1] <> "Real*8,  Intent(in) :: euij(3, 3, cgrid_a%n1+cgrid_b%n1, cgrid_a%n2+cgrid_b%n2, cgrid_a%n3+cgrid_b%n3)"},
-       {Fint[1] <> "Real*8              :: euij(3, 3, cgrid_a%n1+cgrid_b%n1, cgrid_a%n2+cgrid_b%n2, cgrid_a%n3+cgrid_b%n3)"}],
-       {Fint[1] <> If[OptionValue["AllSites"], "Integer             :: ", "Integer, Intent(in) :: "] <> "x0, y0, z0"},
+       {Fint[1] <> "Real*8,  Intent(in) :: euij(3, 3, cgrid%n1, cgrid%n2, cgrid%n3)"},
+       {Fint[1] <> "Real*8              :: euij(3, 3, cgrid%n1, cgrid%n2, cgrid%n3)"}],
+       {Fint[1] <> If[OptionValue["AllSites"], "Integer             :: ", "Integer, Intent(in) :: "] <> "x0, y0, z0, cell0"},
        {Fint[1] <> "Real*8              :: eij(3,3)"},
        {Fint[1] <> "Integer             :: ncut = " <> ToString[nn]}},
-       {Fint[1] <> "Real*8              :: " <> # <> If[OptionValue["array"], If[OptionValue["AllSites"], "(Max(FieldDim, 6), NumField+1, cgrid_a%n1+cgrid_b%n1, cgrid_a%n2+cgrid_b%n2, cgrid_a%n3+cgrid_b%n3)", "(Max(FieldDim, 6), NumField+1)"], If[OptionValue["AllSites"], "(cgrid_a%n1+cgrid_b%n1, cgrid_a%n2+cgrid_b%n2, cgrid_a%n3+cgrid_b%n3)", " "]]} & /@ DeleteDuplicates[Join[{res}, reslist]],
+       {Fint[1] <> "Real*8              :: " <> # <> If[OptionValue["array"], If[OptionValue["AllSites"], "(Max(FieldDim, 6), NumField+1, cgrid%n1, cgrid%n2, cgrid%n3)", "(Max(FieldDim, 6), NumField+1)"], If[OptionValue["AllSites"], "(cgrid%n1, cgrid%n2, cgrid%n3)", " "]]} & /@ DeleteDuplicates[Join[{res}, reslist]],
        {Fint[1] <> #1 <> "              :: " <> #2 <> "(" <> StringRiffle[#3, ","] <> ")"} &@@@ OptionValue["variables"],
       {{Fint[1]}},
       HopingCodeBlock[nn][[2]],
@@ -981,24 +1016,23 @@ HeadTailForces[FunctionName_?StringQ, ReturnVar_, nn_, OptionsPattern[{"AllSites
       {Fint[1] <> # <> " = 0.0D0"} & /@ DeleteDuplicates[Join[{res}, reslist]],
       If[OptionValue["ExprFunc"],
          If[OptionValue["AllSites"],
-           {{Fint[1] <> "!$OMP    PARALLEL DEFAULT(SHARED) PRIVATE(" <> StringJoin[Riffle[Join[{"eij,euij,x0","y0","z0"},HopingCodeBlock[nn][[1]]], ","]] <> ")"},
+           {{Fint[1] <> "!$OMP    PARALLEL DEFAULT(SHARED) PRIVATE(" <> StringJoin[Riffle[Join[{"eij,euij,cell0,x0","y0","z0"},HopingCodeBlock[nn][[1]]], ","]] <> ")"},
             {Fint[1] <> "!$OMP    DO COLLAPSE(3)"},
-            {Fint[1] <> "do z0 = 1, cgrid%n3"},
-            {Fint[1] <> "do y0 = 1, cgrid%n2"},
-            {Fint[1] <> "do x0 = 1, cgrid%n1"},
+            {Fint[1] <> "do cell0 = 1, cgrid%npts"},
+            {Fint[2] <> "z = GridFold(3, cell0)"},
+            {Fint[2] <> "y = GridFold(2, cell0)"},
+            {Fint[2] <> "x = GridFold(1, cell0)"},
             {Fint[2]}, 
-            {Fint[1] <> "euij = GetHeterostructureStrain(Fields, x0, y0, z0, ncut)"},
+            {Fint[2] <> "euij = GetHeterostructureStrain(Fields, x0, y0, z0, ncut)"},
             {Fint[2]}}, 
            {{Fint[2]},
-             {Fint[1] <> "euij = GetHeterostructureStrain(Fields, x0, y0, z0, ncut)"},
+             {Fint[2] <> "euij = GetHeterostructureStrain(Fields, x0, y0, z0, ncut)"},
              {Fint[2]}}], {{Fint[1]}}],
       {{Fint[1]}}];
   tail = Join[
     If[OptionValue["ExprFunc"],
       If[OptionValue["AllSites"],
         {{Fint[1] <> "end do"},
-         {Fint[1] <> "end do"},
-         {Fint[1] <> "end do"},
          {Fint[1] <> "!$OMP    END DO"},
          {Fint[1] <> "!$OMP    END PARALLEL"}}, {}],
         {{Fint[1]}}],
@@ -1019,12 +1053,12 @@ HeadTailHessianOnSite[FunctionName_?StringQ, ReturnVar_, nn_, OptionsPattern[{"e
        {Fint[1] <> "use Inputs"}},
       {{Fint[1]},
        {Fint[1] <> "Implicit none"},
-       {Fint[1] <> "Real*8,  Intent(in) :: Fields(FieldDim, NumField, cgrid_a%n1+cgrid_b%n1, cgrid_a%n2+cgrid_b%n2, cgrid_a%n3+cgrid_b%n3)"},
+       {Fint[1] <> "Real*8,  Intent(in) :: Fields(FieldDim, NumField, cgrid%n1, cgrid%n2, cgrid%n3)"},
        {Fint[1] <> "Real*8,  Intent(in) :: e0ij(3,3)"},
        {Fint[1] <> "Integer, Intent(in) :: x0, y0, z0"},
        If[OptionValue["euij"],
-       {Fint[1] <> "Real*8,  Intent(in) :: euij(3, 3, cgrid_a%n1+cgrid_b%n1, cgrid_a%n2+cgrid_b%n2, cgrid_a%n3+cgrid_b%n3)"},
-       {Fint[1] <> "Real*8              :: euij(3, 3, cgrid_a%n1+cgrid_b%n1, cgrid_a%n2+cgrid_b%n2, cgrid_a%n3+cgrid_b%n3)"}],
+       {Fint[1] <> "Real*8,  Intent(in) :: euij(3, 3, cgrid%n1, cgrid%n2, cgrid%n3)"},
+       {Fint[1] <> "Real*8              :: euij(3, 3, cgrid%n1, cgrid%n2, cgrid%n3)"}],
        {Fint[1] <> "Real*8              :: eij(3,3)"},
        {Fint[1] <> "Integer             :: ncut = " <> ToString[nn]}},
       {Fint[1] <> "Real*8              :: " <> # <> "(OnSiteDim, OnSiteDim)"} & /@ DeleteDuplicates[Join[{res}, reslist]],
@@ -1051,15 +1085,15 @@ HeadTailSiteEnergy[FunctionName_?StringQ, ReturnVar_, nn_, OptionsPattern[{"AllS
       func,
       {{Fint[1]},
        {Fint[1] <> "Implicit none"},
-       {Fint[1] <> "Real*8,  Intent(in) :: Fields(FieldDim, NumField, cgrid_a%n1+cgrid_b%n1, cgrid_a%n2+cgrid_b%n2, cgrid_a%n3+cgrid_b%n3)"},
+       {Fint[1] <> "Real*8,  Intent(in) :: Fields(FieldDim, NumField, cgrid%n1, cgrid%n2, cgrid%n3)"},
        {Fint[1] <> "Real*8,  Intent(in) :: e0ij(3,3)"},
        If[OptionValue["euij"],
-       {Fint[1] <> "Real*8,  Intent(in) :: euij(3, 3, cgrid_a%n1+cgrid_b%n1, cgrid_a%n2+cgrid_b%n2, cgrid_a%n3+cgrid_b%n3)"},
-       {Fint[1] <> "Real*8              :: euij(3, 3, cgrid_a%n1+cgrid_b%n1, cgrid_a%n2+cgrid_b%n2, cgrid_a%n3+cgrid_b%n3)"}],
+       {Fint[1] <> "Real*8,  Intent(in) :: euij(3, 3, cgrid%n1, cgrid%n2, cgrid%n3)"},
+       {Fint[1] <> "Real*8              :: euij(3, 3, cgrid%n1, cgrid%n2, cgrid%n3)"}],
        {Fint[1] <> If[OptionValue["AllSites"], "Integer             :: ", "Integer, Intent(in) :: "] <> "x0, y0, z0"},
        {Fint[1] <> "Real*8              :: eij(3,3)"},
        {Fint[1] <> "Integer             :: ncut = " <> ToString[nn]}},
-       {Fint[1] <> "Real*8              :: " <> # <> If[OptionValue["AllSites"], "(cgrid_a%n1+cgrid_b%n1, cgrid_a%n2+cgrid_b%n2, cgrid_a%n3+cgrid_b%n3)", ""]} & /@ DeleteDuplicates[Join[{res}, reslist]],
+       {Fint[1] <> "Real*8              :: " <> # <> If[OptionValue["AllSites"], "(cgrid%n1, cgrid%n2, cgrid%n3)", ""]} & /@ DeleteDuplicates[Join[{res}, reslist]],
        {Fint[1] <> #1 <> "              :: " <> #2} &@@@ OptionValue["variables"],
       {{Fint[1]}},
       HopingCodeBlock[nn][[2]],

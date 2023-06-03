@@ -14,6 +14,7 @@ Generators2Grp             ::usage "Generators2Grp[gen]"
 DoubleGrpQ                 ::usage "DoubleGrpQ[grp]"
 xyz2Grp                    ::usage "xyz2Grp[keys]"
 xyz2Expr                   ::usage "xyz2Expr[xyzStrData]"
+Expr2xyz                   ::usage "Expr2xyz[expr, dg, TRQ]"
 Expr2Rot                   ::usage "Expr2Rot[expr]"
 xyz2m4                     ::usage "xyz2m4"
 xyz2m4su2                  ::usage "xyz2m4su2[xyzStrData]"
@@ -160,7 +161,7 @@ GetPGCharacters[latt_, grp0_, OptionsPattern[{"print"->True}]] := Module[{m, n, 
 ]
 
 CifImportOperators[file_] := Module[{CifData, CifFlags, xyzName, xyzStrData},
-  CifData = Import[file, "string"] <> "\n";(*---fix for some strange behaviour---*)
+  CifData = StringRiffle[StringTrim[#] &/@ StringSplit[Import[file, "string"] <> "\n", "\n"], "\n"];(*---fix for some strange behaviour---*)
   CifData = StringReplace[CifData, Thread[DeleteDuplicates[StringCases[CifData, RegularExpression[";"]]] -> ","]]; 
   CifData = StringReplace[CifData, Thread[DeleteDuplicates[StringCases[CifData, RegularExpression["[[:upper:]].{3,6}(\[)\\d,\\d,\\d(\])"]]] -> ""]];
   
@@ -249,13 +250,13 @@ m42xyz[m4_] := Module[{xyzvar, rot, tran, xyz},
         m42xyz[#] &/@ m4, 
         Length@Dimensions[m4]==2,
         xyzvar = {ToExpression["x"], ToExpression["y"], ToExpression["z"]};
-        rot = ToString[#] & /@ (Rationalize[m4.Join[xyzvar, {1}]] - (Rationalize[m4.Join[xyzvar, {1}]] /. Thread[xyzvar->{0,0,0}]));
+        rot = ToString[#, InputForm] & /@ (Rationalize[m4.Join[xyzvar, {1}]] - (Rationalize[m4.Join[xyzvar, {1}]] /. Thread[xyzvar->{0,0,0}]));
         tran = Rationalize[m4.Join[xyzvar, {1}]] /. Thread[xyzvar->{0,0,0}];
         tran = Which[#1 == 0, "",
-                     #1 != 0 && #2 == 1, If[Sign[#1] > 0, "+", Unevaluated[Sequence[]]] <> ToString[#1],
-                     True, If[Sign[#1] > 0, "+", Unevaluated[Sequence[]]] <> ToString[#1] <> "/" <> ToString[#2]]
+                     #1 != 0 && #2 == 1, If[Sign[#1] > 0, "+", Unevaluated[Sequence[]]] <> ToString[#1, InputForm],
+                     True, If[Sign[#1] > 0, "+", Unevaluated[Sequence[]]] <> ToString[#1, InputForm] <> "/" <> ToString[#2, InputForm]]
                & @@@ (Through[{Numerator, Denominator}[#]] & /@ tran)[[1 ;; 3]];
-        xyz = StringDelete[StringJoin@Riffle[Table[rot[[i]] <> tran[[i]], {i, 3}],","], " "]
+        xyz = StringReplace[StringDelete[StringJoin@Riffle[Table[rot[[i]] <> tran[[i]], {i, 3}],","], " "], {"*" -> " "}]
   ]
 ]
 
@@ -290,6 +291,8 @@ DoubleGrpQ[grp_] := Module[{dgQ},
              StringQ[grp], ToExpression["{" <> grp <> "}"][[4]] == -1];
   Return[dgQ]
 ]
+
+Expr2xyz[expr_, dg_, TRQ_] := StringReplace[StringRiffle[ToString[#, InputForm] & /@ expr, ","] <> "," <> ToString[dg] <> "," <> ToString[TRQ], {"*"->" "}]
 
 Expr2Rot[expr_] := Module[{m},
   m = (Coefficient[#, {ToExpression["x"], ToExpression["y"], ToExpression["z"]}] &/@ expr);
@@ -950,6 +953,7 @@ GetDoubleGrp[latt_, grp_] := Module[{rot, tran, TRQ, dg, so3, dgrp},
                           m4su22xyz[latt, #] -> # & /@ Transpose[{so3, -dg, TRQ}]]];
   Return[dgrp]
 ]
+
 (*-------------------------- Attributes ------------------------------*)
 
 (*Attributes[]={Protected, ReadProtected}*)

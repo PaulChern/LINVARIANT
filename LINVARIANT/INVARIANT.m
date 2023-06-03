@@ -5,6 +5,7 @@ ShowIsoModes                 ::usage = "ShowIsoModes[PosVec]"
 GetIsoBasis                  ::usage = "GetIsoBasis[grp0, Wyckoff0]"
 GetSymAdaptedBasis           ::usage = "GetSymAdaptedBasis[grp0, pos, kpoint, ftype, ct0]"
 ISODISTORT                   ::usage = "ISODISTORT[R0, pos0, pos, IsoMatrix, label]"
+ModeDecomposition            ::usage = "ModeDecomposition[pos0, pos, Basis, label]"
 ImposeMode                   ::usage = "ImposeMode[Wyckoff0, IsoMatrix, modeset, s]"
 GetIRvector                  ::usage = "GetIRvector[id, pos]"
 GetBasisField                ::usage = "GetBasisField[id, BasisMatrix, pos]"
@@ -22,8 +23,6 @@ Field2Epsilon                ::usage = "Field2Epsilon[field]"
 GetEpsilonijRule             ::usage = "GetEpsilonijRule[symfile]"
 GetTransformationRules       ::usage = "GetTransformationRules[spg0, OpMatrix]"
 GetReciprocalTRules          ::usage = "GetReciprocalTRules[latt, spg0, k]"
-StrainInvQ                   ::usage = "StrainInvQ[x, e]"
-XInvQ                        ::usage = "XInvQ[x, e]"
 JijInvQ                      ::usage = "JijInvQ[x]"
 NumPolynomialVar             ::usage = "NumPolynomialVar[x]"
 PolynomialOrder              ::usage = " PolynomialOrder[x, vars]"
@@ -33,6 +32,7 @@ InvariantCharacter           ::usage = "InvariantCharacter[inv, vars]"
 GetInvariants                ::usage = "GetInvariants[seeds, order, AllModes, OpMatrix, GridSymFile]"
 GenMonomialList              ::usage = "GenMonomialList[seeds, n]"
 ImposeDW                     ::usage = "ImposeDW[Wyckoff0, IsoMatrix, modeset, {Nx, Ny, Nz}]"
+ImposeDomains                ::usage = "ImposeDomains[pos0, Basis, mode, grid]"
 ImposeIsoStrainVariedDspMode ::usage = "ImposeIsoStrainVariedDspMode[Wyckoff0, IsoMatrix, modeset, LV]"
 ShowInvariantTable           ::usage = "ShowInvariantTable[TableData]"
 Jij                          ::usage = "Jij[r0, MeshDim]"
@@ -46,10 +46,13 @@ BasisShift                   ::usage = "BasisShift[pos0, spg0, Basis]"
 InvariantFolding             ::usage = "InvariantFolding[model]"
 GridSymTransformation        ::usage = "GridSymTransformation[site0, xyz]"
 CollectPolynomial            ::usage = "CollectPolynomial[expr]"
+HModelFolding                ::usage = "HModelFolding[hmodel, grid]"
+FoldHopping                  ::usage = "FoldHopping[inv, grid]"
 JijTRules                    ::usage = "JijTRules[spg0, TRules, dist]"
 PlotPolynomial               ::usage = "PlotPolynomial[model]"
 IncludeAcousticMode          ::usage = "IncludeAcousticMode[pos0, Basis, spg0, tgrp, vars]"
 GetInvariantTensor           ::usage = "GetInvariantTensor[T0, spg0, symmetric]"
+BasisInSupercell             ::usage "BasisInSupercell[pos0, Basis, vars, NSC, SymmetricQ]"
 
 (*--------- Plot and Manipulate Crystal Structures -------------------- ----------------*)
 
@@ -98,6 +101,58 @@ ISODISTORT[Lattice_, pos0_, pos_, IsoMatrix_, label_, OptionsPattern[{"round"->1
               phonon.basis, {imode, Length@label}];
   NN = Table[1/Norm@Flatten[Lattice\[Transpose].# & /@ Partition[Normal[IsoMatrix][[;; , imode]], 3]], {imode, Length@label}];
   Return[{Range[Length@label], label, NN, Chop[Amp, OptionValue["round"]]}\[Transpose]]
+]
+
+ModeDecompositionOld[pos0_, pos_, Basis_, label_, OptionsPattern[{"lattnorm" -> False, "table" -> True, "round" -> 10.0^-6, "match" -> True}]] := Module[{latt0, sites0, latt, sites, eij, ix, iy, iz, ngx, ngy, ngz, block, tab, grid, s, lattnorm},
+  {latt0, sites0} = pos0;
+  {latt, sites} = pos;
+  lattnorm = If[OptionValue["lattnorm"], Norm[latt0], 1];
+  grid = Round[(Norm[#] & /@ latt)/(Norm[#] & /@ latt0)];
+  {ngx, ngy, ngz} = grid;
+  
+  eij = Chop@GetStrainTensor[latt0, latt/grid, "iso" -> False];
+  
+  data = Association@Table[block = Table[If[And@@Thread[{ix, iy, iz} - 1 <= s[[1]] grid < {ix, iy, iz}], 
+                                            {Mod[s[[1]] grid, 1], s[[2]]}, 
+                                            ## &[]], {s, sites}]; 
+                                         {ix, iy, iz} -> ({#1, #2, #3, #4/lattnorm} & @@@ ISODISTORT[pos0[[1]], pos0[[2]], block, Basis, label, 
+                                                                                                     "round" -> OptionValue["round"], "match" -> OptionValue["match"]]), {iz, ngz}, {iy, ngy}, {ix, ngx}];
+  
+  tab = Grid[Join[{{MatrixForm@eij}}, 
+                  {Flatten[Table[Grid[{{{ix, iy, iz}}, {MatrixForm[data[{ix, iy, iz}]]}}], {iz, ngz}, {iy, ngy}, {ix, ngx}], 2]}], Dividers -> All];
+
+  If[OptionValue["table"], Print[tab]];
+
+  Return[{data, eij2eta[eij]}]
+]
+
+ModeDecomposition[pos0_, pos_, Basis_, vars_, svars_, uvars_, OptionsPattern[{"zyx" -> True, "lattnorm" -> False, "table" -> True, "round" -> 10.0^-6, "upto" -> 4, "match" -> True}]] := Module[{latt0, sites0, supersites0, latt, sites, eij, ix, iy, iz, ngx, ngy, ngz, block, tab, grid, i, s, lattnorm, SuperVars, NumAtom, LattCar2Dir, AcousticBasis, FullBasis, SuperBasis, data},
+  
+  {latt0, sites0} = pos0;
+  NumAtom = Length[sites0];
+  LattCar2Dir = Inverse[Transpose[latt0]];
+  AcousticBasis = Transpose[Flatten[Chop@Table[LattCar2Dir . (Partition[Normalize[#], 3][[i]]), {i, NumAtom}]] & /@ (Flatten[Table[1.0 IdentityMatrix[3], {NumAtom}], 1]\[Transpose])];
+  FullBasis = If[uvars === {}, Basis, Transpose@Join[Transpose@Basis, Transpose@AcousticBasis]];
+  
+  {latt, sites} = pos;
+  lattnorm = If[OptionValue["lattnorm"], Norm[latt0], 1];
+  grid = Round[(Norm[#] & /@ latt)/(Norm[#] & /@ latt0)];
+  {ngx, ngy, ngz} = grid;
+  
+  supersites0 = Flatten[Flatten[Table[{(#[[1]] + {ix - 1, iy - 1, iz - 1})/grid, #[[2]]}, {iz, 1, ngz}, {iy, 1, ngy}, {ix, 1, ngx}], 2] & /@ (pos0[[2]]), 1];
+  
+  {SuperBasis, SuperVars} = BasisInSupercell[pos0, FullBasis, Append[vars, uvars], grid, False, "rotate" -> OptionValue["zyx"]];
+  
+  eij = Chop@GetStrainTensor[latt0, latt/grid, "iso" -> False];
+  
+  data = ({#1, #2, #3, #4/lattnorm} & @@@ ISODISTORT[pos0[[1]], supersites0, sites, SuperBasis, SuperVars, "round" -> OptionValue["round"], "match" -> OptionValue["match"]]);
+  
+  tab = Grid[{{MatrixForm[eij]}, {Grid[Partition[Grid[#] & /@ GatherBy[data, VarGrid[#[[2]]] &], UpTo[OptionValue["upto"]]], Dividers -> All]}}, 
+             Frame -> True, Dividers -> All];
+  
+  If[OptionValue["table"], Print[tab]];
+  Return[{GatherBy[#2 -> #4 & @@@ data, VarGrid[First@#]&], Thread[svars -> eij2eta[eij]]}]
+  
 ]
 
 ImposeMode[latt_, Wyckoff0_, IsoMatrix_, modeset_, s_] := Module[{mode, id, NN, Amp, pos, tmp},
@@ -399,14 +454,6 @@ PolynomialOrder[x_, vars_, OptionsPattern[{"tot" -> True}]] := Module[{fullvars}
         True, If[OptionValue["tot"], Total@Exponent[x, fullvars], Exponent[x, fullvars]]]
 ]
 
-StrainInvQ[x_, e_] := Module[{}, If[ListQ[x], StrainInvQ[#, e] & /@ x, MemberQ[Level[x, All], e]]]
-
-XInvQ[x_, e_, bool_ : ContainsExactly] := Module[{v}, 
-  If[ListQ[x], 
-     XInvQ[#, e, bool] & /@ x, 
-     bool[Cases[Variables[x], Subscript[v_, __] -> v], e]]
-]
-
 JijInvQ[x_] := Module[{}, If[ListQ[x], JijInvQ[#] & /@ x, Or@@(Length[Level[#, 1]] > 3 & /@ Variables[x])]]
 
 SortInvByNumVar[list_] := Module[{},
@@ -418,12 +465,10 @@ SortInvariants[list_, vars_] := Module[{},
 ]
 
 InvariantCharacter[inv_, vars_] := Module[{v0, v1, sub, s, seeds},
-  Which[ListQ[inv], InvariantCharacter[#, vars] & /@ inv,
+  Which[ListQ[inv], InvariantCharacter[#, Flatten@vars] & /@ inv,
         True, seeds = If[Head[inv] === Plus, Level[inv, 1], {inv}];
               DeleteDuplicates@Table[v1 = Variables[s];
-                                     v0 = Complement[vars, v1];
-                                     sub = Join[Thread[v0 -> 0], Thread[v1 -> 1]];
-                                     vars /. sub, {s, seeds}]]
+                                     If[MemberQ[VarBare[v1], #], 1, 0] &/@ VarBare[Flatten@vars], {s, seeds}]]
 ]
 
 GetInvariants[TRules_, seeds_, order_, OptionsPattern[{"check" -> True, "MustInclude"->{{{},{}}}, "Simplify"->True, "eventerms"->False, "round"->10^-6}]] := Module[{fixlist, monomials, invariant, m, n, i, j, ss, factor, out, factorLCM, factorGCD, OpDispMatrix, OpSpinMatrix, OpOrbitalMatrix, ReducedOut, SortedOut, mm, fixseeds, eventerms},
@@ -474,6 +519,18 @@ ImposeDW[pos0_, IsoMatrix_, modeset_, {Nx_, Ny_, Nz_}] := Module[{mode, id, Amp,
      ];
   latt = {Nx latt0[[1]], Ny latt0[[2]], Nz latt0[[3]]};
   Return[{latt, SortBy[Flatten[Superpos, 3], #[[2]]&]}]
+]
+
+ImposeDomains[pos0_, Basis_, eij_, mode_, grid_] := Module[{block, k, ngx, ngy, ngz, ix, iy, iz, pos, site, sites, latt},
+  {ngx, ngy, ngz} = grid;
+  block = Association@Flatten[Table[site = {ix, iy, iz};
+                                    pos = ImposeDW[pos0, Basis, mode[site], {1, 1, 1}];
+                                    site -> pos[[2]], {iz, ngz}, {iy, ngy}, {ix, ngx}]];
+  
+  sites = SortBy[Flatten[Table[{(#1 + k - 1)/grid, #2} & @@@ (block[k]), {k, Keys@block}], 1], #[[2]] &];
+  latt = (IdentityMatrix[3] + eij).(pos0[[1]]) grid;
+  
+  Return[{latt, sites}]
 ]
 
 ImposeIsoStrainVariedDspMode[Wyckoff0_, IsoMatrix_, modeset_, LV_] := Module[{mode, modesetnew, id, Amp, pos, NN},
@@ -710,7 +767,7 @@ CollectPolynomial[expr_, TRules_:{}, OptionsPattern[{"SymmetricQ"->False, "chop"
   rules = Dispatch[#] &/@ TRules;
 
   data = Table[p = t /. {Subscript[__] -> 1};
-               f = Rationalize[t/p];
+               f = If[p==0, p=1; t, Rationalize[t/p]];
                tmp = SimplifyCommonFactor[Chop[Expand[Sum[f /. s, {s, rules}]]], 10^-6];
                invariant = If[TRules === {}, 0, GetJijStar[tmp, -1]];
                {Round[p, OptionValue["round"]], f, If[invariant === 0, {}, Sort@invariant]}, {t, terms}];
@@ -722,6 +779,22 @@ CollectPolynomial[expr_, TRules_:{}, OptionsPattern[{"SymmetricQ"->False, "chop"
   
   out = If[Chop@Mean[Abs@#1] < OptionValue["chop"], ##&[], {Sign[First@#1] Chop@Mean[Abs@#1], (Sign[First@#1] Sign[#1]).#2}] & @@@ model;
   Return[If[OptionValue["sort"], ReverseSortBy[out, Abs[#[[1]]]&], SortBy[out, #[[2]]&]]]
+]
+
+HModelFolding[hmodel_, grid_, OptionsPattern[{"round"->10^-9}]] := Module[{Hexpr, sub, v, a, dx, dy, dz, ix, iy, iz, h, ngx, ngy, ngz, out},
+  {ngx, ngy, ngz} = grid;
+  out = Table[Hexpr = Sum[sub = Subscript[v_, a_, dx_, dy_, dz_] :> VarOnGrid[Subscript[v, a], PbcDiff[{ix + dx - 1, iy + dy - 1, iz + dz - 1}, grid]];
+                          Expand[h\[Transpose][[1]].FixDoubleCounting[h\[Transpose][[2]]]] /. sub, {iz, ngz}, {iy, ngy}, {ix, ngx}];  
+              CollectPolynomial[Chop[Hexpr, OptionValue["round"]]], {h, hmodel}];
+  Return[out]
+]
+
+FoldHopping[inv_, grid_] := Module[{sub, ngx, ngy, ngz},
+  If[ListQ[inv],
+     FoldHopping[#, grid] & /@ inv,
+     {ngx, ngy, ngz} = grid;
+     Sum[sub = Subscript[v_, a_, dx_, dy_, dz_] :> VarOnGrid[Subscript[v, a], PbcDiff[{ix + dx - 1, iy + dy - 1, iz + dz - 1}, grid]];
+         First@FixDoubleCounting[inv] /. sub, {iz, ngz}, {iy, ngy}, {ix, ngx}]]
 ]
 
 PlotPolynomial[model_] := Module[{var2pltdata, var, grid, s, v0, v1, dv1, t, ii},
@@ -743,20 +816,65 @@ PlotPolynomial[model_] := Module[{var2pltdata, var, grid, s, v0, v1, dv1, t, ii}
                           ImageSize -> {200, 200}, Boxed -> False, Background -> Gray], {ii, Length@v0}], {t, model}]
 ]
 
-IncludeAcousticMode[pos0_, Basis_, spg0_, tgrp_, vars_, OptionsPattern[{"chop"->0.01}]] := Module[{AcousticBasis, FullBasis, FullOpMat, FullTRules, FullTRules4Jij},
+IncludeAcousticMode[pos0_, Basis_, spg0_, tgrp_, vars_, OptionsPattern[{"chop"->0.01}]] := Module[{AcousticBasis, FullBasis, FullOpMat, FullTRules, FullTRules4Jij, LattCar2Dir, NumAtom, latt, sites, i},
 
-  AcousticBasis = (Normalize[#] & /@ (Flatten[Table[1.0 IdentityMatrix[3], {Length[pos0[[2]]]}], 1]\[Transpose]))\[Transpose]; 
-  
+  {latt, sites} = pos0;
+  NumAtom = Length[sites];
+
+  LattCar2Dir = Inverse[Transpose[latt]];
+
+  AcousticBasis = Transpose[Flatten[Chop@Table[LattCar2Dir.(Partition[Normalize[#], 3][[i]]), {i, NumAtom}]] & /@ (Flatten[Table[1.0 IdentityMatrix[3], {NumAtom}], 1]\[Transpose])]; 
+
   FullBasis = Transpose@Join[Basis\[Transpose], AcousticBasis\[Transpose]]; 
   
   FullOpMat = Chop[GetMatrixRep[spg0, tgrp, pos0, FullBasis, Range[Length[Flatten@vars] + 3], "disp"], OptionValue["chop"]]; 
   
-  FullTRules = Rationalize@Chop[Join[#1, #2] & @@@ ({GetIsoTransformRules[FullOpMat, "disp"], GetIsoStrainTransformRules[pos0[[1]], spg0]}\[Transpose])];
+  FullTRules = Rationalize@Chop[Join[#1, #2] & @@@ ({GetIsoTransformRules[FullOpMat, "disp"], GetIsoStrainTransformRules[latt, spg0]}\[Transpose])];
   
   FullTRules4Jij = JijTRules[pos0, spg0, FullTRules, Basis, 1];
 
   Return[{FullBasis, FullOpMat, FullTRules, FullTRules4Jij}]
 ]
+
+BasisInSupercell[pos0_, Basis_, vars_, NSC_, SymmetricQ_ : True, OptionsPattern[{"round" -> 1.0*10^-6, "rotate"->False}]] := Module[{Nij, Nx, Ny, Nz, latt, sites, ia, i, j, k, s, g, ppos, spos, p2s, s2p, shift, multiplicity, BasisTemplates, SuperBasis, bm, cell0sites, BoolQ, NumBasis, LengthBasis, SuperVars, NumPpos, NumSpos, NeighborList, LattCar2Dir},
+  {LengthBasis, NumBasis} = Dimensions@Basis;
+  Nij = DiagonalMatrix[NSC];
+  {latt, sites} = pos0;
+  LattCar2Dir = Inverse@Transpose[latt];
+  {Nx, Ny, Nz} = NSC;
+  NeighborList = If[OptionValue["rotate"],
+                    Flatten[Table[{k, j, i} - {1, 1, 1}, {i, Nz}, {j, Ny}, {k, Nx}], 2],
+                    Flatten[Table[{i, j, k} - {1, 1, 1}, {i, Nx}, {j, Ny}, {k, Nz}], 2]];
+
+   ppos = pos0;
+   spos = If[OptionValue["rotate"],
+             {Nij.latt, Flatten[Table[{#[[1]] + {k - 1, j - 1, i - 1}, #[[2]]}, {i, Nz}, {j, Ny}, {k, Nx}] & /@ sites, 3]},
+             {Nij.latt, Flatten[Table[{#[[1]] + {i - 1, j - 1, k - 1}, #[[2]]}, {i, Nx}, {j, Ny}, {k, Nz}] & /@ sites, 3]}];
+
+  NumPpos = Length[ppos[[2]]];
+  NumSpos = Length[spos[[2]]];
+  p2s = Association[Thread[NeighborList -> Table[Association[Table[i -> First@First@Position[Rationalize[Norm[ppos[[2]][[i]][[1]] + shift - #1]] & @@@ (spos[[2]]), 0], {i, NumPpos}]], {shift, NeighborList}]]];
+  s2p = Association@Flatten[Table[p2s[{ix - 1, iy - 1, iz - 1}][i] -> {{ix - 1, iy - 1, iz - 1}, i}, {iz, Nz}, {iy, Ny}, {ix, Nx}, {i, NumPpos}], 3];
+
+  cell0sites = If[SymmetricQ, Table[DeleteDuplicates[Chop[# ({1, 1, 1} - Sign[Abs[Chop@s]]) + Chop[s] Sign[Abs[Chop@s]]] & /@ Tuples[{0, 1}, {3}]], {s, sites\[Transpose][[1]]}], {#} & /@ (sites\[Transpose][[1]])];
+  multiplicity = If[SymmetricQ, 1/Power[2, Count[Chop[Mod[#1, 1]], 0]] & @@@ (spos[[2]]), 1];
+
+
+  BasisTemplates = Table[multiplicity Partition[Flatten[ConstantArray[latt\[Transpose].#, Times @@ NSC] & /@ Partition[Basis[[;; , i]], 3]], 3], {i, NumBasis}];
+
+  SuperBasis = Table[bm = Table[{g, ia} = s2p[s];
+                                BoolQ = Or @@ (Chop@Norm[spos[[2]][[s]][[1]] - Mod[# + shift, NSC]] == 0 & /@ (cell0sites[[ia]]));
+                                If[BoolQ, {1, 1, 1}, {0, 0, 0}], {s, NumSpos}];
+                     Table[Flatten[bm  BasisTemplates[[i]]], {i, NumBasis}], {shift, Keys@p2s}];
+  SuperBasis = Flatten[Table[Chop[LattCar2Dir.(Partition[#, 3][[i]])], {i, NumSpos}]] &/@ Flatten[SuperBasis, 1];
+
+  SuperVars = Flatten[Table[s = Mod[{1, 1, 1} + shift, NSC] - {1, 1, 1};
+                            s = PbcDiff[shift, NSC];
+                            Subscript@@Join[If[Level[#, Infinity]==={},{#},Level[#, Infinity]], s] & /@ Flatten[vars], {shift, Keys[p2s]}], 1];
+
+  Return[{SuperBasis\[Transpose], SuperVars}]
+]
+
 
 (*-------------------------- Attributes ------------------------------*)
 

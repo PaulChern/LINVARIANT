@@ -5,6 +5,7 @@ module common
   type s_grid
     integer :: n1, n2, n3
     Integer :: npts
+    Integer :: ncells
   end type s_grid
 
   type s_rgrid

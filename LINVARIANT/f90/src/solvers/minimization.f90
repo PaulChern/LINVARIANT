@@ -6,7 +6,7 @@ Subroutine Minimization(Fields, e0ij)
   Use Optimization
 
   Implicit none
-  Real*8, Intent(inout)  :: Fields(FieldDim, NumField, cgrid_a%n1+cgrid_b%n1, cgrid_a%n2+cgrid_b%n2, cgrid_a%n3+cgrid_b%n3)
+  Real*8, Intent(inout)  :: Fields(FieldDim, NumField, cgrid%n1, cgrid%n2, cgrid%n3)
   Real*8, Intent(inout)  :: e0ij(3,3)
   Real(dp), allocatable  :: opt_lb(:), opt_ub(:), x(:)
   Real(dp)               :: opt_min

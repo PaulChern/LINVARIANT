@@ -41,6 +41,7 @@ Module Inputs
     namelist/control/ &
       NameSim,        &
       potim,          &
+      MutationRatio,  &
       RestartFields,  &
       RestartVelocity
 
@@ -54,8 +55,6 @@ Module Inputs
 
     namelist/grid/ &
       supercell,   &
-      gridpadding, &
-      vacuumq,     &
       k_mesh,      &
       fft_grid,    &
       DeltaT
@@ -64,7 +63,8 @@ Module Inputs
       DipoleQ
 
     namelist/files/ &
-      CoeffFile
+      CoeffFile,    &
+      MLFile
 
     namelist/constrain/ &
       ClampQ
@@ -232,6 +232,12 @@ Module Inputs
             cache = trim(cache(pos+1:))
             read(cache, *, iostat=i_err) WriteG
             if(i_err/=0) write(*,*) 'ERROR: Reading ',trim(keyword),' data',i_err
+          case('mutationratio')
+            read(ifileno, '(A)', iostat=i_err) cache
+            pos = scan(cache, '=')
+            cache = trim(cache(pos+1:))
+            read(cache, *, iostat=i_err) MutationRatio
+            if(i_err/=0) write(*,*) 'ERROR: Reading ',trim(keyword),' data',i_err
           case('dipoleq')
             read(ifileno, '(A)', iostat=i_err) cache
             pos = scan(cache, '=')
@@ -389,25 +395,18 @@ Module Inputs
             cache = trim(cache(pos+1:))
             read(cache, *, iostat=i_err) CoeffFile
             if(i_err/=0) write(*,*) 'ERROR: Reading ',trim(keyword),' data',i_err
+          case('mlfile')
+            read(ifileno, '(A)', iostat=i_err) cache
+            pos = scan(cache, '=')
+            cache = trim(cache(pos+1:))
+            read(cache, *, iostat=i_err) MLFile
+            if(i_err/=0) write(*,*) 'ERROR: Reading ',trim(keyword),' data',i_err
           case('supercell')
             read(ifileno, '(A)', iostat=i_err) cache
             pos = scan(cache, '=')
             cache = trim(cache(pos+1:))
             read(cache, *, iostat=i_err) cgrid%n1, cgrid%n2, cgrid%n3
             cgrid%npts = cgrid%n1*cgrid%n2*cgrid%n3
-            if(i_err/=0) write(*,*) 'ERROR: Reading ',trim(keyword),' data',i_err
-          case('gridpadding')
-            read(ifileno, '(A)', iostat=i_err) cache
-            pos = scan(cache, '=')
-            cache = trim(cache(pos+1:))
-            read(cache, *, iostat=i_err) cgrid_b%n1, cgrid_b%n2, cgrid_b%n3
-            cgrid_b%npts = cgrid_b%n1*cgrid_b%n2*cgrid_b%n3
-            if(i_err/=0) write(*,*) 'ERROR: Reading ',trim(keyword),' data',i_err
-          case('vacuumq')
-            read(ifileno, '(A)', iostat=i_err) cache
-            pos = scan(cache, '=')
-            cache = trim(cache(pos+1:))
-            read(cache, *, iostat=i_err) VacuumQ
             if(i_err/=0) write(*,*) 'ERROR: Reading ',trim(keyword),' data',i_err
           case('screening')
             read(ifileno, '(A)', iostat=i_err) cache
@@ -500,16 +499,6 @@ Module Inputs
     cgrid%n3          = 12
     cgrid%npts        = cgrid%n1*cgrid%n2*cgrid%n3
 
-    cgrid_a%n1        = 12
-    cgrid_a%n2        = 12
-    cgrid_a%n3        = 12
-    cgrid_a%npts      = cgrid_a%n1*cgrid_a%n2*cgrid_a%n3
-
-    cgrid_b%n1        = 0
-    cgrid_b%n2        = 0
-    cgrid_b%n3        = 0
-    cgrid_b%npts      = 0
-
     rgrid%n1          = 50
     rgrid%n2          = 50
     rgrid%n3          = 50
@@ -539,8 +528,8 @@ Module Inputs
     NumSteps          = 10000
     TapeRate          = 1000
     TrainRate         = 10000000000000000
+    MutationRatio     = 0.0
     DipoleQ           = .true.
-    VacuumQ           = .false.
     EfieldQ           = .false.
     TrainQ            = .false.
     EfieldType        = "dc"
@@ -588,6 +577,7 @@ Module Inputs
     RestartVelocity   = "random"
     NameSim           = "LINVARIANT"
     CoeffFile         = "Coefficients.dat"
+    MLFile            = "ModelData.dat"
     TrajectoryFile    = trim(Solver)
     aunits            = "N"
     SpinDim           = 1

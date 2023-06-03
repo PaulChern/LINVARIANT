@@ -10,14 +10,14 @@ Subroutine TikTok(Fields, dFieldsdt, e0ij, de0ijdt, T0, gm, TimeNow)
   Implicit none
   Real*8,  Intent(in)    :: T0
   Real*8,  Intent(inout) :: gm(NumField+1)
-  Real*8,  Intent(inout) :: Fields(FieldDim, NumField, cgrid_a%n1+cgrid_b%n1, cgrid_a%n2+cgrid_b%n2, cgrid_a%n3+cgrid_b%n3)
-  Real*8,  Intent(inout) :: dFieldsdt(FieldDim, NumField, cgrid_a%n1+cgrid_b%n1, cgrid_a%n2+cgrid_b%n2, cgrid_a%n3+cgrid_b%n3)
+  Real*8,  Intent(inout) :: Fields(FieldDim, NumField, cgrid%n1, cgrid%n2, cgrid%n3)
+  Real*8,  Intent(inout) :: dFieldsdt(FieldDim, NumField, cgrid%n1, cgrid%n2, cgrid%n3)
   Real*8,  Intent(inout) :: de0ijdt(3,3)
   Real*8,  Intent(inout) :: e0ij(3,3), TimeNow
-  Real*8                 :: Fields0(FieldDim, NumField, cgrid_a%n1+cgrid_b%n1, cgrid_a%n2+cgrid_b%n2, cgrid_a%n3+cgrid_b%n3)
+  Real*8                 :: Fields0(FieldDim, NumField, cgrid%n1, cgrid%n2, cgrid%n3)
   Real*8                 :: e0ij0(3,3), mu, sigma, tau(3), t
-  Real*8                 :: Forces(Max(FieldDim, 6),NumField+1,cgrid_a%n1+cgrid_b%n1, cgrid_a%n2+cgrid_b%n2, cgrid_a%n3+cgrid_b%n3)
-  Real*8                 :: Friction(FieldDim,NumField,cgrid_a%n1+cgrid_b%n1, cgrid_a%n2+cgrid_b%n2, cgrid_a%n3+cgrid_b%n3)
+  Real*8                 :: Forces(Max(FieldDim, 6),NumField+1,cgrid%n1, cgrid%n2, cgrid%n3)
+  Real*8                 :: Friction(FieldDim,NumField,cgrid%n1, cgrid%n2, cgrid%n3)
   Real*8                 :: ForcesEta(6), FrictionEta(6),VolumeForce(3,3)
   Integer                :: i, ifield, fi, ix, iy, iz
 
@@ -99,14 +99,16 @@ Subroutine TikTok(Fields, dFieldsdt, e0ij, de0ijdt, T0, gm, TimeNow)
 
   TimeNow = TimeNow + DeltaT/2
 
+  Call ImposeBCS(Fields)
+
 End Subroutine TikTok
 
 Subroutine GetFriction(gm, dFieldsdt, Friction)
   Use Parameters
   Implicit none
-  Real*8,  Intent(in)     :: dFieldsdt(FieldDim, NumField, cgrid_a%n1+cgrid_b%n1, cgrid_a%n2+cgrid_b%n2, cgrid_a%n3+cgrid_b%n3)
+  Real*8,  Intent(in)     :: dFieldsdt(FieldDim, NumField, cgrid%n1, cgrid%n2, cgrid%n3)
   Real*8,  Intent(in)     :: gm(NumField+1)
-  Real*8,  Intent(out)    :: Friction(FieldDim,NumField,cgrid_a%n1+cgrid_b%n1, cgrid_a%n2+cgrid_b%n2, cgrid_a%n3+cgrid_b%n3)
+  Real*8,  Intent(out)    :: Friction(FieldDim,NumField,cgrid%n1, cgrid%n2, cgrid%n3)
   Integer                 :: i
   
   Do i = 1, NumField
@@ -121,7 +123,7 @@ Subroutine ReservoirUpdate(gm, T0, dFieldsdt, de0ijdt, TimeNow)
   Use Fileparser
 
   Implicit none
-  Real*8,  Intent(in)     :: dFieldsdt(FieldDim, NumField, cgrid_a%n1+cgrid_b%n1, cgrid_a%n2+cgrid_b%n2, cgrid_a%n3+cgrid_b%n3)
+  Real*8,  Intent(in)     :: dFieldsdt(FieldDim, NumField, cgrid%n1, cgrid%n2, cgrid%n3)
   Real*8,  Intent(in)     :: de0ijdt(3,3), T0, TimeNow
   Real*8,  Intent(inout)  :: gm(NumField+1)
   Real*8                  :: Ekin(NumField+1), mu, sigma, tau, t, tt
@@ -217,8 +219,8 @@ Subroutine ApplyEfield(TimeNow, Forces)
   Implicit none
   character(20)          :: keyword
   Real*8,  Intent(in)    :: TimeNow
-  Real*8,  Intent(inout) :: Forces(Max(FieldDim, 6),NumField+1,cgrid_a%n1+cgrid_b%n1, cgrid_a%n2+cgrid_b%n2, cgrid_a%n3+cgrid_b%n3)
-  Real(dp)               :: Efield(3,cgrid_a%n1+cgrid_b%n1, cgrid_a%n2+cgrid_b%n2, cgrid_a%n3+cgrid_b%n3), Etmp(3)
+  Real*8,  Intent(inout) :: Forces(Max(FieldDim, 6),NumField+1,cgrid%n1, cgrid%n2, cgrid%n3)
+  Real(dp)               :: Efield(3,cgrid%n1, cgrid%n2, cgrid%n3), Etmp(3)
   Real*8                 :: omega, mu, sigmar, sigmat, beta, t, tt
   Real*8                 :: rr, r0(3), theta, GaussianT, GaussianR
   Integer                :: i, ix, iy, iz

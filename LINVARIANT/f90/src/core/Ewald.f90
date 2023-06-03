@@ -15,14 +15,9 @@ Module Ewald
     Use Parameters
     Implicit none
     Integer, Intent(in) :: ix, iy, iz
-    Real*8,  Intent(in) :: Fields(FieldDim, NumField, cgrid_a%n1+cgrid_b%n1, cgrid_a%n2+cgrid_b%n2, cgrid_a%n3+cgrid_b%n3)
+    Real*8,  Intent(in) :: Fields(FieldDim, NumField, cgrid%n1, cgrid%n2, cgrid%n3)
     Integer             :: i, j, jx, jy, jz, x, y, z, jfield, ifield
     Real*8              :: ene, ThreadEne
-    Integer             :: NG1, NG2, NG3
-
-    NG1 = cgrid_a%n1+cgrid_b%n1
-    NG2 = cgrid_a%n2+cgrid_b%n2
-    NG3 = cgrid_a%n3+cgrid_b%n3
 
     ene = 0.0d0
     !$OMP    PARALLEL DEFAULT(SHARED) PRIVATE(jfield,x,y,z,ThreadEne)
@@ -36,9 +31,9 @@ Module Ewald
         do ifield = 1, NumIRFields
         do j = 1, 3 ! jfield -> ifield
         do i = 1, 3
-          x = (jx-ix+1)-floor(real(jx-ix)/real(NG1))*NG1
-          y = (jy-iy+1)-floor(real(jy-iy)/real(NG2))*NG2
-          z = (jz-iz+1)-floor(real(jz-iz)/real(NG3))*NG3
+          x = (jx-ix+1)-floor(real(jx-ix)/real(cgrid%n1))*cgrid%n1
+          y = (jy-iy+1)-floor(real(jy-iy)/real(cgrid%n2))*cgrid%n2
+          z = (jz-iz+1)-floor(real(jz-iz)/real(cgrid%n3))*cgrid%n3
           ! jfield -> ifield
           ThreadEne = ThreadEne &
             + 0.5*FieldCharge(ifield)*FieldCharge(jfield)*Fields(i,ifield,ix,iy,iz)*EwaldMat(i,j,x,y,z)*Fields(j,jfield,jx,jy,jz) &
@@ -76,21 +71,16 @@ Module Ewald
   Subroutine GetHessianEwald(EwaldMatrix, EwaldHessian)
 
     implicit none
-    real*8,  intent(in)           :: EwaldMatrix(3, 3, cgrid_a%n1+cgrid_b%n1, cgrid_a%n2+cgrid_b%n2, cgrid_a%n3+cgrid_b%n3)
-    real*8,  intent(inout)        :: EwaldHessian(3*(cgrid_a%npts+cgrid_b%npts),3*(cgrid_a%npts+cgrid_b%npts),NumField)
+    real*8,  intent(in)           :: EwaldMatrix(3, 3, cgrid%n1, cgrid%n2, cgrid%n3)
+    real*8,  intent(inout)        :: EwaldHessian(3*cgrid%npts,3*cgrid%npts,NumField)
     integer                       :: i, j, k, ifield, ix, iy, iz, jx, jy, jz, x, y, z
-    Integer                       :: NG1, NG2, NG3
-
-    NG1 = cgrid_a%n1+cgrid_b%n1
-    NG2 = cgrid_a%n2+cgrid_b%n2
-    NG3 = cgrid_a%n3+cgrid_b%n3
 
     Do ifield = 1, NumField
-    Do i = 1, (cgrid_a%npts + cgrid_b%npts)
-    Do j = 1, (cgrid_a%npts + cgrid_b%npts)
-      Call LinearIndexing(i, ix, iy, iz, NG1, NG2, NG3)
-      Call LinearIndexing(j, jx, jy, jz, NG1, NG2, NG3)
-      Call Pbc(jx-ix, jy-iy, jz-iz, x, y, z, NG1, NG2, NG3)
+    Do i = 1, cgrid%npts
+    Do j = 1, cgrid%npts
+      Call LinearIndexing(i, ix, iy, iz, cgrid%n1, cgrid%n2, cgrid%n3)
+      Call LinearIndexing(j, jx, jy, jz, cgrid%n1, cgrid%n2, cgrid%n3)
+      Call Pbc(jx-ix, jy-iy, jz-iz, x, y, z, cgrid%n1, cgrid%n2, cgrid%n3)
       EwaldHessian((i-1)*3+1:(i-1)*3+3, (j-1)*3+1:(j-1)*3+3, ifield) = &
              EwaldMatrix(:,:,x,y,z)*FieldCharge(ifield)**2
       If(i.eq.j) then
@@ -108,29 +98,24 @@ Module Ewald
   Function GetForcesEwald(Fields) Result(EwaldForce)
     
     implicit none
-    real*8,  intent(in)           :: Fields(FieldDim, NumField, cgrid_a%n1+cgrid_b%n1, cgrid_a%n2+cgrid_b%n2, cgrid_a%n3+cgrid_b%n3)
+    real*8,  intent(in)           :: Fields(FieldDim, NumField, cgrid%n1, cgrid%n2, cgrid%n3)
     integer                       :: i, ifield
     integer                       :: j, jfield, jx, jy, jz
     integer                       :: ix, iy, iz
     integer                       :: x, y, z
-    real*8                        :: EwaldForce(Max(FieldDim, 6),NumField+1, cgrid_a%n1+cgrid_b%n1, cgrid_a%n2+cgrid_b%n2, cgrid_a%n3+cgrid_b%n3)
-    real*8                        :: force(3*(cgrid_a%npts+cgrid_b%npts), NumField - 1)
-    real*8                        :: vector(3*(cgrid_a%npts+cgrid_b%npts), NumField - 1)
-    Integer                       :: NG1, NG2, NG3
-
-    NG1 = cgrid_a%n1+cgrid_b%n1
-    NG2 = cgrid_a%n2+cgrid_b%n2
-    NG3 = cgrid_a%n3+cgrid_b%n3
+    real*8                        :: EwaldForce(Max(FieldDim, 6),NumField+1, cgrid%n1, cgrid%n2, cgrid%n3)
+    real*8                        :: force(3*(cgrid%npts), NumField - 1)
+    real*8                        :: vector(3*(cgrid%npts), NumField - 1)
 
     EwaldForce = 0.0D0
     force = 0.0D0
   
     do jfield = 1, NumIRFields
       vector(:,jfield) = FieldTo1D(Fields, jfield)
-      call dgemv('N', 3*(cgrid_a%npts+cgrid_b%npts), 3*(cgrid_a%npts+cgrid_b%npts), &
-                 -1.0D0, EwaldHessian(:,:,jfield), 3*(cgrid_a%npts+cgrid_b%npts), &
+      call dgemv('N', 3*cgrid%npts, 3*cgrid%npts, &
+                 -1.0D0, EwaldHessian(:,:,jfield), 3*cgrid%npts, &
                  vector(:,jfield), 1, 0.0D0, force(:,jfield), 1)
-      EwaldForce(1:3,jfield,:,:,:) = Reshape(force(:,jfield), (/3, NG1, NG2, NG3/))
+      EwaldForce(1:3,jfield,:,:,:) = Reshape(force(:,jfield), (/3, cgrid%n1, cgrid%n2, cgrid%n3/))
     end do
   
   End Function GetForcesEwald
@@ -139,7 +124,7 @@ Module Ewald
     
     Implicit none
     Integer, Intent(in) :: x0, y0, z0, idelta
-    Real*8,  Intent(in) :: EwaldField(3, NumField, cgrid_a%n1+cgrid_b%n1, cgrid_a%n2+cgrid_b%n2, cgrid_a%n3+cgrid_b%n3)
+    Real*8,  Intent(in) :: EwaldField(3, NumField, cgrid%n1, cgrid%n2, cgrid%n3)
     Real*8,  Intent(in) :: delta(FieldDim)
     Integer             :: i, j, ifield, jfield
     Real*8              :: ene, ThreadEne
@@ -162,46 +147,37 @@ Module Ewald
 
     Implicit none
     integer, intent(in)     :: ix, iy, iz, idelta
-    real*8,  intent(inout)  :: EwaldField(3, NumField, cgrid_a%n1+cgrid_b%n1, cgrid_a%n2+cgrid_b%n2, cgrid_a%n3+cgrid_b%n3)
+    real*8,  intent(inout)  :: EwaldField(3, NumField, cgrid%n1, cgrid%n2, cgrid%n3)
     real*8,  intent(in)     :: delta(FieldDim)
-    real*8                  :: dfield((cgrid_a%npts+cgrid_b%npts)*3)
+    real*8                  :: dfield(cgrid%npts*3)
     integer                 :: id
     Integer                 :: NG1, NG2, NG3
 
-    NG1 = cgrid_a%n1+cgrid_b%n1
-    NG2 = cgrid_a%n2+cgrid_b%n2
-    NG3 = cgrid_a%n3+cgrid_b%n3
-
     dfield = 0.0D0
-    id = (iz-1)*NG2*NG1*3 &
-              + (iy-1)*NG1*3 &
+    id = (iz-1)*cgrid%n2*cgrid%n1*3 &
+              + (iy-1)*cgrid%n1*3 &
               + (ix-1)*3
 
-    call dgemv('N', 3*(cgrid_a%npts+cgrid_b%npts), 3, &
-               1.0D0, EwaldHessian(:,id+1:id+3,idelta), 3*(cgrid_a%npts+cgrid_b%npts),&
+    call dgemv('N', 3*cgrid%npts, 3, &
+               1.0D0, EwaldHessian(:,id+1:id+3,idelta), 3*cgrid%npts,&
                delta(1:3), 1, 0.0D0, dfield, 1)
-    EwaldField(:,idelta,:,:,:) = EwaldField(:,idelta,:,:,:) + Reshape(dfield, (/3, NG1, NG2, NG3/))
+    EwaldField(:,idelta,:,:,:) = EwaldField(:,idelta,:,:,:) + Reshape(dfield, (/3, cgrid%n1, cgrid%n2, cgrid%n3/))
 
   End Subroutine UpdateEwaldField
 
   Subroutine GetEwaldField(Fields, EwaldField)
   
     implicit none
-    real*8,  intent(in)           :: Fields(FieldDim, NumField, cgrid_a%n1+cgrid_b%n1, cgrid_a%n2+cgrid_b%n2, cgrid_a%n3+cgrid_b%n3)
-    real*8,  intent(inout)        :: EwaldField(3, NumField, cgrid_a%n1+cgrid_b%n1, cgrid_a%n2+cgrid_b%n2, cgrid_a%n3+cgrid_b%n3)
+    real*8,  intent(in)           :: Fields(FieldDim, NumField, cgrid%n1, cgrid%n2, cgrid%n3)
+    real*8,  intent(inout)        :: EwaldField(3, NumField, cgrid%n1, cgrid%n2, cgrid%n3)
     integer                       :: i, j, ifield, jfield, ix, iy, iz, jx, jy, jz, x, y, z
-    Integer                       :: NG1, NG2, NG3
 
-    NG1 = cgrid_a%n1+cgrid_b%n1
-    NG2 = cgrid_a%n2+cgrid_b%n2
-    NG3 = cgrid_a%n3+cgrid_b%n3
-  
     EwaldField = 0.0D0
   
     !$OMP    PARALLEL  DEFAULT(SHARED) PRIVATE(x,y,z)
-      do jz = 1, NG3
-      do jy = 1, NG2
-      do jx = 1, NG1
+      do jz = 1, cgrid%n3
+      do jy = 1, cgrid%n2
+      do jx = 1, cgrid%n1
       do jfield = 1, NumIRFields 
       do j = 1, 3 
     !$OMP    DO COLLAPSE(1)
@@ -210,7 +186,7 @@ Module Ewald
       do ix = 1, cgrid%n1
       do ifield = 1, NumIRFields ! delete to decouple two fields
       do i = 1, 3 ! ifield -> jfield
-        Call Pbc(jx-ix, jy-iy, jz-iz, x, y, z, NG1, NG2, NG3)
+        Call Pbc(jx-ix, jy-iy, jz-iz, x, y, z, cgrid%n1, cgrid%n2, cgrid%n3)
         ! ifield -> jfield
         EwaldField(i,ifield,ix,iy,iz) = EwaldField(i,ifield,ix,iy,iz) &
           + FieldCharge(jfield)*FieldCharge(ifield)*EwaldMat(j,i,x,y,z)*Fields(j,jfield,jx,jy,jz)*FieldsBinary(j,jfield)
@@ -239,7 +215,7 @@ Module Ewald
     
     Implicit none
     integer,intent(in) :: nn
-    Real*8             :: dpij(3,3,cgrid_a%n1+cgrid_b%n1,cgrid_a%n2+cgrid_b%n2,cgrid_a%n3+cgrid_b%n3)
+    Real*8             :: dpij(3,3,cgrid%n1,cgrid%n2,cgrid%n3)
     Real*8             :: dum(3,3), superlatt(3,3), recalat(3,3), am(3)
     Real*8             :: pi2, celvol, eta, eta4, gcut, gcut2, dum0
     Real*8             :: gx, gy, gz, g2, fact, tol, c, residue
@@ -249,9 +225,9 @@ Module Ewald
     Integer            :: NG1, NG2, NG3
     Logical            :: origin, file_exists, file_match
 
-    NG1 = cgrid_a%n1+cgrid_b%n1
-    NG2 = cgrid_a%n2+cgrid_b%n2
-    NG3 = cgrid_a%n3+cgrid_b%n3
+    NG1 = cgrid%n1
+    NG2 = cgrid%n2
+    NG3 = cgrid%n3
     
     file_exists = .false.
     file_match = .false.

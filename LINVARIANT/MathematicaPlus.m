@@ -1,4 +1,4 @@
-BeginPackage["LINVARIANT`MathematicaPlus`"]
+BeginPackage["LINVARIANT`MathematicaPlus`", {"LINVARIANT`Structure`"}]
 
 (*--------- Load, Save and Modify Crystal Structure Libraries ------------*)
 NOrderResponse              ::usage "NOrderResponse[eqn, var, n]"
@@ -18,6 +18,20 @@ CloneReshape2D              ::usage "CloneReshape2D[array0, array1]"
 Model2P1                    ::usage "Model2P1[model]"
 FixDoubleCounting           ::usage "FixDoubleCounting[expr]"
 OnSiteExprQ                 ::usage "OnSiteExprQ[expr]"
+VarBare                     ::usage "VarBare[var]"
+VarHead                     ::usage "VarHead[var]"
+VarInd                      ::usage "VarInd[var]"
+VarSite                     ::usage "VarSite[var]"
+VarGrid                     ::usage "VarGrid[var]"
+VarGridShift                ::usage "VarGridShift[var, s]"
+VarOnGrid                   ::usage "VarOnGrid[var, site]"
+ExprOnGrid                  ::usage "ExprOnGrid[expr, site]"
+Expr2Gamma                  ::usage "Expr2Gamma[model, grid]"
+Model2Gamma                 ::usage "Model2Gamma[model]"
+SortVarSub                  ::usage "SortVarSub[varsub, vars, uvars]"
+ShiftVarSub                 ::usage "ShiftVarSub[varsub, shift]"
+SwapVarSub                  ::usage "SwapVarSub[varsub]"
+VarSubStar                  ::usage "VarSubStar[t5sub, t6sub, SymMat]"
 MyTime                      ::usage "MyTime[inp, NewProjQ]"
 ColorPots                   ::usage "ColorPots[v, n, tol]"
 SimplifyTensorCommonFactor  ::usage "SimplifyTensorCommonFactor[mat]"
@@ -25,6 +39,17 @@ SimplifyTensor              ::usage "SimpifyTensor[T0, TT]"
 NumberCommonDivisor         ::usage "NumberCommonDivisor[NumList, prec_:10^-12]"
 GetConstantFactor           ::usage "GetConstantFactor[expr]"
 SimplifyCommonFactor        ::usage "SimplifyCommonFactor[expr, prec]"
+Sub2List                    ::usage "Sub2List[sub]"
+StrainInvQ                  ::usage = "StrainInvQ[x, e]"
+XInvQ                       ::usage = "XInvQ[x, e]"
+TSVars                      ::usage = "TSVars[ts]"
+TSGrid                      ::usage = "TSGrid[ts]"
+VarSubGrid                  ::usage = "VarSubGrid[vs]"
+T5Vars                      ::usage = "T5Vars[t]"
+T6Vars                      ::usage = "T6Vars[t]"
+T5Data                      ::usage = "T5Data[t]"
+T6Data                      ::usage = "T6Data[t]"
+T56Data                     ::usage = "T56Data[t]"
 
 (*--------- Plot and Manipulate Crystal Structures -------------------- ----------------*)
 
@@ -146,6 +171,87 @@ FixDoubleCounting[expr_] := Module[{inv, n, v, i, ix, iy, iz, nsite, out, invlis
   Return[out]
 ]
 
+Sub2List[sub_] := Transpose[{#1, #2} & @@@ sub]
+
+VarGrid[var_] := Module[{v, i, ix, iy, iz, site, varinfo},
+  If[ListQ[var], 
+     VarGrid[#] &/@ var,
+     varinfo = Level[var, Infinity];
+     site = If[Length[varinfo] > 3, varinfo[[-3;;-1]], {0,0,0}]]
+]
+
+VarGridShift[var_, s_, grid_, CenterQ_:False] := Module[{v, i, ix, iy, iz, jx, jy, jz},
+  If[ListQ[var],
+     VarGridShift[#, s, grid, CenterQ] &/@ var,
+     {v, i, ix, iy, iz} = Level[var, Infinity];
+     {jx, jy, jz} = If[CenterQ, PbcDiff[{ix, iy, iz} + s, grid], Mod[{ix, iy, iz} + s, grid, 1]];
+     Subscript@@{v, i, jx, jy, jz}]
+]
+
+VarOnGrid[var_, site_] := Module[{varlength},
+  varlength = Length[Level[var, Infinity]];
+  If[varlength == 2,
+     Subscript @@ Join[Level[var, Infinity], site],
+     var]
+]
+
+ExprOnGrid[expr_, site_] := Module[{vars, varsub},
+  If[ListQ[expr],
+     ExprOnGrid[#, site] &/@ expr,
+     vars = Variables[expr];
+     varsub = Thread[vars -> (VarOnGrid[#, site] &/@ vars)];
+     Return[expr/.varsub]]
+]
+
+Expr2Gamma[model_, grid_] := Module[{ngx, ngy, ngz, ix, iy, iz, sites, s, out, m1, m2},
+  If[ListQ[model], 
+  Expr2Gamma[#, grid] &/@ model,
+  {ngx, ngy, ngz} = grid;
+  sites = Flatten[Table[PbcDiff[{ix, iy, iz} - {1, 1, 1}, grid], {iz, ngz}, {iy, ngy}, {ix, ngx}], 2];
+  If[AtomQ[model]||Length@Level[Quiet@First@Variables[model], Infinity] == 5, model, Expand@Sum[ExprOnGrid[SimplifyCommonFactor[model, 10^-9], s], {s, sites}]]]
+]
+
+SortVarSub[varsub_] := Module[{grid, ngx, ngy, ngz, ix, iy, iz, sites, fullvars, supervars, v, out},
+  grid = Length[DeleteDuplicates[#]] & /@ Transpose[VarGrid[#] & /@ (Sub2List[varsub][[1]])];
+  {ngx, ngy, ngz} = grid;
+  fullvars = DeleteDuplicates@VarBare[First@Sub2List[varsub]];
+  sites = Flatten[Table[PbcDiff[{ix, iy, iz} - {1, 1, 1}, grid], {iz, ngz}, {iy, ngy}, {ix, ngx}], 2];
+  supervars = Flatten[Table[VarOnGrid[v, #], {v, fullvars}] & /@ sites];
+  out = Thread[supervars -> (supervars /. varsub)];
+  Return[out]
+]
+
+ShiftVarSub[varsub_, shift_] := Module[{grid, ngx, ngy, ngz, ix, iy, iz, jx, jy, jz, sites, fullvars, supervars, v, s, out},
+  grid = Length[DeleteDuplicates[#]] & /@ Transpose[VarGrid[#] & /@ (Sub2List[varsub][[1]])];
+  {ngx, ngy, ngz} = grid;
+  out = Table[{v, i, ix, iy, iz} = Level[First@s, Infinity];
+              {jx, jy, jz} = PbcDiff[{ix, iy, iz} + shift, grid];
+              (Subscript @@ {v, i, jx, jy, jz}) -> s[[2]], {s, varsub}];
+  Return[SortVarSub[out]]
+]
+
+SwapVarSub[varsub_] := Module[{grid, ngx, ngy, ngz, ix, iy, iz, jx, jy, jz, sx, sy, sz, sites, fullvars, supervars, v, s, out, shift, tmp},
+  grid = Length[DeleteDuplicates[#]] & /@ Transpose[VarGrid[#] & /@ (Sub2List[varsub][[1]])];
+  {ngx, ngy, ngz} = grid;
+  out = Table[shift = {sx, sy, sz} - {1, 1, 1};
+              tmp = Table[{v, i, ix, iy, iz} = Level[First@s, Infinity];
+                          {jx, jy, jz} = PbcDiff[{ix, iy, iz} + shift, grid];
+                          (Subscript @@ {v, i, jx, jy, jz}) -> s[[2]], {s, varsub}];
+                          SortVarSub[tmp], {sz, ngz}, {sy, ngy}, {sx, ngx}];
+  Return[Flatten[out, 2]]
+]
+
+VarSubStar[t5sub_, t6sub_, SymMat_, OptionsPattern["absvalue"->True]] := Module[{grid, nvars0, vars, svars, t5, t6, out},
+  vars = Sub2List[t5sub][[1]];
+  svars = Sub2List[t6sub][[1]];
+  grid = Length[DeleteDuplicates[#]] & /@ Transpose[VarGrid[#] & /@ vars];
+  nvars0 = Length[vars]/Times @@ grid;
+  out = Table[t5 = Thread[vars -> Flatten[(m[[1]] . #) & /@ Partition[Sub2List[t5sub][[2]], nvars0]]];
+              t6 = Thread[svars -> m[[2]] . (Sub2List[t6sub][[2]])];
+              If[OptionValue["absvalue"], Sign[Sub2List[Join[#, t6]][[2]]], Join[#, t6]] & /@ SwapVarSub[t5], {m, SymMat}];
+  Return[DeleteDuplicates@Flatten[out\[Transpose], 1]]
+]
+
 OnSiteExprQ[expr_] := Module[{out, inv, n, ix, iy, iz, nsite},
   If[ListQ[expr], 
      OnSiteExprQ[#] &/@ expr, 
@@ -248,6 +354,61 @@ SimplifyTensor[T0_, TT_] := Module[{tsub, s, solutions, out, MatReIm},
   out = {1, I} . MatReIm;
   Return[out]
 ]
+
+StrainInvQ[x_, e_] := Module[{}, If[ListQ[x], StrainInvQ[#, e] & /@ x, MemberQ[Level[x, All], e]]]
+
+XInvQ[x_, e_, bool_ : ContainsExactly] := Module[{v},
+  If[ListQ[x],
+     XInvQ[#, e, bool] & /@ x,
+     bool[Cases[Variables[x], Subscript[v_, __] -> v], e]]
+]
+
+TSGrid[ts_] := Length[DeleteDuplicates[#]] & /@ Transpose[VarGrid[#] & /@ (Sub2List[First[ts][[5]]][[1]])];
+VarSubGrid[vs_] := Length[DeleteDuplicates[#]] & /@ Transpose[VarGrid[#] & /@ (Sub2List[vs][[1]])];
+
+TSVars[ts_] := Module[{grid, vars, svars, out},
+  grid = TSGrid[ts];
+
+  vars  = Sub2List[ts[[1]][[5]]][[1]];
+  svars = Sub2List[ts[[1]][[6]]][[1]];
+  out   = Join[Partition[vars, Length@vars/(Times@@grid)], {svars}];
+
+  Return[out]
+]
+
+T5Vars[t_]  := Sub2List[t[[5]]][[1]]
+T6Vars[t_]  := Sub2List[t[[5]]][[1]]
+T5Data[t_]  := Sub2List[t[[5]]][[2]]
+T6Data[t_]  := Sub2List[t[[6]]][[2]]
+T56Data[t_] := Join[T5Data[t], T6Data[t]]
+
+VarHead[var_] := Module[{},
+  If[ListQ[var],
+     VarHead[#] &/@ var,
+     First@Level[var, Infinity]]
+]
+
+VarInd[var_] := Module[{info},
+  If[ListQ[var],
+     VarInd[#] &/@ var,
+     info = Level[var, Infinity];
+     If[Length@info == 3, info[[2;;3]], info[[2]]]]
+]
+
+VarSite[var_] := Module[{info},
+  If[ListQ[var],
+    VarSite[#] &/@ var,
+    info = Level[var, Infinity];
+    If[Length@info == 5, info[[3;;5]], Print["Error: var not on grid"];Abort[]]]
+]
+
+VarBare[var_] := Module[{info},
+   If[ListQ[var],
+      VarBare[#] &/@ var,
+      info = Level[var, Infinity];
+      If[Length@info > 3, Subscript @@ (info[[1;;2]]), var]]
+]
+
 
 (*-------------------------- Attributes ------------------------------*)
 
