@@ -10,7 +10,7 @@
 - LINVARIANT solves the models with many numerical solvers, such as MC, MD, Exact diagonalization, Minimization, etc.
 - For large-scale calculations, LINVARIANT exports FORTRAN code from  symbolic models.
 
-![outline](https://user-images.githubusercontent.com/12060384/179304662-66e8f555-959a-46c3-b25d-8abe7cfdc7de.png)
+![outline](https://github.com/PaulChern/LINVARIANT/blob/054139cb764192220dd224028c342e7cb463749a/docs/ResearchOutline-v2.png)
 ## Features:
 ### models:
 - Lattice models for structural phase transitions, such as Landau-Ginzburg-Devonshire models.
@@ -18,6 +18,7 @@
 - Electronic models, such as the Tight-Binding model written in Wannier orbitals.
 - Full models with couplings among lattice, orbitals, and spins.
 - Models in zero-, one-, two, and three-dimension.
+![outline](https://github.com/PaulChern/LINVARIANT/blob/054139cb764192220dd224028c342e7cb463749a/docs/nnp.png)
 ### solvers:
 - (1) Finite Element Method (FEM), (2) Minimization, (3) molecular dynamics (MD), (4) Monte Carlo (MC), and (5) Finite Differences nonlinear solver on the large-scale continuous model
 - Parallel tempering algorithm is available with both MC and MD
@@ -26,6 +27,7 @@
 - Basis (electronic): pseudo-atomic/Wannier basis
 - searching crystal structures by machine learning of the energy invariants
 - walking around (sampling) the potential energy surface by machine learning the symmetry of the energetic coupling terms.
+![outline](https://github.com/PaulChern/LINVARIANT/blob/054139cb764192220dd224028c342e7cb463749a/docs/flowchart.png)
 ### Auxiliary:
 - Write Fortran (numerical) using mathematica (symbolic)
 - interface to VASP, Quantum Espresso, and OpenMX
