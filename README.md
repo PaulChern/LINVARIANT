@@ -60,4 +60,4 @@
 * **Sergey Artyukhin** - sergey.artyukhin@iit.it
 * **Laurent Bellaiche** - laurent@uark.edu   <br />
 See also the list of [contributors](https://github.com/PaulChern/LINVARIANT/contributors) who participated in this project.
-![outline](https://github.com/PaulChern/LINVARIANT/blob/054139cb764192220dd224028c342e7cb463749a/docs/tree.png)
+![outline](https://github.com/PaulChern/LINVARIANT/blob/aac89f5faea8ac1ae43c31c7fc146bd34a652f6d/docs/tree.png)
