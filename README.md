@@ -10,7 +10,7 @@
 - LINVARIANT solves the models with many numerical solvers, such as MC, MD, Exact diagonalization, Minimization, etc.
 - For large-scale calculations, LINVARIANT exports FORTRAN code from  symbolic models.
 
-![outline](https://github.com/PaulChern/LINVARIANT/blob/054139cb764192220dd224028c342e7cb463749a/docs/ResearchOutline-v2.png)
+![outline](https://github.com/PaulChern/LINVARIANT/blob/54cb63cd3c2189d17e3a82e55631f0c2d7966424/docs/HeffVision.png)
 ## Features:
 ### models:
 - Lattice models for structural phase transitions, such as Landau-Ginzburg-Devonshire models.
