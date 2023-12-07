@@ -12,7 +12,7 @@ Module LINVARIANT
   Subroutine LoadMesh
     Implicit none
     logical                  :: file_exists
-    Integer                  :: NGx, NGy, NGz, id, ix, iy, iz, occ
+    Integer                  :: NGx, NGy, NGz, id, ix, iy, iz, occ, scr
 
     INQUIRE(FILE='Supercell.inp', EXIST=file_exists)
     GridUnfold = 0
@@ -21,18 +21,19 @@ Module LINVARIANT
     If (file_exists) then
       open(ifileno, file='Supercell.inp', status='old')
       Read(ifileno, *) NGx, NGy, NGz
-      If (NGx.neqv.cgrid%n1.or.NGy.neqv.cgrid%n2.or.NGz.neqv.cgrid%n3) then
+      If ((NGx.neqv.cgrid%n1).or.(NGy.neqv.cgrid%n2).or.(NGz.neqv.cgrid%n3)) then
         write(*,*) "Error: mismatch between Supercell.inp and supercell setup!"
+        write(*,*) "cgrid: ", cgrid%n1, cgrid%n2, cgrid%n3
+        write(*,*) "  BOX: ", NGx, NGy, NGz
         Call Abort
       End if
       do id = 1, cgrid%npts
-        Read(ifileno, *) ix, iy, iz, occ
-        GridFold(1, id) = ix
-        GridFold(2, id) = iy
-        GridFold(3, id) = iz
-        GridFold(4, id) = occ
+        Read(ifileno, *) GridFold(:,id)
+        ix = GridFold(1,id)
+        iy = GridFold(2,id)
+        iz = GridFold(3,id)
         GridUnfold(1, ix, iy, iz) = id
-        GridUnfold(2, ix, iy, iz) = occ
+        GridUnfold(2:2+NumField,ix,iy,iz) = GridFold(4:4+NumField,id)
       end do
       close(ifileno)
     else
@@ -43,9 +44,9 @@ Module LINVARIANT
             GridFold(1, id) = ix
             GridFold(2, id) = iy
             GridFold(3, id) = iz
-            GridFold(4, id) = 1
+            GridFold(4:4+NumField, id) = 1
             GridUnfold(1, ix, iy, iz) = id
-            GridUnfold(2, ix, iy, iz) = 1
+            GridUnfold(2:2+NumField, ix, iy, iz) = 1
           end do
         end do
       end do
@@ -60,30 +61,65 @@ Module LINVARIANT
     Real*8,  Intent(inout) :: Fields(FieldDim, NumField, cgrid%n1, cgrid%n2, cgrid%n3)
     Integer                :: x0, y0, z0, ifield, id
     Integer                :: x1, y1, z1, xi1, yi1, zi1
+    Integer                :: xn(3), yn(3), zn(3)
+    Integer                :: i, j, k
+    Real*8                 :: dist, occ
 
-    do id = cgrid%ncells + 1, cgrid%npts
-      x0 = GridFold(1, id)
-      y0 = GridFold(2, id)
-      z0 = GridFold(3, id)
-
-      x1 = (x0+1)-floor(real(x0+1-1)/real(cgrid%n1))*(cgrid%n1)
-      y1 = (y0+1)-floor(real(y0+1-1)/real(cgrid%n2))*(cgrid%n2)
-      z1 = (z0+1)-floor(real(z0+1-1)/real(cgrid%n3))*(cgrid%n3)
-      xi1 = (x0-1)-floor(real(x0-1-1)/real(cgrid%n1))*(cgrid%n1)
-      yi1 = (y0-1)-floor(real(y0-1-1)/real(cgrid%n2))*(cgrid%n2)
-      zi1 = (z0-1)-floor(real(z0-1-1)/real(cgrid%n3))*(cgrid%n3)
-
-      do ifield = 1, 1
-        Fields(1, ifield, x0, y0, z0) = GridUnfold(2, x1, y0, z0)*(1 - screening)*Fields(1, ifield, x1, y0, z0) &
-                                      + GridUnfold(2, xi1, y0, z0)*(1 - screening)*Fields(1, ifield, xi1, y0, z0)
-
-        Fields(2, ifield, x0, y0, z0) = GridUnfold(2, x0, y1, z0)*(1 - screening)*Fields(2, ifield, x0, y1, z0) &
-                                      + GridUnfold(2, x0, yi1, z0)*(1 - screening)*Fields(2, ifield, x0, yi1, z0)
-
-        Fields(3, ifield, x0, y0, z0) = GridUnfold(2, x0, y0, z1)*(1 - screening)*Fields(3, ifield, x0, y0, z1) &
-                                      + GridUnfold(2, x0, y0, zi1)*(1 - screening)*Fields(3, ifield, x0, y0, zi1)
+    !$OMP    PARALLEL DEFAULT(SHARED) PRIVATE(x0,y0,z0)
+    !$OMP    DO
+      do id = cgrid%ncells + 1, cgrid%npts
+        x0 = GridFold(1, id)
+        y0 = GridFold(2, id)
+        z0 = GridFold(3, id)
+        Fields(:, :, x0, y0, z0) = 0.0
       end do
-    end do
+    !$OMP    END DO
+    !$OMP    END PARALLEL
+
+    !$OMP    PARALLEL DEFAULT(SHARED) PRIVATE(x0,y0,z0,x1,y1,z1,xi1,yi1,zi1,xn,yn,zn)
+    !$OMP    DO
+      do id = cgrid%ncells + 1, cgrid%npts
+        x0 = GridFold(1, id)
+        y0 = GridFold(2, id)
+        z0 = GridFold(3, id)
+
+        x1 = (x0+1)-floor(real(x0+1-1)/real(cgrid%n1))*(cgrid%n1)
+        y1 = (y0+1)-floor(real(y0+1-1)/real(cgrid%n2))*(cgrid%n2)
+        z1 = (z0+1)-floor(real(z0+1-1)/real(cgrid%n3))*(cgrid%n3)
+        xi1 = (x0-1)-floor(real(x0-1-1)/real(cgrid%n1))*(cgrid%n1)
+        yi1 = (y0-1)-floor(real(y0-1-1)/real(cgrid%n2))*(cgrid%n2)
+        zi1 = (z0-1)-floor(real(z0-1-1)/real(cgrid%n3))*(cgrid%n3)
+
+        xn = (/xi1, x0, x1/)
+        yn = (/yi1, y0, y1/)
+        zn = (/zi1, z0, z1/)
+
+        do ifield = 1, NumIRFields
+          Fields(1, ifield, x0, y0, z0) = GridUnfold(2, x1, y0, z0)*Fields(1, ifield, x1, y0, z0) &
+                                        + GridUnfold(2, xi1, y0, z0)*Fields(1, ifield, xi1, y0, z0)
+
+          Fields(2, ifield, x0, y0, z0) = GridUnfold(2, x0, y1, z0)*Fields(2, ifield, x0, y1, z0) &
+                                        + GridUnfold(2, x0, yi1, z0)*Fields(2, ifield, x0, yi1, z0)
+
+          Fields(3, ifield, x0, y0, z0) = GridUnfold(2, x0, y0, z1)*Fields(3, ifield, x0, y0, z1) &
+                                        + GridUnfold(2, x0, y0, zi1)*Fields(3, ifield, x0, y0, zi1)
+
+          Fields(1:3, ifield, x0, y0, z0) = Fields(1:3, ifield, x0, y0, z0)/GridUnfold(2+ifield, x0, y0, z0)
+        end do
+
+        Fields(1, NumField, x0, y0, z0) = GridUnfold(2, x1, y0, z0)*Fields(1, NumField, x1, y0, z0) &
+                                        + GridUnfold(2, xi1, y0, z0)*Fields(1, NumField, xi1, y0, z0)
+
+        Fields(2, NumField, x0, y0, z0) = GridUnfold(2, x0, y1, z0)*Fields(2, NumField, x0, y1, z0) &
+                                        + GridUnfold(2, x0, yi1, z0)*Fields(2, NumField, x0, yi1, z0)
+
+        Fields(3, NumField, x0, y0, z0) = GridUnfold(2, x0, y0, z1)*Fields(3, NumField, x0, y0, z1) &
+                                        + GridUnfold(2, x0, y0, zi1)*Fields(3, NumField, x0, y0, zi1)
+
+        Fields(1:3, NumField, x0, y0, z0) = Fields(1:3, NumField, x0, y0, z0)/GridUnfold(2+NumField, x0, y0, z0)
+      end do
+    !$OMP    END DO
+    !$OMP    END PARALLEL
 
   End Subroutine ImposeBCS
 
@@ -152,7 +188,7 @@ Module LINVARIANT
   
     TotalDim = 0
     do i = 1, NumField
-      If(.Not.FrozenQ(i)) TotalDim = TotalDim+cgrid%npts*Sum(FieldsBinary(:,i))
+      If(.Not.FrozenQ(i)) TotalDim = TotalDim+cgrid%ncells*Sum(FieldsBinary(:,i))
     end do
   
     StrainDim = 0
@@ -176,7 +212,7 @@ Module LINVARIANT
     Real*8                 :: rand
     Integer                :: i, ifield, ix, iy, iz, NumGrid, StrainDim
   
-    NumGrid = cgrid%npts
+    NumGrid = cgrid%ncells
   
     Ekin = ResolveEkin(dFieldsdt, de0ijdt)
   
@@ -191,7 +227,9 @@ Module LINVARIANT
     end do
   
     TK = 2*Ekin(NumField+1)*Hartree/k_bolt_ev/StrainDim
-    If(TK .gt. 0.0D0) then
+    If (StrainDim.eq.0) then
+      de0ijdt = 0.0
+    Else If(TK .gt. 0.0D0) then
       de0ijdt = Sqrt(Temp/Tk)*de0ijdt
     Else
       do i = 1, 6

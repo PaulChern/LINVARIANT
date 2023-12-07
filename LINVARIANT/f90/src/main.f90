@@ -24,6 +24,7 @@ Program main
   Real*8, allocatable      :: Fields(:,:,:,:,:)
   Real*8, allocatable      :: dFieldsdt(:,:,:,:,:)
   Real*8, allocatable      :: EwaldField(:,:,:,:,:)
+  Real*8, allocatable      :: DepField(:,:,:,:,:)
   Real*8, allocatable      :: udamp(:), wl_h(:,:), wl_s(:,:)
   Real*8, allocatable      :: gm(:)
   Real*8, allocatable      :: TempList(:)
@@ -57,8 +58,8 @@ Program main
   Call ReadCoefficients
   do_io  Call fmkdir(trim(Solver)//".out")
 
-  allocate(GridFold(4, cgrid%npts))
-  allocate(GridUnfold(2, cgrid%n1, cgrid%n2, cgrid%n3))
+  allocate(GridFold(4+NumField, cgrid%npts))
+  allocate(GridUnfold(2+NumField, cgrid%n1, cgrid%n2, cgrid%n3))
   Call LoadMesh
 
   NG1 = cgrid%n1
@@ -116,18 +117,21 @@ Program main
   allocate(EwaldMat(3,3,NG1,NG2,NG3))
 
 #ifdef MPI
-  do_io call EwaldMatrix(neighbourcut)
+  do_io call EwaldMatrix
 #endif
 
-  call EwaldMatrix(neighbourcut)
+  call EwaldMatrix
   if(trim(Solver).eq."Ewald") Call EXIT
 
 #ifdef MPI
   Call MPI_BARRIER(MPI_COMM_WORLD, IERROR)
 #endif
 
-  allocate(EwaldHessian(3*(cgrid%npts), 3*(cgrid%npts), NumField))
+  allocate(EwaldHessian(3*cgrid%ncells, 3*cgrid%ncells, NumField))
   Call GetHessianEwald(EwaldMat, EwaldHessian)
+
+  allocate(DepHessian(3, NumField, 3, NumField, cgrid%ncells))
+  Call GetDepHessian(EwaldMat, DepHessian)
   
   !!!!!!!!!!!!!!!!!!!!!
   ! Initialize Fields !
@@ -141,6 +145,9 @@ Program main
  
   allocate(EwaldField(3,NumField,NG1,NG2,NG3))
   Call GetEwaldField(Fields, EwaldField)
+
+  allocate(DepField(3,NumField,NG1,NG2,NG3))
+  Call GetDepField(Fields, DepField)
 
   Call RemoveGridDrifts(Fields)
   Call RemoveGridDrifts(dFieldsdt)
@@ -201,6 +208,7 @@ Program main
       if((mod(istep,TapeRate).eq.0).and.(istep.gt.ThermoSteps)) then
         tstart = tend
         Call get_walltime(tend)
+        do_io write(*,'(A17,F10.2)') "Thermaling @ ", Temp
         do_io Call MD_log(Fields, e0ij, dFieldsdt, de0ijdt, istep, tend-tstart, gm)
         do_io Call WriteBinary(ifileno, Fields, dFieldsdt, e0ij, de0ijdt)
       end if
@@ -269,11 +277,26 @@ Program main
     ! MCMC LOOP !
     !!!!!!!!!!!!!
     Call random_seed()
+
+    ReplicaT0 = Temp
+
+    do istep = 1, CoolingSteps
+      Temp = ReplicaTN - (istep -1)*(ReplicaTN - ReplicaT0)/(CoolingSteps - 1)
+      do i = 1, SwapRate
+        Call MCMCStep((istep-1)*SwapRate+i, Fields, EwaldField, DepField, e0ij, Temp, udamp, etadamp, dene)
+      end do
+      tstart = tend
+      Call get_walltime(tend)
+      do_io write(*,'(A17,F10.2,A4,F10.2,A7,F10.2)') "Cooling from ", ReplicaTN, " to ", ReplicaT0, " now @ ", Temp
+      do_io Call MCMC_log(Fields, e0ij, istep*SwapRate, tend-tstart, dene, udamp, etadamp)
+    end do
+
     do istep = 1, NumSteps
-      Call MCMCStep(istep, Fields, EwaldField, e0ij, Temp, udamp, etadamp, dene)
+      Call MCMCStep(istep, Fields, EwaldField, DepField, e0ij, Temp, udamp, etadamp, dene)
       if((mod(istep,TapeRate).eq.0).and.(istep.gt.ThermoSteps)) then
         tstart = tend
         Call get_walltime(tend)
+        do_io write(*,'(A17,F10.2)') "Thermaling@ ", Temp
         do_io Call MCMC_log(Fields, e0ij, istep, tend-tstart, dene, udamp, etadamp)
         do_io Call WriteBinary(ifileno, Fields, dFieldsdt, e0ij, de0ijdt)
       end if
@@ -337,7 +360,7 @@ Program main
       do ireplica = NCPU, 1, -1
         if(trim(Solver).eq."PTMC") then
           do istep = 1, CoolingSteps
-            Call MCMCStep(istep, Fields, EwaldField, e0ij, TempList(NODE_ME+1), udamp, etadamp, dene)
+            Call MCMCStep(istep, Fields, EwaldField, DepField, e0ij, TempList(NODE_ME+1), udamp, etadamp, dene)
           end do
         else ! PTMD
           do istep = 1, CoolingSteps
@@ -348,8 +371,6 @@ Program main
 
         if(ireplica.eq.NODE_ME+1) then
           tstart = tend
-          Call get_walltime(tend)
-          Call MCMC_log(Fields, e0ij, ireplica, tend-tstart, dene, udamp, etadamp)
           Call WriteFinal('FinalConfig-'//trim(FileIndex)//'.dat', Fields, e0ij)
           Call WriteFinal('FinalVelocity-'//trim(FileIndex)//'.dat', dFieldsdt, de0ijdt)
         end if
@@ -367,7 +388,7 @@ Program main
 
     if(trim(Solver).eq."PTMC") then 
       do istep = 1, NumSteps
-        Call MCMCStep(istep, Fields, EwaldField, e0ij, TempList(NODE_ME+1), udamp, etadamp, dene)
+        Call MCMCStep(istep, Fields, EwaldField, DepField, e0ij, TempList(NODE_ME+1), udamp, etadamp, dene)
         if((mod(istep,TapeRate).eq.0).and.(istep.gt.ThermoSteps)) then
           io_begin
             tstart = tend
@@ -406,7 +427,7 @@ Program main
           Tk = Thermometer(dFieldsdt, de0ijdt)
           do i = 1, NCPU
             if(i == NODE_ME+1) then
-              write(*,'(I5,A1,I10,2F16.4,A3,F16.4,A12,F10.6)') i, "@", istep, Tk, " / ", &
+              write(*,'(I5,A1,I10,2F16.4,A3,F10.4,A12,F10.6)') i, "@", istep, Tk, " / ", &
                     TempList(i), "(K)  Epot: ", Epot
             end if
 
@@ -460,5 +481,6 @@ Program main
   deallocate(EwaldMat)
   deallocate(EwaldHessian)
   deallocate(EwaldField)
+  deallocate(DepField)
   
   End Program main

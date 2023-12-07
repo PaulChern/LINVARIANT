@@ -24,6 +24,26 @@ Subroutine GetInitConfig(Fields, e0ij, inittype, FileCode)
 
   SELECT CASE (keyword)
     CASE ("random")
+      INQUIRE(FILE=trim(Solver)//".out/clamping-"//trim(FileCode)//".dat", EXIST=file_exists)
+      if (file_exists .eqv. .False.) then
+        write(*,*) "Random Initialization done!"
+        do i = 1, 6
+          Call random_number(rand)
+          eta(i) = (rand-0.50d0)/1.0d3
+        end do
+        e0ij = eta2eij(eta)
+      else
+        write(*,*) "Warning: strains are initilized from strain file!"
+        open(FileHandle,file=trim(Solver)//".out/clamping-"//trim(FileCode)//".dat",form='formatted',status='old')
+        Read(FileHandle, "(3E25.15)") e0ij(1,1), e0ij(2,2), e0ij(3,3)
+        Read(FileHandle, "(3E25.15)") e0ij(2,3), e0ij(1,3), e0ij(1,2)
+        Close(FileHandle)
+        e0ij(3,2) = e0ij(2,3)
+        e0ij(3,1) = e0ij(1,3)
+        e0ij(2,1) = e0ij(1,2)
+        eta = eij2eta(e0ij)
+      end if
+
       do icell = 1, cgrid%ncells
         ix = GridFold(1, icell)
         iy = GridFold(2, icell)
@@ -37,11 +57,6 @@ Subroutine GetInitConfig(Fields, e0ij, inittype, FileCode)
       end do
       Fields(:,NumField,:,:,:) =0.0D0
 
-      do i = 1, 6
-      Call random_number(rand)
-        eta(i) = (rand-0.50d0)/1.0d3
-      end do
-      e0ij = eta2eij(eta)
     CASE ("zero")
       Fields = 0.0d0
       e0ij = 0.0d0
@@ -58,17 +73,22 @@ Subroutine GetInitConfig(Fields, e0ij, inittype, FileCode)
         e0ij(3,2) = e0ij(2,3)
         e0ij(3,1) = e0ij(1,3)
         e0ij(2,1) = e0ij(1,2)
-    
+
         do ifield = 1, NumField
           Read(FileHandle, "(3E25.15)") (field(i, ifield), i=1,FieldDim)
+        end do
+        do ifield = 1, NumField
+          Read(FileHandle, "(3E25.15)") ((DWq(j,i,ifield), j=1,3), i=1,FieldDim)
+        end do
+
+        do ifield = 1, NumField
           do i = 1, FieldDim
-            do iz = 1, cgrid%n3
-              do iy = 1, cgrid%n2
-                do ix =1, cgrid%n1
-                  qdotr=Real(Exp(2*pi*cmplx(0.0_dp,1.0_dp)*(DWq(1,i)*ix+DWq(2,i)*iy+DWq(3,i)*iz)))
-                  Fields(i,ifield,ix,iy,iz) = FieldsBinary(i,ifield)*field(i,ifield)*tanh(100.0*qdotr)
-                end do
-              end do
+            do icell = 1, cgrid%ncells
+              ix = GridFold(1, icell)
+              iy = GridFold(2, icell)
+              iz = GridFold(3, icell)
+              qdotr=Real(Exp(2*pi*cmplx(0.0_dp,1.0_dp)*(DWq(1,i,ifield)*ix+DWq(2,i,ifield)*iy+DWq(3,i,ifield)*iz)))
+              Fields(i,ifield,ix,iy,iz) = FieldsBinary(i,ifield)*field(i,ifield)*tanh(100.0*qdotr)
             end do
           end do
         end do

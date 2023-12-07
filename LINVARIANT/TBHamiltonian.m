@@ -84,7 +84,7 @@ TBHk[Ti0_, pos_, k_] := Module[{latt, sites, i, j, TBBlock, dim, ind, Hk},
   dim = Sqrt@Length[DeleteDuplicates[Ti0\[Transpose][[1]]]];
   ind = Sort[DeleteDuplicates[DeleteDuplicates[(#\[Transpose]&/@ (Ti0\[Transpose][[1]]))]\[Transpose][[1]]]];
   TBBlock = Merge[{#1 -> #4/#3 Exp[I 2 Pi k . (sites[[#1[[1,2]], 1]] + #2 - sites[[#1[[1,1]], 1]])]} & @@@ Ti0, Total];
-  Hk=ArrayFlatten[Table[TBBlock[{ind[[i]], ind[[j]]}\[Transpose]], {i, dim}, {j, dim}]];
+  Hk = ArrayFlatten[Table[TBBlock[{ind[[i]], ind[[j]]}\[Transpose]], {i, dim}, {j, dim}]];
   Return[(Hk\[ConjugateTranspose] + Hk)/2]
 ]
 

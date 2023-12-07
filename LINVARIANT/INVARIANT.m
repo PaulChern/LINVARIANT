@@ -126,7 +126,7 @@ ModeDecompositionOld[pos0_, pos_, Basis_, label_, OptionsPattern[{"lattnorm" -> 
   Return[{data, eij2eta[eij]}]
 ]
 
-ModeDecomposition[pos0_, pos_, Basis_, vars_, svars_, uvars_, OptionsPattern[{"zyx" -> True, "lattnorm" -> False, "table" -> True, "round" -> 10.0^-6, "upto" -> 4, "match" -> True}]] := Module[{latt0, sites0, supersites0, latt, sites, eij, ix, iy, iz, ngx, ngy, ngz, block, tab, grid, i, s, lattnorm, SuperVars, NumAtom, LattCar2Dir, AcousticBasis, FullBasis, SuperBasis, data},
+ModeDecomposition[pos0_, pos_, Basis_, vars_, svars_, uvars_, OptionsPattern[{"zyx" -> True, "lattnorm" -> False, "table" -> True, "round" -> 10.0^-6, "upto" -> 4, "ndigits"->2, "match" -> True}]] := Module[{latt0, sites0, supersites0, latt, sites, eij, ix, iy, iz, ngx, ngy, ngz, block, tab, grid, i, s, lattnorm, SuperVars, NumAtom, LattCar2Dir, AcousticBasis, FullBasis, SuperBasis, tabdata, data},
   
   {latt0, sites0} = pos0;
   NumAtom = Length[sites0];
@@ -145,9 +145,9 @@ ModeDecomposition[pos0_, pos_, Basis_, vars_, svars_, uvars_, OptionsPattern[{"z
   
   eij = Chop@GetStrainTensor[latt0, latt/grid, "iso" -> False];
   
-  data = ({#1, #2, #3, #4/lattnorm} & @@@ ISODISTORT[pos0[[1]], supersites0, sites, SuperBasis, SuperVars, "round" -> OptionValue["round"], "match" -> OptionValue["match"]]);
-  
-  tab = Grid[{{MatrixForm[eij]}, {Grid[Partition[Grid[#] & /@ GatherBy[data, VarGrid[#[[2]]] &], UpTo[OptionValue["upto"]]], Dividers -> All]}}, 
+  data = {#1, #2, #3, #4/lattnorm} & @@@ ISODISTORT[pos0[[1]], supersites0, sites, SuperBasis, SuperVars, "round" -> OptionValue["round"], "match" -> OptionValue["match"]];
+  tabdata= {#1, #2, NumberForm[#3, {10,OptionValue["ndigits"]}], NumberForm[#4, {10,OptionValue["ndigits"]}]} &@@@ data; 
+  tab = Grid[{{MatrixForm[eij]}, {Grid[Partition[Grid[#] & /@ GatherBy[tabdata, VarGrid[#[[2]]] &], UpTo[OptionValue["upto"]]], Dividers -> All]}}, 
              Frame -> True, Dividers -> All];
   
   If[OptionValue["table"], Print[tab]];

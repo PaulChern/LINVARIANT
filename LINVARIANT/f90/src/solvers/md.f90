@@ -46,7 +46,7 @@ Subroutine TikTok(Fields, dFieldsdt, e0ij, de0ijdt, T0, gm, TimeNow)
     If(CLAMPQ(i)) then
       ForcesEta(i) = 0.0D0
     else
-      ForcesEta(i) = Sum(Forces(i,NumField+1,:,:,:))/cgrid%npts/mass(NumField+1)
+      ForcesEta(i) = Sum(Forces(i,NumField+1,:,:,:))/cgrid%ncells/mass(NumField+1)
     End If
   End do
 !  Call GetFriction(gm, dFieldsdt, de0ijdt, Friction)
@@ -161,10 +161,10 @@ Subroutine ReservoirUpdate(gm, T0, dFieldsdt, de0ijdt, TimeNow)
     If((TimeNow.gt.ThermoSteps*DeltaT)) then
       TotalDim = 0.0D0
       do i = 1, NumField 
-        If(.Not.FrozenQ(i)) TotalDim = TotalDim+cgrid%npts*3
+        If(.Not.FrozenQ(i)) TotalDim = TotalDim+cgrid%ncells*3
       End do
     else
-      TotalDim = cgrid%npts*9.0D0
+      TotalDim = cgrid%ncells*9.0D0
     end if
     Do i = 1, NumField
       Call random_number(collision)
@@ -205,7 +205,7 @@ Subroutine BaroState(e0ij, VolumeForce)
     VolumeForce(2,1) = VolumeForce(1,2)
     VolumeForce(3,1) = VolumeForce(1,3)
     
-    VolumeForce = VolumeForce*Pressure/(mass(NumField+1)*cgrid%npts)
+    VolumeForce = VolumeForce*Pressure/(mass(NumField+1)*cgrid%ncells)
   End If
 
 End Subroutine BaroState

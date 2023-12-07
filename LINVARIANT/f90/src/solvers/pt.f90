@@ -106,7 +106,7 @@ Subroutine PTSwap(TempList, Fields, EwaldField, e0ij, dFieldsdt, de0ijdt, gm, Nu
   if(mod(istep,TapeRate).eq.0) then
     do i = 1, NumReplicas
       if(i == ireplica) then
-        write(*,'(I5,A1,I10,2F16.4,A3,F16.4,A12,F10.6)') i, "@", istep, Tk, " / ", TempList(i), "(K)  Epot: ", Etot/cgrid%npts
+        write(*,'(I5,A1,I10,2F16.4,A3,F16.4,A12,F10.6)') i, "@", istep, Tk, " / ", TempList(i), "(K)  Epot: ", Etot/cgrid%ncells
       end if
       call MPI_BARRIER(MPI_COMM_WORLD, IERROR)
     end do

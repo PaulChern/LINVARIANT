@@ -17,6 +17,8 @@ UnfoldingPW                  ::usage "UnfoldingPW[PhononNK, Gsc, DMPos, SPCPos, 
 PhononUnfolding              ::usage "PhononUnfolding[Fi0, DMPos, StdPos, q, Qbz, unfoldDim]"
 GetEwaldMatrix               ::usage "GetEwaldMatrix[NGrid, tol]"
 ArrayFold2D                  ::usage "ArrayFold2D[list, n]"
+LoadEwaldMat                 ::usage "LoadEwaldMat[dir, file, grid]"
+
 (*--------- Plot and Manipulate Crystal Structures -------------------- ----------------*)
 
 (*--------- Point and Space Group Information ---------------------------*)
@@ -141,13 +143,14 @@ GetDynamicMatrix[Fi0_, pos_, q_, OptionsPattern[{"mass"->{}}]] := Module[{latt, 
   Return[HermiteDM]
 ]
 
-PhononBandsPlot[Fi0_, pos_, klist_, kintv_, OptionsPattern[{"range" -> All, "mass1"->False, "AspectRatio" -> 1/GoldenRatio, "imagesize" -> Medium}]] := Module[{latt, sites, pdata, q, DM, sol, kpath, xticks, BandsPlot},
+PhononBandsPlot[Fi0_, pos_, klist_, kintv_, OptionsPattern[{"range" -> All, "mass1"->False, "AspectRatio" -> 1/GoldenRatio, "imagesize" -> Medium, "plotstyle" -> Automatic}]] := Module[{latt, sites, pdata, q, DM, sol, kpath, xticks, BandsPlot},
   {latt, sites} = pos;
   {kpath, xticks} = GetKpath[latt, klist, kintv];
   pdata = Table[DM = GetDynamicMatrix[Fi0, pos, q[[2]], If[OptionValue["mass1"], "mass" -> ConstantArray[1, Length@sites], {}]];
                 sol = Eigenvalues[DM];
                 Sort[{q[[1]], ReIm[Sqrt[#]].{1,-1}} &/@ sol], {q, kpath}]; 
   BandsPlot = ListPlot[pdata\[Transpose], 
+                       PlotStyle -> OptionValue["plotstyle"],
                        Joined -> True, 
                        PlotRange -> {All,OptionValue["range"]}, 
                        AspectRatio -> OptionValue["AspectRatio"], 
@@ -239,6 +242,16 @@ GetHessianOnSite[InvList_, vars0_, CoeffStr_] := Module[{x, i, Hi0i0},
   Hi0i0 = Table[D[If[ListQ[InvList], InvList.(ToExpression[CoeffStr][#] & /@ Range[Length@InvList]), InvList], v1, v2], {v1, vars0}, {v2, vars0}];
   Return[Hi0i0]
 ]
+
+LoadEwaldMat[dir_, file_, grid_, OptionsPattern[{"xyz"->True}]] := Module[{ix, iy, iz, Nx, Ny, Nz, Ewald, EwaldMat},
+  {Nx, Ny, Nz} = grid;
+  Ewald = Partition[Chop@Import[dir <> "/" <> file, "Table", RecordLists -> True], 3];
+  EwaldMat = If[OptionValue["xyz"], 
+                Table[Ewald[[Ny Nx (iz - 1) + Nx (iy - 1) + ix]], {ix, Nx}, {iy, Ny}, {iz, Nz}],
+                Table[Ewald[[Ny Nx (iz - 1) + Nx (iy - 1) + ix]], {iz, Nz}, {iy, Ny}, {ix, Nx}]];
+  Return[EwaldMat]
+]
+
 (*-------------------------- Attributes ------------------------------*)
 
 (*Attributes[]={Protected, ReadProtected}*)

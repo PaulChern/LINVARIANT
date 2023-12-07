@@ -582,6 +582,7 @@ FortranParamModule[CoeffList_, vars_] := Module[{Fint, n, head, tail, body1, bod
          {Fint[1] <> "use common"}, 
          {Fint[1] <> "implicit none"}, 
          {Fint[1] <> "integer                 :: NODE_ME, NCPU, IERROR, IONODE"}, 
+         {Fint[1] <> "Integer, parameter      :: nncut = neighbourcut"}, 
          {Fint[1] <> "Integer, parameter      :: stdin = 5"}, 
          {Fint[1] <> "Integer, parameter      :: stdout = 6"}, 
          {Fint[1] <> "Integer, parameter      :: ifileno = 55                          !< File handle number for input files"}, 
@@ -592,6 +593,7 @@ FortranParamModule[CoeffList_, vars_] := Module[{Fint, n, head, tail, body1, bod
          {Fint[1] <> "Real*8                  :: latt(3,3)"},
          {Fint[1] <> "Real*8, dimension (:,:,:,:,:), allocatable :: EwaldMat"},
          {Fint[1] <> "Real*8, dimension (:,:,:),     allocatable :: EwaldHessian"},
+         {Fint[1] <> "Real*8, dimension (:,:,:,:,:), allocatable :: DepHessian"},
          {Fint[1]}};
   tail = {{Fint[1]}, { "End Module Parameters"}};
   body1 = Table[{Fint[1] <> "Real*8                  :: " <> c[[1]] <> "(" <> ToString[Length[c[[2]]]] <> ")"}, {c, CoeffList}];

@@ -104,7 +104,7 @@ GetPhononBasis[pos0_, Fij_, OptionsPattern[{"table" -> True, "fontsize" -> 12, "
                  CloneReshape2D[PhononByIR, OptionValue["toiso"]]];
 
   PhononRotated = Table[{ind, frequency, IR} = PhononByIR[[i]]\[Transpose];
-                        eigenvectors = DeleteCases[Orthogonalize@Flatten[Table[rot = PseudoInverse[IR\[Transpose][[3 (j - 1) + 1 ;; 3 (j - 1) + 3]]\[Transpose]]; Normalize[#] & /@ (rot . IR), {j, NumAtom}], 1], v_ /; Norm[v] == 0]; 
+                        eigenvectors = DeleteCases[Orthogonalize[Flatten[Table[rot = PseudoInverse[IR\[Transpose][[3 (j - 1) + 1 ;; 3 (j - 1) + 3]]\[Transpose]]; Normalize[#] & /@ (rot . IR), {j, NumAtom}], 1], Tolerance -> 10.^-9], v_ /; Norm[v] == 0]; 
                         Table[{ind[[iv]], isolabels[[i,iv]], frequency[[iv]], 
                                Flatten[Chop[alatt.#, OptionValue["roundup"]] &/@ Partition[eigenvectors[[iv]], 3]]}, {iv, Length[ind]}], {i, Length[PhononByIR]}];
   
@@ -2459,9 +2459,9 @@ BuildLINVARIANT[dir0_, pos0_, fullmodel_, vars_, svars_, ie_, param_, ndipoles_,
 
   Do[Run["cp "<> f90dir <> "/src/" <> d <> "/* " <> dir <> "/src/" <> d], {d, {"core", "io", "solvers", "hamiltonian", "fft", "common", "parallel", "xc"}}];
 
-  Run["sed -i 's/neighbourcut/" <> ToString[nn] <> "/g' "   <> dir <> "/src/main.f90"];
-  Run["sed -i 's/NumIRFields/" <> ToString[ndipoles+1] <> "/g' "   <> dir <> "/src/solvers/mc.f90"];
+  Run["sed -i 's/NumIRFields/" <> ToString[ndipoles] <> "/g' "   <> dir <> "/src/solvers/mc.f90"];
   Run["sed -i 's/NumIRFields/" <> ToString[ndipoles] <> "/g' "   <> dir <> "/src/core/Ewald.f90"];
+  Run["sed -i 's/neighbourcut/" <> ToString[nn] <> "/g' "        <> dir <> "/src/core/Ewald.f90"];
   Run["sed -i 's/NumIRFields/" <> ToString[ndipoles] <> "/g' "   <> dir <> "/src/core/LINVARIANT.f90"];
   Run["sed -i 's/FrozenQ           =.*/FrozenQ           = "<> "(\/" <> StringRiffle[ConstantArray[".false.", Length[vars]+1], ", "] <> "\/)" <>"/g' " <> dir <> "/src/io/" <> "/Inputs.f90"];
 
@@ -2699,13 +2699,15 @@ FoldGamma[gmodel_, ah_] := Module[{ahsub, grid, out, v, a, ix, iy, iz},
   Return[{out\[Transpose]}]
 ]
 
-LMesh[dir_, grid_, mfunc_, OptionsPattern[{"write"->True}]] := Module[{NGx, NGy, NGz, box, boxdata, pltdata, ix, iy, iz},
+LMesh[dir_, grid_, mfunc_, OptionsPattern[{"write"->True, "plot"->True}]] := Module[{NGx, NGy, NGz, box, boxdata, pltdata, ix, iy, iz, occ, bcs, boxdict},
   {NGx, NGy, NGz} = grid;
-  pltdata = Table[mfunc[ix, iy, iz], {iz, 1, NGz}, {iy, 1, NGy}, {ix, NGx}];
-  Print[ArrayPlot3D[pltdata, Mesh -> True, PlotRange -> {All, All, All}]];
+  pltdata = Table[{occ, bcs} = mfunc[ix, iy, iz];
+                  If[occ == 1, 1, If[First@bcs == 1, -1, 0]], {iz, 1, NGz}, {iy, 1, NGy}, {ix, NGx}];
+  If[OptionValue["plot"], Print[ArrayPlot3D[pltdata, Mesh -> True, PlotRange -> {All, All, All}, ColorRules -> {1->Gray, -1->Blue}]]];
   
-  box = Table[{ix, iy, iz, mfunc[ix, iy, iz]}, {iz, NGz}, {iy, NGy}, {ix, NGx}];
-  boxdata = Prepend[Flatten[GatherBy[Flatten[box, 2], Last], 1], grid];
+  box = Table[Flatten@{ix, iy, iz, mfunc[ix, iy, iz]}, {iz, NGz}, {iy, NGy}, {ix, NGx}];
+  boxdict = GroupBy[Flatten[box, 2], #[[4]]&];
+  boxdata = Prepend[Join[boxdict[1], boxdict[0]], grid];
   If[OptionValue["write"], Export[dir <> "/Supercell.inp", boxdata, "Table", "FieldSeparators" -> " "]];
   Return[pltdata]
 ]

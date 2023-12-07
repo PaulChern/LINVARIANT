@@ -30,33 +30,21 @@ Module Energy
     Real*8,  Intent(in)  :: dFieldsdt(FieldDim, NumField, cgrid%n1, cgrid%n2, cgrid%n3)
     Real*8,  Intent(in)  :: de0ijdt(3,3)
     Real*8               :: Ekin(2), detadt(6), etaV
-    Integer              :: i, ifield, ix, iy, iz
+    Integer              :: i, ifield, ix, iy, iz, icell
 
     Ekin = 0.0D0
     detadt = eij2eta(de0ijdt)
 
-    do iz = 1, cgrid%n3
-      do iy = 1, cgrid%n2
-        do ix = 1, cgrid%n1
-          do ifield = 1, NumField 
-            do i = 1, FieldDim
-              Ekin(1) = Ekin(1) + 0.5d0*mass(ifield)*FieldsBinary(i,ifield)*dFieldsdt(i, ifield, ix, iy, iz)**2*alat**2
-            end do
-          end do
+    do icell = 1, cgrid%ncells
+      ix = GridFold(1, icell)
+      iy = GridFold(2, icell)
+      iz = GridFold(3, icell)
+      do ifield = 1, NumField 
+        do i = 1, FieldDim
+          Ekin(1) = Ekin(1) + 0.5d0*mass(ifield)*FieldsBinary(i,ifield)*dFieldsdt(i, ifield, ix, iy, iz)**2*alat**2
         end do
       end do
     end do
-
-!    do iz = 1, cgrid%n3
-!      do iy = 1, cgrid%n2
-!        do ix = 1, cgrid%n1
-!          do i = 1, 3
-!            etaV = de0ijdt(i,1)*(ix-1)+de0ijdt(i,2)*(iy-1)+de0ijdt(i,3)*(iz-1)
-!            Ekin = Ekin + 0.5d0*mass(3)*etaV**2*alat**2
-!          end do
-!        end do
-!      end do
-!    end do
 
     do i = 1, 6
       If(.Not.CLAMPQ(i)) Ekin(2) = Ekin(2) + 0.5d0*cgrid%npts*mass(NumField+1)*(detadt(i)*alat)**2
@@ -69,19 +57,18 @@ Module Energy
     Real*8,  Intent(in)  :: dFieldsdt(FieldDim, NumField, cgrid%n1, cgrid%n2, cgrid%n3)
     Real*8,  Intent(in)  :: de0ijdt(3,3)
     Real*8               :: Ekin(NumField+1), detadt(6), etaV
-    Integer              :: i, ifield, ix, iy, iz
+    Integer              :: i, ifield, ix, iy, iz, icell
 
     Ekin = 0.0D0
     detadt = eij2eta(de0ijdt)
 
-    do iz = 1, cgrid%n3
-      do iy = 1, cgrid%n2
-        do ix = 1, cgrid%n1
-          do ifield = 1, NumField
-            do i = 1, FieldDim
-              Ekin(ifield) = Ekin(ifield) + 0.5d0*mass(ifield)*FieldsBinary(i,ifield)*dFieldsdt(i, ifield, ix, iy, iz)**2*alat**2
-            end do
-          end do
+    do icell = 1, cgrid%ncells
+      ix = GridFold(1, icell)
+      iy = GridFold(2, icell)
+      iz = GridFold(3, icell)
+      do ifield = 1, NumField
+        do i = 1, FieldDim
+          Ekin(ifield) = Ekin(ifield) + 0.5d0*mass(ifield)*FieldsBinary(i,ifield)*dFieldsdt(i, ifield, ix, iy, iz)**2*alat**2
         end do
       end do
     end do
@@ -96,27 +83,49 @@ Module Energy
     Implicit none
     Real*8,  Intent(in)    :: Fields(FieldDim, NumField, cgrid%n1, cgrid%n2, cgrid%n3)
     Real*8,  Intent(in)    :: e0ij(3,3)
-    Real*8                 :: Etot
-    Integer                :: ix, iy, iz
+    Real*8                 :: Etot, omptemp
+    Integer                :: icell, ix, iy, iz
 
     Etot = 0.0D0
 
     if (DipoleQ) then
-      do iz = 1, cgrid%n3
-        do iy = 1, cgrid%n2
-          do ix = 1, cgrid%n1
-            Etot = Etot + GetSiteEnergy(ix, iy, iz, Fields, e0ij) + GetSiteEnergyEwald(ix, iy, iz, Fields)
-          end do
+!      !$OMP    PARALLEL DEFAULT(SHARED) PRIVATE(ix,iy,iz,omptemp)
+        omptemp = 0.0_dp
+!      !$OMP    DO
+        do icell = 1, cgrid%ncells
+          ix = GridFold(1, icell)
+          iy = GridFold(2, icell)
+          iz = GridFold(3, icell)
+          omptemp = omptemp + GetSiteEnergy(ix, iy, iz, Fields, e0ij)
         end do
+!      !$OMP    END DO
+!      !$OMP    CRITICAL
+        Etot = Etot + omptemp
+!      !$OMP    END CRITICAL
+!      !$OMP    END PARALLEL
+      do icell = 1, cgrid%ncells
+        ix = GridFold(1, icell)
+        iy = GridFold(2, icell)
+        iz = GridFold(3, icell)
+        Etot = Etot + GetSiteEnergyEwald(ix, iy, iz, Fields)
       end do
     else
-      do iz = 1, cgrid%n3
-        do iy = 1, cgrid%n2
-          do ix = 1, cgrid%n1
-            Etot = Etot + GetSiteEnergy(ix, iy, iz, Fields, e0ij) 
-          end do
+      !$OMP    PARALLEL DEFAULT(SHARED) PRIVATE(ix,iy,iz,omptemp)
+        omptemp = 0.0_dp
+      !$OMP    DO
+        do icell = 1, cgrid%ncells
+          ix = GridFold(1, icell)
+          iy = GridFold(2, icell)
+          iz = GridFold(3, icell)
+          omptemp = omptemp + GetSiteEnergy(ix, iy, iz, Fields, e0ij) 
         end do
-      end do
+      !$OMP    END DO
+      
+      !$OMP    CRITICAL
+        Etot = Etot + omptemp
+      !$OMP    END CRITICAL
+
+      !$OMP    END PARALLEL
     end if
 
   End Function GetEtot

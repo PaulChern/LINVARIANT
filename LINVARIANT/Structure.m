@@ -260,7 +260,7 @@ ImportIsodistortCIF[file_,OptionsPattern[]] := Module[{CifData, CifFlags, xyzNam
        originstr=StringCases[First@originstr,"("~~Except[")"]..~~","~~Except[")"]..~~","~~Except[")"]..~~")"];
        origin=ToExpression[StringReplace[First@originstr, {"(" -> "{", ")" -> "}"}]]];
 
-    CifData = StringRiffle[StringTrim[#] &/@ StringSplit[FixCif[CifData], "\n"], "\n"];
+    CifData = StringRiffle[StringTrim[#] &/@ StringSplit[FixCif[CifData], "\n"], "\n"] <> "\n ";
 
 	CifData = ImportString[CifData, "CIF"];
 	CifFlags = Table[Level[CifData[[i]], 1][[1]], {i, Length[CifData]}];
@@ -381,11 +381,18 @@ GridNeighbors[r0_, MeshDim_] := Module[{r00, list, FirstNeighborList, SecondNeig
   Return[Neighbours]
 ]
 
-PbcDiff[diff_, cell_:{1, 1, 1}] := Module[{halflattice, diff0}, 
+PbcDiffOld[diff_, cell_:{1, 1, 1}] := Module[{halflattice, diff0}, 
   diff0 = Mod[diff, cell];
   halflattice = cell/2;
   Which[-#2 <= #1 < #2, #1, #1 >= #2, #1 - 2 #2, #1 < -#2, #1 + 2 #2] &@@@ ({diff0, halflattice}\[Transpose])
 ]
+
+PbcDiff[diff_, cell_:{1, 1, 1}] := Module[{halflattice, diff0, i},
+  diff0 = Table[If[cell[[i]]>0, Mod[diff[[i]], cell[[i]]], diff[[i]]], {i, 3}];
+  halflattice = cell/2;
+  If[#2 > 0, Which[-#2 <= #1 < #2, #1, #1 >= #2, #1 - 2 #2, #1 < -#2, #1 + 2 #2], #1] &@@@ ({diff0, halflattice}\[Transpose])
+]
+
 
 GetCrystalOrigin[sites_, OptionsPattern[{"SymmetricQ" -> True}]] := Module[{s, occ, z, origin},
   origin = If[OptionValue["SymmetricQ"], 

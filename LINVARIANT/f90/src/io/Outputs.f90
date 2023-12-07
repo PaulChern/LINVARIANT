@@ -48,7 +48,7 @@ Module Outputs
     do iz = 1, cgrid%n3
       do iy = 1, cgrid%n2
         do ix = 1, cgrid%n1
-          write(FileHandle) ix, iy, iz
+          write(FileHandle) ix, iy, iz, GridUnfold(2, ix, iy, iz)
           !          write(FileHandle) EOnSite(ix,iy,iz,Fields)
           do ifield = 1, NumField
             write(FileHandle) (Fields(i,ifield,ix,iy,iz), i=1,FieldDim)
@@ -76,7 +76,7 @@ Module Outputs
     do iz = 1, cgrid%n3
       do iy = 1, cgrid%n2
         do ix = 1, cgrid%n1
-          write(FileHandle, "(3I10)") ix, iy, iz, GridUnfold(2, ix, iy, iz)
+          write(FileHandle, "(4I10)") ix, iy, iz, GridUnfold(2, ix, iy, iz)
           !          write(FileHandle, "(E25.15)")  EOnSite(ix,iy,iz,Fields)
           do ifield = 1, NumField
             write(FileHandle, "("//trim(int2str(FieldDim))//"E25.15)") (Fields(i,ifield,ix,iy,iz), i=1,FieldDim)
@@ -92,7 +92,7 @@ Module Outputs
       do iy = 1, cgrid%n2
         do ix = 1, cgrid%n1
           euij = GetHeterostructureStrain(Fields, ix, iy, iz, 0)
-          write(FileHandle, "(3I10)") ix, iy, iz
+          write(FileHandle, "(4I10)") ix, iy, iz, GridUnfold(2, ix, iy, iz)
           write(FileHandle, "(3E25.15)") (euij(i,:,ix,iy,iz), i=1,3)
         end do
       end do
@@ -152,7 +152,7 @@ Module Outputs
           Read(io_mode, END=999) (field(i, ifield), i=1,FieldDim)
           avgconfig(:,ifield,ix,iy,iz) = avgconfig(:,ifield,ix,iy,iz) + field(i,ifield)
         end do
-        Write(io_out, "(3I10)") ix, iy, iz, occ
+        Write(io_out, "(4I10)") ix, iy, iz, occ
         do ifield = 1, NumField
           Write(io_out, "("//trim(int2str(FieldDim))//"E25.15)") (field(i, ifield), i=1,FieldDim)
         end do
@@ -162,12 +162,12 @@ Module Outputs
     999 Close(io_mode)
     Close(io_out)
 
-    write(io_avg, "(3E25.15)") avgeij(1), avgeij(2), avgeij(3)
-    write(io_avg, "(3E25.15)") avgeij(4), avgeij(5), avgeij(6)
+    write(io_avg, "(3E25.15)") avgeij(1)/nmc, avgeij(2)/nmc, avgeij(3)/nmc
+    write(io_avg, "(3E25.15)") avgeij(4)/nmc, avgeij(5)/nmc, avgeij(6)/nmc
     Do ix = 1, cgrid%n1
       Do iy = 1, cgrid%n2
         Do iz = 1, cgrid%n3
-          Write(io_avg, "(3I10)") ix, iy, iz, occ
+          Write(io_avg, "(4I10)") ix, iy, iz, occ
           Do ifield = 1, NumField
             Write(io_avg, "("//trim(int2str(FieldDim))//"E25.15)") (avgconfig(i, ifield, ix, iy, iz)/nmc, i=1,FieldDim)
           End do
@@ -184,29 +184,36 @@ Module Outputs
 
     Real*8, Intent(in)    :: Fields(FieldDim, NumField, cgrid%n1, cgrid%n2, cgrid%n3)
     Real*8, Intent(inout) :: avg(FieldDim, 2, NumField)
-    Integer               :: ix, iy, iz, icell, num
+    Integer               :: ix, iy, iz, icell, occ
     Integer               :: ifield, i, j
+    Real*8                :: omptemp1, omptemp2
 
     avg = 0.0D0
 
-    do ifield = 1, NumField
-      do j = 1, FieldDim
-        num = 0
-        Do icell = 1, cgrid%ncells
-          ix = GridFold(1, icell)
-          iy = GridFold(2, icell)
-          iz = GridFold(3, icell)
-          if (ix > nint(GateField(1)) .and. ix <= cgrid%n1-nint(GateField(1)) .and. &
-              iy > nint(GateField(1)) .and. iy <= cgrid%n2-nint(GateField(1)) .and. &
-              iz > nint(GateField(1)) .and. iz <= cgrid%n3-nint(GateField(1))) then
-            num = num + 1
-              avg(j, 1, ifield) = avg(j, 1, ifield) + FieldsBinary(j,ifield)*Fields(j,ifield,ix,iy,iz)
-              avg(j, 2, ifield) = avg(j, 2, ifield) + FieldsBinary(j,ifield)*Abs(Fields(j,ifield,ix,iy,iz))
-          end if
-        End do
-        avg(j, :, ifield) = avg(j, :, ifield)/num
+    !$OMP    PARALLEL DEFAULT(SHARED) PRIVATE(ix,iy,iz,omptemp1,omptemp2)
+      do ifield = 1, NumField
+        do j = 1, FieldDim
+          omptemp1 = 0.0_dp
+          omptemp2 = 0.0_dp
+    !$OMP    DO
+          Do icell = 1, cgrid%ncells
+            ix = GridFold(1, icell)
+            iy = GridFold(2, icell)
+            iz = GridFold(3, icell)
+            omptemp1 = omptemp1 + FieldsBinary(j,ifield)*Fields(j,ifield,ix,iy,iz)
+            omptemp2 = omptemp2 + FieldsBinary(j,ifield)*Abs(Fields(j,ifield,ix,iy,iz))
+          End do
+    !$OMP    END DO
+
+    !$OMP    CRITICAL
+          avg(j, 1, ifield) = avg(j, 1, ifield) + omptemp1
+          avg(j, 2, ifield) = avg(j, 2, ifield) + omptemp2
+    !$OMP    END CRITICAL
+
+        end do
       end do
-    end do
+    !$OMP    END PARALLEL
+    avg = avg/cgrid%ncells
 
   END Subroutine GetOpAvg
 
@@ -217,17 +224,28 @@ Module Outputs
     Real*8, Intent(inout) :: euij(3, 3)
     Real*8                :: tmp(3,3,cgrid%n1, cgrid%n2, cgrid%n3)
     Integer               :: ix, iy, iz, icell
+    Real*8                :: omptemp(3, 3)
 
     euij = 0.0D0
-    Do icell = 1, cgrid%ncells
-      ix = GridFold(1, icell)
-      iy = GridFold(2, icell)
-      iz = GridFold(3, icell)
-      tmp = GetHeterostructureStrain(Fields, ix, iy, iz, 0)
-      euij = euij + Abs(tmp(:,:,ix,iy,iz))
-    end do
+!    !$OMP    PARALLEL DEFAULT(SHARED) PRIVATE(ix,iy,iz,tmp,omptemp)
+      omptemp = 0.0_dp
+!    !$OMP    DO
+      Do icell = 1, cgrid%ncells
+        ix = GridFold(1, icell)
+        iy = GridFold(2, icell)
+        iz = GridFold(3, icell)
+        tmp = GetHeterostructureStrain(Fields, ix, iy, iz, 0)
+        omptemp = omptemp + Abs(tmp(:,:,ix,iy,iz))
+      end do
+!    !$OMP    END DO
 
-    euij = euij/cgrid%npts
+!    !$OMP    CRITICAL
+      euij = euij + omptemp
+!    !$OMP    END CRITICAL
+
+!    !$OMP    END PARALLEL
+
+    euij = euij/cgrid%ncells
 
   END Subroutine GetAbsEuij
 
@@ -236,7 +254,7 @@ Module Outputs
     
     character(*)    :: filename
     Integer         :: order, io_mode, io_out, io_phase, processor
-    Integer         :: ix, iy, iz, icell, imc=0, num
+    Integer         :: ix, iy, iz, icell, occ, imc=0
     Integer         :: ifield, i, j, igrid
     Real*8          :: Etot, Epot, Ekin
     Real*8          :: e11, e22, e33, e23, e13, e12
@@ -268,8 +286,8 @@ Module Outputs
       Write(io_out, "(3E25.15)") e23, e13, e12
       eta = eta + (/e11, e22, e33, e23, e13, e12/)
 
-      do igrid = 1, cgrid%n3*cgrid%n2*cgrid%n1
-        Read(io_mode, END=999) ix, iy, iz
+      do igrid = 1, cgrid%npts
+        Read(io_mode, END=999) ix, iy, iz, occ
         do ifield = 1, NumField
           Read(io_mode, END=999) (Fields(i, ifield, ix, iy, iz), i=1,FieldDim)
         end do
@@ -278,24 +296,18 @@ Module Outputs
       do ifield = 1, NumField
         do j = 1, FieldDim
 !          Observables(j, ifield) = Sum(Fields(j,ifield,:,:,:)**order)/cgrid%npts
-          num = 0
-        Do icell = 1, cgrid%ncells
-          ix = GridFold(1, icell)
-          iy = GridFold(2, icell)
-          iz = GridFold(3, icell)
-            if (ix > nint(GateField(1)) .and. ix <= cgrid%n1-nint(GateField(1)) .and. &
-                iy > nint(GateField(1)) .and. iy <= cgrid%n2-nint(GateField(1)) .and. &
-                iz > nint(GateField(1)) .and. iz <= cgrid%n3-nint(GateField(1))) then
-              num = num + 1
-              If (ifield .eq. NumField) then
-                Observables(j, ifield) = Observables(j, ifield) + FieldsBinary(j,ifield)*Abs(Fields(j,ifield,ix,iy,iz))
-              else
-                Observables(j, ifield) = Observables(j, ifield) + FieldsBinary(j,ifield)*Fields(j,ifield,ix,iy,iz)
-              End if
-            end if
+          Do icell = 1, cgrid%ncells
+            ix = GridFold(1, icell)
+            iy = GridFold(2, icell)
+            iz = GridFold(3, icell)
+            If (ifield .eq. NumField) then
+              Observables(j, ifield) = Observables(j, ifield) + FieldsBinary(j,ifield)*Abs(Fields(j,ifield,ix,iy,iz))
+            else
+              Observables(j, ifield) = Observables(j, ifield) + FieldsBinary(j,ifield)*Fields(j,ifield,ix,iy,iz)
+            End if
           End do
-          Observables(j, ifield) = Observables(j, ifield)/num
-        end do
+          Observables(j, ifield) = Observables(j, ifield)/cgrid%ncells
+        End do
         Write(io_out, "("//trim(int2str(FieldDim))//"E25.15)") (Observables(i, ifield), i=1,FieldDim)
       end do
       phase = phase + Observables
@@ -318,7 +330,7 @@ Module Outputs
     End do
     Close(io_phase)
 
-    Call ExportMLModel(MLFile, Epot/cgrid%npts, phase, eta)
+    Call ExportMLModel(MLFile, Epot/cgrid%ncells, phase, eta)
  
   END Subroutine GetObservables
 
@@ -334,10 +346,11 @@ Module Outputs
 
     Call GetOpAvg(Fields, avg)
     Call GetAbsEuij(Fields, abseuij)
-    Epot = GetEtot(Fields, e0ij)/cgrid%npts
+    Epot = GetEtot(Fields, e0ij)/cgrid%ncells
     volume = GetStrainVolume(e0ij)
+    write(*,*) "GetStrainVolume"
     write(*,'(A15,I10,F10.2,A10)') trim(Solver)//" step: ", istep, time, "(second)"
-    write(*, *) "------------------------------------------------------"
+    write(*, *) "------------------------------------------------------------------------------------"
     write(*,'(A15,'//trim(int2str(size(udamp)))//'F10.6,F10.6)') "damp: ", udamp, etadamp
     write(*,'(A15,F10.6,A10,F8.4)') "Epot: ", Epot, "conv: ", dene
     do ifield = 1, NumField
@@ -347,7 +360,7 @@ Module Outputs
     write(*,'(A15,3F10.6,A10,3F10.6)') "eii: ", e0ij(1,1), e0ij(2,2), e0ij(3,3), "abs: ", abseuij(1,1), abseuij(2,2), abseuij(3,3)
     write(*,'(A15,3F10.6,A10,3F10.6)') "eij: ", e0ij(2,3), e0ij(1,3), e0ij(1,2), "abs: ", abseuij(2,3), abseuij(1,3), abseuij(1,2)
     write(*,'(A15,F10.6)')  "volume: ", volume
-    write(*, *) "------------------------------------------------------"
+    write(*, *) "------------------------------------------------------------------------------------"
 
   End Subroutine MCMC_log
 

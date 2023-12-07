@@ -51,6 +51,7 @@ Module Inputs
     namelist/system/ &
       Temp,          &
       Pressure,      &
+      Screening,     &
       SpinDim
 
     namelist/grid/ &
@@ -533,7 +534,7 @@ Module Inputs
     EfieldQ           = .false.
     TrainQ            = .false.
     EfieldType        = "dc"
-    Screening         = 0.2
+    Screening         = 0.0
     CLAMPQ            = (/.false., .false., .false., .false., .false., .false./)
     FrozenQ           = (/.false., .false., .false./)
     call caps2small(Solver)
@@ -589,7 +590,7 @@ Module Inputs
     
     character(*), Intent(in) :: filename
     Integer                  :: FileHandle = 1111
-    Integer                  :: ix, iy, iz, i, j, ifield
+    Integer                  :: ix, iy, iz, occ, i, j, ifield
     Real(dp)                 :: qdotr(3), tmp(3)
     Real*8, Intent(inout)    :: Fields(FieldDim, NumField, cgrid%n1, cgrid%n2, cgrid%n3)
     Real*8, Intent(inout)    :: e0ij(3,3)
@@ -604,7 +605,7 @@ Module Inputs
     Read(FileHandle, *) e0ij(2,3), e0ij(1,3), e0ij(1,2)
     do While (.True.)
 !      Read(FileHandle, "(3I10)", END=999) ix, iy, iz
-      Read(FileHandle, *, END=999) ix, iy, iz
+      Read(FileHandle, *, END=999) ix, iy, iz, occ
       do ifield = 1, NumField
         do i = 1, FieldDim
           qdotr(i)=Real(Exp(2*pi*cmplx(0.0_dp,1.0_dp)*(DWq(1,i,ifield)*ix+DWq(2,i,ifield)*iy+DWq(3,i,ifield)*iz)))

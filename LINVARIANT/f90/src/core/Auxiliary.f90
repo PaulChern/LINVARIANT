@@ -34,28 +34,50 @@ Module Aux
     str = trim(adjustl(str))
   end function int2str
 
-  Function FieldTo1D(Fields, ifield) Result(Field1D)
+  Function FieldUnfolding(Fields, ifield) Result(Field1D)
     Implicit none
     Integer, Intent(in)    :: ifield
     Real*8,  Intent(in)    :: Fields(FieldDim, NumField, cgrid%n1, cgrid%n2, cgrid%n3)
-    Real*8                 :: Field1D(FieldDim*NumField*(cgrid%npts))
-    Integer                :: ix, iy, iz, i, id
+    Real*8                 :: Field1D(Sum(FieldsBinary(:,ifield))*cgrid%ncells)
+    Integer                :: ix, iy, iz, i, icell, id
+    Integer                :: subdim
 
-    do iz = 1, cgrid%n3
-      do iy = 1, cgrid%n2
-        do ix = 1, cgrid%n1
-          do i = 1, FieldDim
-            id = (iz-1)*cgrid%n2*cgrid%n1*FieldDim &
-            + (iy-1)*cgrid%n1*FieldDim &
-            + (ix-1)*FieldDim &
-            + i
-            Field1D(id) = Fields(i,ifield,ix,iy,iz)
-          end do
-        end do
+    subdim = Sum(FieldsBinary(:,ifield))
+
+    do icell = 1, cgrid%ncells
+      ix = GridFold(1, icell)
+      iy = GridFold(2, icell)
+      iz = GridFold(3, icell)
+      do i = 1, subdim
+        id = (icell - 1)*subdim + i
+        Field1D(id) = Fields(i,ifield,ix,iy,iz)
       end do
     end do
 
-  End Function FieldTo1D
+  End Function FieldUnfolding
+
+  Function FieldFolding(Field1D, ifield) Result(Field)
+    Implicit none
+    Integer, Intent(in)    :: ifield
+    Real*8,  Intent(in)    :: Field1D(Sum(FieldsBinary(:,ifield))*cgrid%ncells)
+    Real*8                 :: Field(FieldDim, cgrid%n1, cgrid%n2, cgrid%n3)
+    Integer                :: ix, iy, iz, i, icell, id
+    Integer                :: subdim
+
+    subdim = Sum(FieldsBinary(:,ifield))
+    Field = 0.0_dp
+
+    do icell = 1, cgrid%ncells
+      ix = GridFold(1, icell)
+      iy = GridFold(2, icell)
+      iz = GridFold(3, icell)
+      do i = 1, subdim
+        id = (icell - 1)*subdim + i
+        Field(i,ix,iy,iz) = Field1D(id)
+      end do
+    end do
+
+  End Function FieldFolding
 
   Function GetSysVector(Fields,e0ij) Result(vector)
     Implicit none
@@ -64,12 +86,17 @@ Module Aux
     Real*8                 :: vector(optdim)
     Real*8                 :: eta(6)
     Integer                :: ix, iy, iz, ifield, i, id
+    Integer                :: NG1, NG2, NG3
+
+    NG1 = cgrid%n1
+    NG2 = cgrid%n2
+    NG3 = cgrid%n3
 
     id = 0
 
-    do iz = 1, cgrid%n3
-      do iy = 1, cgrid%n2
-        do ix = 1, cgrid%n1
+    do iz = 1, NG3
+      do iy = 1, NG2
+        do ix = 1, NG1
           do ifield = 1, NumField
             do i = 1, FieldDim
               If (ix.le.cgrid%n1.and.iy.le.cgrid%n2.and.iz.le.cgrid%n3) then
@@ -96,13 +123,18 @@ Module Aux
     Real*8,  Intent(out)   :: Fields(FieldDim, NumField, cgrid%n1, cgrid%n2, cgrid%n3)
     Real*8                 :: tmp(FieldDim, NumField, cgrid%n1, cgrid%n2, cgrid%n3)
     Integer                :: ix, iy, iz, ifield, i, id
+    Integer                :: NG1, NG2, NG3
 
     tmp = Reshape(sysvector(1:FieldDim*NumField*cgrid%npts), &
                             (/FieldDim, NumField, cgrid%n1, cgrid%n2, cgrid%n3/))
 
-    do iz = 1, cgrid%n3
-      do iy = 1, cgrid%n2
-        do ix = 1, cgrid%n1
+    NG1 = cgrid%n1
+    NG2 = cgrid%n2
+    NG3 = cgrid%n3
+
+    do iz = 1, NG3
+      do iy = 1, NG2
+        do ix = 1, NG1
           do ifield = 1, NumField
             do i = 1, FieldDim
               If (ix.le.cgrid%n1.and.iy.le.cgrid%n2.and.iz.le.cgrid%n3) then
@@ -309,14 +341,6 @@ Module Aux
 
     return
   End function lower
-
-  function ArrayFlatten2D(A) result(C)
-    real*8              ::  A(:,:)
-    real*8,allocatable  ::  C(:)
-
-    C = Reshape(A, [Size(A)])
-
-  end function ArrayFlatten2D
 
  
 End Module Aux

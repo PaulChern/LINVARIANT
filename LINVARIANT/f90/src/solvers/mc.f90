@@ -1,4 +1,4 @@
-Subroutine MCMCStep(imc, Fields, EwaldField, e0ij, T, udamp, etadamp, dene)
+Subroutine MCMCStep(imc, Fields, EwaldField, DepField, e0ij, T, udamp, etadamp, dene)
   
   Use LINVARIANT
   Use Constants
@@ -11,10 +11,11 @@ Subroutine MCMCStep(imc, Fields, EwaldField, e0ij, T, udamp, etadamp, dene)
   Real*8,  Intent(inout) :: udamp(NumField), etadamp, dene
   Real*8,  Intent(inout) :: Fields(FieldDim, NumField, cgrid%n1, cgrid%n2, cgrid%n3)
   Real*8,  Intent(inout) :: EwaldField(3, NumField, cgrid%n1, cgrid%n2, cgrid%n3)
+  Real*8,  Intent(inout) :: DepField(3, NumField, cgrid%n1, cgrid%n2, cgrid%n3)
   Real*8,  Intent(inout) :: e0ij(3,3)
   Integer                :: i, j, idelta, ix, iy, iz, icell
   Integer                :: idum, acceptedu(NumField), acceptedeta
-  Real*8                 :: dfield(FieldDim), deta(6), DeltaE
+  Real*8                 :: dfield(FieldDim), deta(6), DeltaE, omptemp
   Real*8                 :: ProbTest
   Real*8                 :: rdum, AccProb
   
@@ -35,10 +36,13 @@ Subroutine MCMCStep(imc, Fields, EwaldField, e0ij, T, udamp, etadamp, dene)
         dfield = udamp(idelta)*(dfield - 0.5D0)
         
         DeltaE = GetVariation(ix, iy, iz, Fields, e0ij, idelta, dfield)
-        if (DipoleQ.and.(idelta.lt.NumIRFields)) then
+        if (DipoleQ.and.(idelta.le.NumIRFields)) then
           DeltaE = DeltaE &
-            + GetVariationEwald(ix, iy, iz, EwaldField, idelta, dfield)
+            + GetVariationEwald(ix, iy, iz, EwaldField, idelta, dfield) &
+            + GetVariationDepolarization(ix, iy, iz, DepField, idelta, dfield)
         end if
+
+        If (EfieldQ.and.(idelta.le.NumIRFields)) Call MCApplyEfield(idelta, dfield, DeltaE, ix, iy, iz)
   
         AccProb = Min(1.0d0, Exp(-1.0d0*DeltaE/T/k_bolt_ev*Hartree))
         Call random_number(ProbTest)
@@ -50,6 +54,7 @@ Subroutine MCMCStep(imc, Fields, EwaldField, e0ij, T, udamp, etadamp, dene)
           end do
           if (DipoleQ.and.(idelta.lt.NumIRFields)) then
             Call UpdateEwaldField(ix, iy, iz, EwaldField, idelta, dfield)
+            If (cgrid%npts > cgrid%ncells) Call UpdateDepField(ix, iy, iz, DepField, idelta, dfield)
           end if
         end if
       end if 
@@ -59,7 +64,7 @@ Subroutine MCMCStep(imc, Fields, EwaldField, e0ij, T, udamp, etadamp, dene)
   Call RemoveGridDrifts(Fields)
  
   if(.Not.All(CLAMPQ)) then
-    do idum = 1, 2*cgrid%n3+1
+    do idum = 1, 2*int(cgrid%ncells**(1.0/3))+1
       Call random_number(deta)
       deta = etadamp*(deta - 0.5D0)
       do i = 1, 6
@@ -67,17 +72,23 @@ Subroutine MCMCStep(imc, Fields, EwaldField, e0ij, T, udamp, etadamp, dene)
       end do
 
       DeltaE = 0.0D0
-      do iz = 1, cgrid%n3
-        do iy = 1, cgrid%n2
-          do ix = 1, cgrid%n1
-            DeltaE = DeltaE + GetVariation(ix, iy, iz, Fields, e0ij, NumField+1, deta)
-!            DeltaE = DeltaE &
-!              + GetVariationGpscoupling(ix, iy, iz, Fields, e0ij, NumField+1, deta) &
-!              + GetVariationHstrain(ix, iy, iz, Fields, e0ij, NumField+1, deta)
-          end do
+!      DeltaE = GetEtot(Fields, e0ij+eta2eij(deta(1:6))) - GetEtot(Fields, e0ij)
+      !$OMP    PARALLEL DEFAULT(SHARED) PRIVATE(ix,iy,iz,omptemp)
+        omptemp = 0.0_dp
+      !$OMP    DO
+        do icell = 1, cgrid%ncells
+          ix = GridFold(1, icell)
+          iy = GridFold(2, icell)
+          iz = GridFold(3, icell)
+          omptemp = omptemp + GetVariation(ix, iy, iz, Fields, e0ij, NumField+1, deta)
         end do
-      end do
-!      DeltaE = DeltaE + cgrid%ncells*GetVariationGstrain(1, 1, 1, Fields, e0ij, NumField+1, deta)
+      !$OMP    END DO
+
+      !$OMP CRITICAL
+        DeltaE = DeltaE + omptemp
+      !$OMP END CRITICAL
+
+      !$OMP    END PARALLEL
       
       AccProb = Min(1.0d0, Exp(-1.0d0*DeltaE/T/k_bolt_ev*Hartree))
       Call random_number(ProbTest)
@@ -109,7 +120,7 @@ Subroutine MCMCStep(imc, Fields, EwaldField, e0ij, T, udamp, etadamp, dene)
   
   if(.Not.All(CLAMPQ)) then
     if(mod(imc,1).eq.0) then
-      rdum = real(acceptedeta)/real(2*cgrid%n3+1)
+      rdum = real(acceptedeta)/real(2*cgrid%ncells**(1/3)+1)
       if(rdum .gt. AcceptRatio) then
         etadamp = DampRatio*etadamp
       else
@@ -250,3 +261,22 @@ Subroutine WLMCStep(imc, Fields, e0ij, udamp, etadamp, wl_s, wl_h, wl_f)
   End function
 
 End Subroutine WLMCStep
+
+Subroutine MCApplyEfield(ifield, delta, DeltaE, x0, y0, z0)
+  Use Parameters
+  Use Constants
+  Use Fileparser
+  Use Aux
+
+  Implicit none
+  Real*8,  Intent(inout) :: DeltaE
+  Real*8,  Intent(in)    :: delta(3)
+  Integer, Intent(in)    :: ifield, x0, y0, z0
+  Integer                :: i
+
+  do i = 1, 3
+    DeltaE = DeltaE - GridUnfold(3, x0, y0, z0)*EAmp(i+1)*delta(i)*FieldCharge(ifield)*alat
+  end do
+
+End Subroutine MCApplyEfield
+
