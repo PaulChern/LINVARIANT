@@ -19,7 +19,7 @@
 - Full models with couplings among lattice, orbitals, and spins.
 - Models in zero-, one-, two, and three-dimension.
 - Neural Network Potential (NNP)
-![outline](https://github.com/PaulChern/LINVARIANT/blob/c1c1a07fce9bbb3ae052544d5107c3934f17e3a3/docs/nnp.png)
+![outline](https://github.com/PaulChern/LINVARIANT/blob/master/docs/nnp.png)
 ### solvers:
 - (1) Finite Element Method (FEM), (2) Minimization, (3) molecular dynamics (MD), (4) Monte Carlo (MC), and (5) Finite Differences nonlinear solver on the large-scale continuous model
 - Parallel tempering algorithm is available with both MC and MD
