@@ -12,6 +12,7 @@ GetBasisField                ::usage = "GetBasisField[id, BasisMatrix, pos]"
 ExportBasis                  ::usage = "ExportBasis[fname, BasisMatrix, BasisLabel, pos, ftype]"
 GetOpMatrix                  ::usage = "GetOpMatrix[SymOpFile, pos, IsoMatrix, Modes]"
 GetMatrixRep                 ::usage = "GetMatrixRep[SymOpFile, pos, IsoMatrix, Modes]"
+FindMatrixRep                ::usage = "FindMatrixRep[Basis, BasisField]"
 ExportMatrixRep              ::usage = "ExportMatrixRep[SymOpFile, pos, IsoMatrix, Modes]"
 SymmetryOpBasisField         ::usage = "SymmetryOpBasisField[grp, BasisField]"
 MonomialTransform            ::usage = "MonomialTransform[monomials, rules]"
@@ -146,7 +147,7 @@ ModeDecomposition[pos0_, pos_, Basis_, vars_, svars_, uvars_, OptionsPattern[{"z
   eij = Chop@GetStrainTensor[latt0, latt/grid, "iso" -> False];
   
   data = {#1, #2, #3, #4/lattnorm} & @@@ ISODISTORT[pos0[[1]], supersites0, sites, SuperBasis, SuperVars, "round" -> OptionValue["round"], "match" -> OptionValue["match"]];
-  tabdata= {#1, #2, NumberForm[#3, {10,OptionValue["ndigits"]}], NumberForm[#4, {10,OptionValue["ndigits"]}]} &@@@ data; 
+  tabdata= {#1, #2, NumberForm[#3, {10,OptionValue["ndigits"]}], If[Abs@#4 < 10^(-OptionValue["ndigits"]), "-", NumberForm[#4, {10,OptionValue["ndigits"]}]]} &@@@ data; 
   tab = Grid[{{MatrixForm[eij]}, {Grid[Partition[Grid[#] & /@ GatherBy[tabdata, VarGrid[#[[2]]] &], UpTo[OptionValue["upto"]]], Dividers -> All]}}, 
              Frame -> True, Dividers -> All];
   
@@ -260,6 +261,14 @@ GetOpMatrix[grp_, pos_, IsoMatrix_, Modes_, ftype_] := Module[{latt, sites, op2,
   ]
 ]
 
+FindMatrixRep[Basis_, BasisField_] := Module[{i, s, nb, dim, sol, mat},
+  {dim, nb} = Dimensions[Basis];
+  mat = Table[sol = FindInstance[Basis.Array[s, nb] == Flatten[(BasisField[[i]]\[Transpose][[2]]\[Transpose][[2]])], Array[s, nb]];
+              Array[s, nb] /. First[sol], {i, Length@BasisField}];
+  Return[mat\[Transpose]]
+]
+
+
 GetMatrixRep[grp0_, grpt_, pos_, BasisMatrix_, BasisLabels_, ftype_] := Module[{i, j, grp, op, op2, ir1, ir2, mat, OpMatrix, AllIRvectors, BasisField, TransformedBasisField, BasisDim, NumBasis, g, ig, field, NormFactor, latt, slatt, sites, cell, basis},
   grp = {grpt, grp0};
   {latt, sites} = pos;
@@ -275,12 +284,12 @@ GetMatrixRep[grp0_, grpt_, pos_, BasisMatrix_, BasisLabels_, ftype_] := Module[{
          {If[ftype!="orbital",1/ComplexExpand@Norm[Flatten[latt\[Transpose].# &/@ (basis\[Transpose][[2]]\[Transpose][[2]])]],
                               1/Norm[Flatten[basis\[Transpose][[2]]\[Transpose][[2]]]]], 
           basis}, {i,NumBasis}]\[Transpose];
-         TransformedBasisField = ParallelTable[SymmetryOpBasisField[g, pos, cell, #, ftype] &/@ BasisField, {g, Keys[grp[[ig]]]}, DistributedContexts -> {"LINVARIANT`INVARIANT`Private`"}];
+         TransformedBasisField = ParallelTable[SymmetryOpBasisField[g, pos, cell, #, ftype] &/@ BasisField, {g, Keys[grp[[ig]]]}, DistributedContexts -> All];
          ParallelTable[mat = 
                        If[ftype!="orbital",
-                          Table[Simplify@Expand[NormFactor[[i]] NormFactor[[j]] Flatten[latt\[Transpose].# &/@ (TransformedBasisField[[g]][[i]]\[Transpose][[2]]\[Transpose][[2]])].Flatten[latt\[Transpose].# &/@ (BasisField[[j]]\[Transpose][[2]]\[Transpose][[2]])]], {i, Range@NumBasis}, {j, Range@NumBasis}],
+                          FindMatrixRep[BasisMatrix, TransformedBasisField[[g]]],
                           Table[Simplify@Expand[NormFactor[[i]] NormFactor[[j]] Flatten[TransformedBasisField[[g]][[i]]\[Transpose][[2]]\[Transpose][[2]]].Flatten[BasisField[[j]]\[Transpose][[2]]\[Transpose][[2]]]], {i, Range@NumBasis}, {j, Range@NumBasis}]];
-         SparseArray[mat], {g, Length[grp[[ig]]]}, DistributedContexts -> {"LINVARIANT`INVARIANT`Private`"}],
+         SparseArray[mat], {g, Length[grp[[ig]]]}, DistributedContexts -> All],
          Table[{}, {Length[grp[[ig]]]}]], {ig, 2}];
   If[BasisDim != 0,
      Flatten[Table[Chop[OpMatrix[[1,i]].OpMatrix[[2,j]]], {i, Length[grpt]}, {j, Length[grp0]}], 1],
@@ -355,6 +364,7 @@ SymmetryOpBasisField[grp_, pos_, cell_, BasisField_, ftype_] := Module[{latt, si
        ];
      difftable = DistMatrix[pos[[1]], #+originshift&/@(BasisField\[Transpose][[2]]\[Transpose][[1]]), posvec\[Transpose][[1]], cell];
      posmap = Position[difftable, x_ /; TrueQ[Chop[x] == 0]];
+     posmap = Transpose[{Range[Length@sites], First[PosMatchTo[latt, sites\[Transpose][[1]], posvec\[Transpose][[1]]]]}];
      NewField = {BasisField[[#1]][[1]], posvec[[#2]], BasisField[[#1]][[3]]} & @@@ posmap,
      (*ftype=="spinor"||"orbital"*)
      dim = Length[BasisField];
@@ -471,7 +481,8 @@ InvariantCharacter[inv_, vars_] := Module[{v0, v1, sub, s, seeds},
                                      If[MemberQ[VarBare[v1], #], 1, 0] &/@ VarBare[Flatten@vars], {s, seeds}]]
 ]
 
-GetInvariants[TRules_, seeds_, order_, OptionsPattern[{"check" -> True, "MustInclude"->{{{},{}}}, "Simplify"->True, "eventerms"->False, "round"->10^-6}]] := Module[{fixlist, monomials, invariant, m, n, i, j, ss, factor, out, factorLCM, factorGCD, OpDispMatrix, OpSpinMatrix, OpOrbitalMatrix, ReducedOut, SortedOut, mm, fixseeds, eventerms},
+GetInvariants[TRules_, seeds_, order_, OptionsPattern[{"check" -> True, "MustInclude"->{{{},{}}}, "Simplify"->True, "eventerms"->False, "round"->10^-6}]] := Module[{fixlist, monomials, invariant, m, n, i, j, ss, factor, out, factorLCM, factorGCD, OpDispMatrix, OpSpinMatrix, OpOrbitalMatrix, ReducedOut, SortedOut, mm, fixseeds, eventerms, prec},
+  prec = OptionValue["round"];
   out = Table[
   monomials = If[
     OptionValue["MustInclude"]=={{{},{}}}, 
@@ -480,8 +491,8 @@ GetInvariants[TRules_, seeds_, order_, OptionsPattern[{"check" -> True, "MustInc
                             fixseeds=Flatten[GenMonomialList[#1,i]];
                             If[i<n,{ConstantArray[i,Length@fixseeds],fixseeds}\[Transpose],{}], {i, #2}] &@@@ OptionValue["MustInclude"],2];
     Flatten[#]&/@(Table[Expand[# ss[[2]]] & /@ GenMonomialList[seeds,n-ss[[1]]], {ss, fixlist}]\[Transpose])];
-    invariant = DeleteDuplicates[DeleteCases[Table[Chop[Expand[Total[MonomialTransform[m, TRules]]], OptionValue["round"]], {m, Flatten@monomials}], i_/;i==0], (Chop[#1 -#2]*Chop[#1 + #2] == 0) &];
-  invariant = If[OptionValue["Simplify"], SimplifyCommonFactor[#,OptionValue["round"]] &/@ invariant, invariant];
+    invariant = DeleteDuplicates[DeleteCases[Table[Chop[Expand[Total[MonomialTransform[m, TRules]]], OptionValue["round"]], {m, Flatten@monomials}], i_/;i==0], (Chop[SimplifyCommonFactor[#1, prec] - SimplifyCommonFactor[#2, prec]]*Chop[SimplifyCommonFactor[#1, prec] + SimplifyCommonFactor[#2, prec]] == 0) &];
+  invariant = If[OptionValue["Simplify"], SimplifyCommonFactor[#,prec] &/@ invariant, invariant];
     If[OptionValue["eventerms"], If[AllTrue[PolynomialOrder[#, {}, "tot"->False], EvenQ], #, ##&[]] &/@ invariant, invariant], {n, order}];
 
      (*ReducedOut = Table[DeleteDuplicates[#, (#1 - #2 == 0 || #1 + #2 == 0 || Expand[#1 + I #2] == 0 || Expand[#1 - I #2] == 0) &] &/@ invariant, {invariant,out}];
@@ -674,6 +685,8 @@ JijTRules[pos0_, spg0_, TRules_, Basis_, dist_] := Module[{xyzStrData, i, j, s, 
                TRules];
 
   {spg, rules} = Transpose[If[Norm[xyz2RotT[#1][[2]]] == 0, {#1, #2}, ## &[]] & @@@ ({If[AssociationQ[spg0], Keys[spg0], spg0], rules0}\[Transpose])];
+  (*spg = If[AssociationQ[spg0], Keys[spg0], spg0];
+  rules = rules0;*)
 
   {ng, dim} = Dimensions[rules];
   field = GetNeighborList[dist, "OnSite" -> True];
@@ -762,22 +775,23 @@ InvariantFolding[model_] := Module[{inv, tab, coeff, vars, vsub, data, i, basis,
   Print[Grid[Join[{Flatten@{"", "", Range[Length[head]-2]}}, {head}, {tot}, tab], Background -> {{1 -> Green, 2 -> Green}, {1 -> Pink, 2 -> Pink, 3 -> Pink}}, ItemSize -> Full]];
 ]
 
-CollectPolynomial[expr_, TRules_:{}, OptionsPattern[{"SymmetricQ"->False, "chop"->1.0*10^-6, "round"->1.0*10^-16, "sort" -> True}]] := Module[{terms, t, p, data, model, out, v, invariant, s, f, tmp, rules},
+CollectPolynomial[expr_, TRules_:{}, OptionsPattern[{"SymmetricQ"->False, "chop"->1.0*10^-6, "round"->1.0*10^-16, "sort" -> True}]] := Module[{terms, t, p, data, model, out, v, invariant, s, f, tmp, rules, g},
   terms = If[Head[Chop[Expand@expr]] === Plus, Level[Chop[Expand@expr], {1}], {expr}];
   rules = Dispatch[#] &/@ TRules;
 
-  data = Table[p = t /. {Subscript[__] -> 1};
-               f = If[p==0, p=1; t, Rationalize[t/p]];
+  data = Table[g = If[Cases[t, Exp[__]] ==={}, 1, First@Cases[t, Exp[__]]];
+               p = t /. {g -> 1} /. {Subscript[__] -> 1};
+               f = If[p==0, p=1; t, Rationalize[t/p/g]];
                tmp = SimplifyCommonFactor[Chop[Expand[Sum[f /. s, {s, rules}]]], 10^-6];
                invariant = If[TRules === {}, 0, GetJijStar[tmp, -1]];
-               {Round[p, OptionValue["round"]], f, If[invariant === 0, {}, Sort@invariant]}, {t, terms}];
+               {Round[p, OptionValue["round"]], g, f, If[invariant === 0, {}, Sort@invariant]}, {t, terms}];
 
   model = Transpose[#] & /@ If[TRules ==={}, 
-                               GatherBy[data, Abs@First[#] &],
-                               Gather[If[OptionValue["SymmetricQ"], Select[data, !(#[[3]] === {}) &], data], 
-                                      (#1[[3]] - #2[[3]] === 0 || #1[[3]] + #2[[3]] === 0) &]];
+                               GatherBy[data, Abs[First@#]#[[2]] &],
+                               Gather[If[OptionValue["SymmetricQ"], Select[data, !(#[[4]] === {}) &], data], 
+                                      (#1[[4]] - #2[[4]] === 0 || #1[[4]] + #2[[4]] === 0) &]];
   
-  out = If[Chop@Mean[Abs@#1] < OptionValue["chop"], ##&[], {Sign[First@#1] Chop@Mean[Abs@#1], (Sign[First@#1] Sign[#1]).#2}] & @@@ model;
+  out = If[Chop@Mean[Abs@#1] < OptionValue["chop"], ##&[], {Sign[First@#1] Chop@Mean[Abs@#1*#2], (Sign[First@#1]*Sign[#1]).#3}] & @@@ model;
   Return[If[OptionValue["sort"], ReverseSortBy[out, Abs[#[[1]]]&], SortBy[out, #[[2]]&]]]
 ]
 

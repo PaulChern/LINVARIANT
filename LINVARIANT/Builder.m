@@ -163,7 +163,7 @@ ExportBasisCif[dir_, cif_, sites0_, basis_] := Module[{i, basisordered, cifdata,
   sites = cifdata[[10]];
   basisordered = SortIR2POSCAR[latt, sites, sites0, basis\[Transpose]]\[Transpose];
 
-  Table[Export[dir <> "/basis-" <> ToString[i] <> ".dat", cif2mcif[cif, i, basisordered, sites]];
+  Table[Export[dir <> "/basis-" <> ToString[i] <> ".dat", cif2mcif[cif, i, N@basisordered, sites]];
         Run["mv " <> dir <> "/basis-" <> ToString[i] <> ".dat " <> dir <> "/basis-" <> ToString[i] <> ".mcif"], {i, Length@Transpose[basis]}];
 ]
 
@@ -1000,7 +1000,7 @@ LoadTrainingset[dir0_, BasisMatrix_, FullBasis_, vars_, svars_, uvars_, OptionsP
                                    ImageSize -> OptionValue["imagesize"]] 
                                               & @@@ Subsets[Table[If[Norm[data2d[[i]]] == 0, ## &[], i], {i, Length[fullvars]}], {2}]];
               If[OptionValue["plot"], Print[Grid@Partition[plt, UpTo[4]]]];
-              {t[[1, 2]], plt}, {t, out}];
+              {t[[1, 2]], plt}, {t, out[[2;;]]}];
 
   If[OptionValue["pdf"],
      Export[dir0<>"/ts_info.pdf", CreateDocument[Grid[Join[{{Graphics@Text[Style["ts-"<>ToString[#[[1]]], Red, Bold, 12]], First[#[[2]]]}},

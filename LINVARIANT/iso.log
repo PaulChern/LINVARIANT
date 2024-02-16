@@ -1,0 +1,50 @@
+Isotropy, Version 9.4.1, December 2015
+Harold T. Stokes, Dorian M. Hatch, and Branton J. Campbell
+Brigham Young University
+*DISPLAY SETTING
+Current setting is International (new ed.) with conventional basis vectors.
+*DISPLAY SETTING IRREP
+Current irrep version is 2011
+Use "VALUE IRREP VERSION" to change version
+*value parent 166
+*value irep gm2-
+Syntax error: IREP
+*value irrep gm2-
+*value degree 4
+*display invariant
+Deg Invariants
+4   n1^4
+*value irrep gm3-
+*display invariant
+Deg Invariants
+4   n1^4 +2n1^2n2^2 +n2^4
+*value degree 2
+*display invariant
+Deg Invariants
+2   n1^2 +n2^2
+*value irrep gm3- gm2-
+*value degree 2
+*display invariant
+Deg Invariants
+2   n1^2 +n2^2
+2   n3^2
+*value gradient 1
+*value degree 3
+*display invariant
+Deg Invariants
+3   (0.577)n1^2n1x +(1.000)n1^2n1y -(0.333)n1^2n2x +(0.192)n1^2n2y
+    -(0.667)n1n2n1x +(0.385)n1n2n1y +(0.385)n1n2n2x +(0.667)n1n2n2y
+    +(0.192)n2^2n1x +(0.333)n2^2n1y -(1.000)n2^2n2x +(0.577)n2^2n2y
+3   n1^2n1z -2n1n2n2z -n2^2n1z
+3   -(0.192)n1^2n1x -(0.333)n1^2n1y +(1.000)n1^2n2x -(0.577)n1^2n2y
+    -(0.667)n1n2n1x +(0.385)n1n2n1y +(0.385)n1n2n2x +(0.667)n1n2n2y
+    -(0.577)n2^2n1x -(1.000)n2^2n1y +(0.333)n2^2n2x -(0.192)n2^2n2y
+3   (0.289)n1^2n3x +(0.500)n1^2n3y +(1.000)n1n2n3x -(0.577)n1n2n3y
+    -(0.289)n2^2n3x -(0.500)n2^2n3y
+3   n1^2n3z +n2^2n3z
+3   (0.577)n1n1xn3 +(1.000)n1n1yn3 +(1.000)n1n2xn3 -(0.577)n1n2yn3
+    +(1.000)n2n1xn3 -(0.577)n2n1yn3 -(0.577)n2n2xn3 -(1.000)n2n2yn3
+3   n1n1zn3 +n2n2zn3
+3   (0.577)n1n3n3x +(1.000)n1n3n3y -(1.000)n2n3n3x +(0.577)n2n3n3y
+3   (0.577)n1xn3^2 +(1.000)n1yn3^2 -(1.000)n2xn3^2 +(0.577)n2yn3^2
+3   n3^2n3z

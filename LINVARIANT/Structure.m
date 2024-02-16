@@ -1,4 +1,4 @@
-BeginPackage["LINVARIANT`Structure`"]
+BeginPackage["LINVARIANT`Structure`", {"LINVARIANT`GroupTheory`"}]
 
 (*--------- Load, Save and Modify Crystal Structure Libraries ------------*)
 ModCell                      ::usage = "ModCell[xyz, cell]"
@@ -11,6 +11,7 @@ Lattice2Symbolic             ::usage = "Lattice2Symbolic[latt]"
 ImportIsodistortCIF          ::usage = "ImportIsodistortCIF[cif]"
 FixCif                       ::usage = "FixCif[str]"
 PosMatchTo                   ::usage = "PosMatchTo[spos, dpos, tol]"
+CrystalMatchTo               ::usage = "CrystalMatchTo[spos, dpos, tol]"
 SortByPOSCAR                 ::usage = "SortByPOSCAR[pos0, pos]"
 SortIR2POSCAR                ::usage = "SortIR2POSCAR[latt, pos, wyckoff, Basis]"
 StructureSymmetrization      ::usage = "StructureSymmetrization[pos0, pos, spg0]"
@@ -41,6 +42,7 @@ XRDIndensity                 ::usage = "XRDIndensity[\[Lambda], poscar, range]"
 GetBZKList                   ::usage = "GetBZKList[spg0, kinv]"
 PlotStruct                   ::usage = "PlotStruct[pos]"
 GetDomains                   ::usage = "GetDomains[latt, pos, xyz]"
+StructureSymmetrization      ::usage = "StructureSymmetrization[pos, spg]"
 StructDist                   ::usage = "StructDist[pos1, pos2]"
 StructInterpolation          ::usage = "interpolation[pos1, pos2, rho]"
 GetBonds                     ::usage = "GetBonds[spg0, tij, pos]"
@@ -125,9 +127,32 @@ DistMatrix = Compile[{{latt, _Real, 2}, {pos1, _Real, 2}, {pos2, _Real, 2}, {cel
 ]
 *)
 
+CrystalMatchTo[latt_, spos_, dpos_, OptionsPattern[{"OriginShift" -> False, "SymmetricQ" -> False}]] := Module[{difftable, posmap, i, newpos, oshift, sposbyele, dposbyele, EleList, ele, maps}, 
+  sposbyele = GroupBy[{#1, SimplifyElementSymbol[#2]} & @@@ spos, #[[2]] &];
+  dposbyele = GroupBy[{#1, SimplifyElementSymbol[#2]} & @@@ dpos, #[[2]] &];
+  If[Keys[sposbyele] != Keys[dposbyele], Print["elements not match"]; Abort[]];
+  EleList = Keys[sposbyele];
+
+  {newpos, maps} = Transpose@Table[difftable = DistMatrix[latt, Transpose[sposbyele[ele]][[1]], Transpose[dposbyele[ele]][[1]], {1, 1, 1}];
+                                   posmap = First@First@Position[#, x_ /; TrueQ[x == Min[#]]] & /@ difftable;
+                                   If[Length[sposbyele[ele]] != Length@DeleteDuplicates[posmap], Print[ele <>" Error!"]; Print[posmap]; Abort[]];
+                                   {Table[dposbyele[ele][[posmap[[i]]]], {i, Length@posmap}], posmap}, {ele, EleList}];
+
+  oshift = If[OptionValue["OriginShift"],
+              If[OptionValue["SymmetricQ"],
+                 GetCrystalOrigin[Transpose[Flatten[newpos, 1]][[1]]] - GetCrystalOrigin[Transpose[spos][[1]]],
+                 Mean[PbcDiff[#]&/@(Transpose[Flatten[newpos, 1]][[1]] - Transpose[spos][[1]])]],
+              {0, 0, 0}];
+  
+  newpos = {Mod[#1 - oshift, 1], #2} &@@@ Flatten[newpos, 1];
+
+  Return[newpos]
+]
+
 PosMatchTo[latt_, spos_, dpos_, OptionsPattern[{"OriginShift"->False, "SymmetricQ"->False}]] := Module[{difftable, posmap, i, newpos, oshift},
   difftable = DistMatrix[latt, spos, dpos, {1,1,1}];
   posmap = First@First@Position[#, x_ /; TrueQ[x == Min[#]]] & /@ difftable;
+  If[Length[spos]!=Length@DeleteDuplicates[posmap], Print["Error!"];Print[posmap];Abort[]];
   oshift = If[OptionValue["OriginShift"], 
               If[OptionValue["SymmetricQ"], 
                  GetCrystalOrigin[Table[dpos[[posmap[[i]]]], {i, Length@spos}]] - GetCrystalOrigin[spos],
@@ -394,11 +419,13 @@ PbcDiff[diff_, cell_:{1, 1, 1}] := Module[{halflattice, diff0, i},
 ]
 
 
-GetCrystalOrigin[sites_, OptionsPattern[{"SymmetricQ" -> True}]] := Module[{s, occ, z, origin},
-  origin = If[OptionValue["SymmetricQ"], 
-              Total@Flatten[Table[occ = 1/Power[2, Count[Chop[s], 0]];
-                            DeleteDuplicates[occ {s, s /. {z_ /; (Chop[z] == 0) -> 1}}], {s, sites}], 1]/Length[sites],
-              Mean[sites]];
+GetCrystalOrigin[sites_, OptionsPattern[{"SymmetricQ" -> True, "charge" -> None}]] := Module[{s, occ, z, origin, i, j, q, symsites, w},
+  q = If[OptionValue["charge"] === None, {1, 1, 1} &/@ sites, OptionValue["charge"]];
+  origin = If[OptionValue["SymmetricQ"],
+              symsites = Table[DeleteDuplicates[Chop[# ({1, 1, 1} - Sign[Abs[Chop@sites[[i]]]]) + Chop[sites[[i]]] Sign[Abs[Chop@sites[[i]]]]] & /@  Tuples[{0, 1}, {3}]], {i, Length@sites}];
+              Total@Flatten[Table[w = Abs@q[[i]]/Length[symsites[[i]]]/Total[Abs@q];
+                                  Table[w symsites[[i, j]], {j, Length[symsites[[i]]]}], {i, Length@symsites}], 1],
+              Total@Table[Abs@q[[i]]/Total[Abs@q] sites[[i]], {i, Length@sites}]];
   Return[origin]
 ]
 
@@ -552,6 +579,13 @@ PlotStruct[pos_] := Module[{latt, sites, SiteData, BondData, LabelData, tt, Hopp
                      ViewPoint -> {0, 0, \[Infinity]}]
 ]
 
+StructureSymmetrization[pos_, spg_] := Module[{latt0, sites0, sites, atoms, i},
+  {latt0, sites0} = pos;
+  atoms = sites0\[Transpose][[2]];
+  sites = Mean[GetDomains[{latt0, sites0}, {latt0, sites0}, #][[2]]\[Transpose][[1]] & /@ If[AssociationQ[spg], Keys[spg], spg]];
+  Return[{latt0, Table[{sites[[i]], atoms[[i]]}, {i, Length@sites}]}]
+]
+  
 GetDomains[ref_, pos_, xyz_] := Module[{latt, sites, latt0, sites0, newlatt, newsites, strain, strainnew, m4, rot, tran},
   {latt0, sites0} = ref;
   {latt, sites} = pos;
@@ -560,8 +594,8 @@ GetDomains[ref_, pos_, xyz_] := Module[{latt, sites, latt0, sites0, newlatt, new
   strainnew = GetStrainTensor[rot.latt0, rot.latt, "iso" -> False];
   m4 = xyz2m4[xyz];
   newlatt = (strainnew + IdentityMatrix[3]).latt0;
-  newsites = Mod[(m4.Join[#[[1]], {1}])[[1 ;; 3]], 1] & /@ sites;
-  newsites = {PosMatchTo[latt0, sites0\[Transpose][[1]], newsites][[2]], sites0\[Transpose][[2]]}\[Transpose];
+  newsites = {Mod[(m4.Join[#1, {1}])[[1 ;; 3]], 1], #2} &@@@ sites;
+  newsites = CrystalMatchTo[latt0, sites0, newsites];
   Return[{newlatt, newsites}]
 ]
 

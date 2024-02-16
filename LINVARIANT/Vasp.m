@@ -84,7 +84,7 @@ ParseVasprunFatBands[xml_, OptionsPattern[{"fermi"->None, "FatBandRange"->None}]
   Return[{spinupdn, character}]
 ]
 
-ImportPOSCAR[f_] := Module[{inp, Latt, xyz, xyzType, EleType, EleNum, TotalNum},
+ImportPOSCAR[f_,OptionsPattern[{"originshift" -> {0,0,0}}]] := Module[{inp, Latt, xyz, xyzType, EleType, EleNum, TotalNum},
   inp = OpenRead[f];
   Read[inp, String];
   Latt = Quiet@ReadList[inp, Number, RecordLists -> True];
@@ -94,7 +94,7 @@ ImportPOSCAR[f_] := Module[{inp, Latt, xyz, xyzType, EleType, EleNum, TotalNum},
   TotalNum = Total[EleNum];
   xyzType = ToLowerCase[Read[inp, String]];
   xyz = ReadList[inp, String, RecordLists -> True][[1 ;; TotalNum]];
-  xyz = {ParseFortranNumber[First[StringSplit[#1]][[1 ;; 3]]], #2} & @@@ ({xyz, Flatten[Table[#1 <> ToString[i], {i, #2}] & @@@ ({EleType, EleNum}\[Transpose])]}\[Transpose]);
+  xyz = {Chop@Mod[ParseFortranNumber[First[StringSplit[#1]][[1 ;; 3]]] - OptionValue["originshift"], 1], #2} & @@@ ({xyz, Flatten[Table[#1 <> ToString[i], {i, #2}] & @@@ ({EleType, EleNum}\[Transpose])]}\[Transpose]);
   Close[inp];
   Return[{Latt, xyz}]
 ]
