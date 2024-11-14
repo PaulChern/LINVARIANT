@@ -30,6 +30,7 @@ GetElasticModuli             ::usage "GetElasticModuli[file, vol]"
 GetDielectricTensor          ::usage "GetDielectricTensor[file]"
 ReadForceConstants           ::usage "ReadForceConstants[file]"
 ReadWannierCentres           ::usage "ReadWannierCentres[file]"
+GetVaspTrajectory            ::usage "GetVaspTrajectory[dir]"
 
 (*--------- Plot and Manipulate Crystal Structures -------------------- ----------------*)
 
@@ -513,6 +514,23 @@ ReadWannierCentres[file_] := Module[{inp},
   Read[inp, Number];
   Read[inp, String];
   If[#1 === "X", {ToExpression[#2], ToExpression[#3], ToExpression[#4]}, ## &[]] & @@@ StringSplit[ReadList[inp, String, RecordLists -> False]]
+]
+
+GetVaspTrajectory[dir_, SYSTEM_] := Module[{XDATCAR, NSteps, latt0, sites0, trj, sites, latt},
+  XDATCAR = OpenRead[dir <> "/XDATCAR"];
+  NSteps = Length[FindList[XDATCAR, "Direct configuration="]];
+  {latt0, sites0} = ImportPOSCAR[dir <> "/POSCAR"];
+  XDATCAR = OpenRead[dir0 <> "/XDATCAR"];
+  trj = Table[If[! (Find[XDATCAR, SYSTEM] === EndOfFile),
+                 ReadLine[XDATCAR]; 
+                 latt = Table[ParseFortranNumber[ReadLine[XDATCAR]], {3}];
+                 ReadLine[XDATCAR];
+                 ReadLine[XDATCAR];
+                 ReadLine[XDATCAR];
+                 sites = Table[ParseFortranNumber[ReadLine[XDATCAR]], {Length@sites0}];
+                 {latt, {sites, sites0\[Transpose][[2]]}\[Transpose]}], {NSteps}];
+  Close[XDATCAR];
+  Return[trj]
 ]
 
 (*-------------------------- Attributes ------------------------------*)

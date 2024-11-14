@@ -18,8 +18,10 @@ CBInversionQ              ::usage "CBInversionQ[H, vars]"
 Begin["`Private`"]
 
 (*--------------------------- Modules ----------------------------*)
-CBInversionQ[H_, vars_] := Module[{v},
-  Table[{H === Total[Times @@ {#/First@Cases[#, Exp[__]], First@Cases[#, Exp[__]] /. {v -> -v}} & /@ Level[H, {1}]], v}, {v, vars}]
+CBInversionQ[H_, vars_] := Module[{sub, s, Q},
+  sub = Thread[Flatten@vars -> # * Flatten[vars]] &/@ Tuples[{-1, 1}, Length[Flatten@vars]];
+  Q = Table[H === Total[Times @@ {#/First@Cases[#, Exp[__]], First@Cases[#, Exp[__]] /. s} & /@ Level[H, {1}]], {s, sub}];
+  Return[And@@Q]
 ]
 (*-------------------------- Attributes ------------------------------*)
 

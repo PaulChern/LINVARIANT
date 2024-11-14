@@ -18,6 +18,7 @@ PhononUnfolding              ::usage "PhononUnfolding[Fi0, DMPos, StdPos, q, Qbz
 GetEwaldMatrix               ::usage "GetEwaldMatrix[NGrid, tol]"
 ArrayFold2D                  ::usage "ArrayFold2D[list, n]"
 LoadEwaldMat                 ::usage "LoadEwaldMat[dir, file, grid]"
+LoadBinEwaldMat              ::usage " LoadBinEwaldMat[bin]"
 
 (*--------- Plot and Manipulate Crystal Structures -------------------- ----------------*)
 
@@ -250,6 +251,18 @@ LoadEwaldMat[dir_, file_, grid_, OptionsPattern[{"xyz"->True}]] := Module[{ix, i
                 Table[Ewald[[Ny Nx (iz - 1) + Nx (iy - 1) + ix]], {ix, Nx}, {iy, Ny}, {iz, Nz}],
                 Table[Ewald[[Ny Nx (iz - 1) + Nx (iy - 1) + ix]], {iz, Nz}, {iy, Ny}, {ix, Nx}]];
   Return[EwaldMat]
+]
+
+LoadBinEwaldMat[bin_] := Module[{data, Nx, Ny, Nz, ix, iy, iz, Qij, tmp, dim},
+  data = OpenRead[bin, BinaryFormat -> True];
+  SetStreamPosition[data, 0];
+  BinaryReadList[data, "Character8", 14];
+  {Nx, Ny, Nz} = BinaryReadList[data, "Integer32", 3];
+  BinaryReadList[data, "Integer64", 1];
+  tmp = Table[Partition[Chop@BinaryReadList[data, "Real64", 9], 3], {Nx Ny Nz}];
+  Qij = Table[tmp[[Ny Nx (iz - 1) + Nx (iy - 1) + ix]], {ix, Nx}, {iy, Ny}, {iz, Nz}];
+  Close[data];
+  Return[Qij]
 ]
 
 (*-------------------------- Attributes ------------------------------*)

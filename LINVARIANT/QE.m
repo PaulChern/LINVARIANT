@@ -39,7 +39,7 @@ ParseQEBands[xml_] :=Module[{eigen, bohr2angstrom, cellxml, latt, kpath, fermi, 
   Return[<|"latt" -> latt, "k" -> kpath, "fermi" -> fermi, "up" -> eigen|>]
 ]
 
-ParseQEFC[file_] := Module[{fc, NumType, NumAtoms, fcdata, Ti0, nq1, nq2, nq3, i, j, iq1, iq2, iq3, Q, Rybb2eVaa},
+ParseQEFC[file_, OptionsPattern[{"rotate"->False}]] := Module[{fc, NumType, NumAtoms, fcdata, H0, Hij, nq1, nq2, nq3, i, j, k, NL, iq1, iq2, iq3, Q, Rybb2eVaa},
   Rybb2eVaa=13.6056980659/0.529177^2;
   fc = OpenRead[file];
   {NumType, NumAtoms} = ToExpression[StringSplit[ReadLine[fc]]][[1 ;; 2]];
@@ -49,9 +49,15 @@ ParseQEFC[file_] := Module[{fc, NumType, NumAtoms, fcdata, Ti0, nq1, nq2, nq3, i
   If[Q==="T", Do[ReadLine[fc], {3 + 4 NumAtoms}]];
   {nq1, nq2, nq3} = ToExpression[StringSplit[ReadLine[fc]]];
   fcdata = Partition[ReadList[fc, Number, RecordLists -> True], nq1 nq2 nq3 + 1];
-  Ti0 = Table[{{iq1, iq2, iq3}, ArrayFlatten@Table[Table[Chop[Rybb2eVaa fcdata[[(i - 1) 3 5 5 + (j - 1) 5 5 + (ia - 1) 5 + jb, (iq1 - 1) nq2 nq3 + (iq2 - 1) nq3 + iq3 + 1]][[4]]], {i, 3}, {j, 3}], {ia, 5}, {jb, 5}]}, {iq3, nq1}, {iq2, nq2}, {iq1, nq3}];
   Close[fc];
-  Return[Ti0]
+
+  H0 = Association@Table[{{iq1-1, iq2-1, iq3-1}->Table[Table[Chop[Rybb2eVaa fcdata[[(i - 1) 3 NumAtoms NumAtoms + (j - 1) NumAtoms NumAtoms + (ia - 1) NumAtoms + jb, (iq1 - 1) nq2 nq3 + (iq2 - 1) nq3 + iq3 + 1]][[4]]], {i, 3}, {j, 3}], {ia, NumAtoms}, {jb, NumAtoms}]}, {iq3, nq1}, {iq2, nq2}, {iq1, nq3}];
+
+  NL = If[OptionValue["rotate"], Flatten[Table[{k, j, i} - {1, 1, 1}, {i, nq3}, {j, nq2}, {k, nq1}], 2], 
+                                 Flatten[Table[{i, j, k} - {1, 1, 1}, {i, nq1}, {j, nq2}, {k, nq3}], 2]];
+  Hij = ArrayFlatten[Table[H0[Mod[j - i, 3]], {i, NL}, {j, NL}]];
+
+  Return[Hij]
 ]
 (*-------------------------- Attributes ------------------------------*)
 

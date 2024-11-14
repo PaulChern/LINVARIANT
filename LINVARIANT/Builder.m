@@ -76,6 +76,12 @@ OriginShiftFC               ::usage "OriginShiftFC[pos0, Fij0, NSC, shift]"
 TrainingSet2Supercell       ::usage "TrainingSet2Supercell[ts, grid, vars, uvars]"
 FoldGamma                   ::usage "FoldGamma[gmodel, ah]"
 LMesh                       ::usage "LMesh[dir, grid, mfunc]"
+TrainLINVARIANT             ::usage "TrainLINVARIANT[Plan, vars, ts]"
+UpdateADAM                  ::usage "UpdateADAM[Param, mParam, vParam, grad, iter, \[Rho], \[Beta], \[Epsilon]]"
+GaussianPolynomial          ::usage "GaussianPolynomial[order, var]"
+GetLossFunc                 ::usage "GetLossFunc[H, vars, ts]"
+BoundData                   ::usage "BoundData[data, npts, dist]"
+ChopGaussianPolynomial      ::usage "ChopGaussianPolynomial[expr, vars, ts, IntRange, tol]"
 
 (*--------- Plot and Manipulate Crystal Structures -------------------- ----------------*)
 
@@ -92,13 +98,13 @@ LMesh                       ::usage "LMesh[dir, grid, mfunc]"
 Begin["`Private`"]
 
 (*--------------------------- Modules ----------------------------*)
-GetPhononBasis[pos0_, Fij_, OptionsPattern[{"table" -> True, "fontsize" -> 12, "toiso"->None, "roundup"->10^-6}]] := Module[{sol, PhononByIR, PhononRotated, ind, frequency, IR, i, j, iv, eigenvectors, rot, NumAtom, tab, simplifytab, color, isolabels, Vasp2THz = 15.633302300230191, latt, sites, alatt},
+GetPhononBasis[pos0_, Fij_, OptionsPattern[{"table" -> True, "fontsize" -> 12, "toiso"->None, "IRTol"->0.01, "roundup"->10^-6}]] := Module[{sol, PhononByIR, PhononRotated, ind, frequency, IR, i, j, iv, eigenvectors, rot, NumAtom, tab, simplifytab, color, isolabels, Vasp2THz = 15.633302300230191, latt, sites, alatt},
   {latt, sites} = pos0;
   alatt = Inverse[Transpose@latt];
   NumAtom = Length[sites];
   simplifytab = {0 -> "-"};
   sol = Eigensystem[ArrayFlatten[Fij]]\[Transpose];
-  PhononByIR = Gather[MapIndexed[Join[#2, {Chop[#1[[1]], 10^-2], Chop[#1[[2]], OptionValue["roundup"]]}] &, sol], Chop[#1[[2]] - #2[[2]], 10^-3] == 0 &];
+  PhononByIR = Gather[MapIndexed[Join[#2, {Chop[#1[[1]], OptionValue["IRTol"]], Chop[#1[[2]], OptionValue["roundup"]]}] &, sol], Chop[#1[[2]] - #2[[2]], 10^-3] == 0 &];
   isolabels = If[OptionValue["toiso"]===None, 
                  MapIndexed[ConstantArray["IR"<>ToString[First@#2], #1]&, Length[#]&/@PhononByIR],
                  CloneReshape2D[PhononByIR, OptionValue["toiso"]]];
@@ -2710,6 +2716,159 @@ LMesh[dir_, grid_, mfunc_, OptionsPattern[{"write"->True, "plot"->True}]] := Mod
   boxdata = Prepend[Join[boxdict[1], boxdict[0]], grid];
   If[OptionValue["write"], Export[dir <> "/Supercell.inp", boxdata, "Table", "FieldSeparators" -> " "]];
   Return[pltdata]
+]
+
+TrainLINVARIANT[Plan_, vars_, ts_, OptionsPattern[{"InitRange" -> {-1, 1}, "NonlinearSteps" -> 10000, "MaxIterationSteps" -> 10^4, "BoundDist" -> 1, "TapeRate" -> 100, "BatchSize" -> 100, "Beta" -> {0.9, 0.999}, "Epsilon" -> 10.^-8, "XCut" -> 1.5, "tol" -> 10^-6, "FuncPatch"->0}]] := Module[{H, param, order, basis, bound, TrainSet, LossHistory, coeff, func, FuncPatch, mcoeff, vcoeff, GradLoss, batch, nsteps, grad, loss, batchsize, \[Rho], \[Beta], \[Epsilon], i, monitor, LossPlot, snapshot, FittingPlot, Iteration, TrainLoss, ValLoss, sol, path, plotticks, t, v, time0, time1, tmp, tol, XCut},
+  
+  FuncPatch  = OptionValue["FuncPatch"];
+  batchsize  = OptionValue["BatchSize"];
+  XCut       = OptionValue["XCut"];
+  tol        = OptionValue["tol"];
+  \[Beta]    = OptionValue["Beta"];
+  \[Epsilon] = OptionValue["Epsilon"];
+ 
+  path = Subsequences[Prepend[Accumulate[Plan\[Transpose][[4]]], 0], {2}];
+  func        = FuncPatch;
+  TrainSet    = ts;
+  LossHistory = {};
+  Iteration   = 0; 
+  TrainLoss   = 0; 
+  ValLoss     = 0;
+  time0       = 0;
+  time1       = 0;
+  
+  (*Define the dynamic plot*)
+  LossPlot = Dynamic[ListLogPlot[LossHistory, 
+                                 PlotRange -> All, 
+                                 PlotLabel -> "Training Loss", 
+                                 Frame -> True, 
+                                 Joined -> True, 
+                                 ColorFunction -> Function[{xx, yy}, Hue@Rescale[First@Flatten@Position[If[Between[xx, #], 1, 0] & /@ path, 1], {1, Length[Plan]+0.1}]], 
+                                 ColorFunctionScaling -> False, 
+                                 FrameLabel -> {"Iterations", "Loss"}, 
+                                 ImageSize -> 300, 
+                                 ImagePadding -> {{60, 10}, {30, 10}}]];
+  
+  FittingPlot = Dynamic[ListPlot[{Table[{t, Quiet[func /. Thread[vars -> {t}]]}, {t, TrainSet\[Transpose][[1]]}], TrainSet}, 
+                                 PlotStyle -> {Red, Blue}, 
+                                 Joined -> {True, False}, 
+                                 PlotRange -> All, 
+                                 Frame -> True, 
+                                 ImageSize -> 300, 
+                                 ImagePadding -> {{60, 10}, {30, 10}},
+                                 Filling -> {1 -> {{2}, {LightBlue, LightRed}}}]];
+
+  monitor = DynamicModule[{iteration = 0, trainLoss = 0, valLoss = 0},
+      Monitor[Do[{order, basis, bound, nsteps, \[Rho]} = Plan[[i]];
+                 {param, H} = GaussianPolynomial[order, "x", "basis" -> basis];
+                 TrainSet = Join[ts, BoundData[ts, bound, 2]];
+                 mcoeff = ConstantArray[0, Length@param];
+                 vcoeff = ConstantArray[0, Length@param];
+                 coeff = RandomReal[OptionValue["InitRange"], Length@param];
+                 sol = Dispatch[Thread[param -> coeff]];
+
+                 {time0, tmp}= AbsoluteTiming[GradLoss = Table[batch = RandomSample[TrainSet, batchsize];
+                                                               loss  = GetLossFunc[FuncPatch + H, vars, batch];
+                                                               grad  = Grad[loss, param];
+                                                               {grad, loss}, {j, nsteps}];];
+      
+                 Do[{time1, tmp} = AbsoluteTiming[iteration = iteration + 1;
+                                                  {grad, loss} = GradLoss[[j]];
+       
+                                                  {coeff, mcoeff, vcoeff} = UpdateADAM[coeff, mcoeff, vcoeff, Quiet[grad/.sol], j, \[Rho], \[Beta], \[Epsilon]];
+                                                  sol = Dispatch[Thread[param -> coeff]];
+                                                 ];
+
+                    If[Mod[iteration, OptionValue["TapeRate"]] == 0, Iteration = iteration;
+                                                                     trainLoss = Quiet[loss /. sol];
+                                                                     valLoss = Quiet[loss /. sol];
+                                                                     TrainLoss = trainLoss;
+                                                                     ValLoss = valLoss;
+                                                                     func = Quiet[FuncPatch + (H /. sol)];
+                                                                     AppendTo[LossHistory, {iteration, trainLoss}]], {j, nsteps}];
+
+                 sol = Quiet[NonlinearModelFit[TrainSet, FuncPatch + H, Transpose[{param, coeff}], vars,
+                                               MaxIterations -> OptionValue["NonlinearSteps"]]]["BestFitParameters"];
+                 sol = Dispatch[#1 -> Round[#2, 10.^-6] & @@@ sol];
+                 FuncPatch = ChopGaussianPolynomial[Quiet[FuncPatch + (H /. sol)], vars, TrainSet, XCut, tol], {i, Length@Plan}],
+
+              Panel[Column[{Row[{Style["SGD - with Adaptive Moment Estimation", Black, Bold, 12]}],
+                            Row[{Grid[{{"Iteration: ",     Dynamic[Iteration]}, 
+                                       {"Training Loss: ", Dynamic[TrainLoss]}, 
+                                       {"Validation Loss: ", Dynamic[ValLoss]},
+                                       {"Timing Gradients:", Dynamic[time0]},
+                                       {"Seconds/Batch:", Dynamic[time1]}}]}],
+                            Row[{Dynamic[func]}],
+                            Row[{LossPlot, FittingPlot}]}], Style["Training Progress", Red, 14]]
+     ]];
+  
+  monitor;
+ 
+  FittingPlot = ListPlot[{Table[{t, Quiet[FuncPatch /. Thread[vars -> {t}]]}, {t, TrainSet\[Transpose][[1]]}], TrainSet}, 
+                         PlotStyle -> {Red, Blue}, 
+                         Joined -> {True, False}, 
+                         PlotRange -> All, 
+                         Frame -> True, 
+                         ImageSize -> 300, 
+                         ImagePadding -> {{60, 10}, {30, 10}}, 
+                         Filling -> {1 -> {{2}, {LightBlue, LightRed}}}];
+
+  snapshot = Panel[Column[{Row[{Style["SGD - with Adaptive Moment Estimation", Black, Bold, 12]}],
+                           Row[{Grid[{{"Iteration: ", Iteration}, 
+                                      {"Training Loss: ", TrainLoss}, 
+                                      {"Validation Loss: ", ValLoss}}]}],
+                           Row[{FuncPatch}],
+                           Row[{LossPlot, FittingPlot}]}], Style["Training Progress", Red, 14]];
+  Print[snapshot];
+  
+  Return[{FuncPatch, snapshot}]
+]
+
+GaussianPolynomial[order_, var_, OptionsPattern[{"basis" -> {1, 1, 1}}]] := Module[{A, B, C, a, b, c, v, n, param, func, s1, s2, s3, OrderList},
+  OrderList = If[ListQ[order], order, Range[2, order, 2]];
+  v = ToExpression[var];
+  {s1, s2, s3} = OptionValue["basis"];
+  {param, func} = Table[A = ToExpression["A" <> ToString[n]];
+                        B = ToExpression["B" <> ToString[n]];
+                        C = ToExpression["C" <> ToString[n]]; 
+                        a = ToExpression["a" <> ToString[n]]; 
+                        b = ToExpression["b" <> ToString[n]]; 
+                        c = ToExpression["c" <> ToString[n]];
+                        {{s1 A, s2 B, s2 C, s3 a, s3 b, s3 c}, 
+                        s1 A v^n + s2 B v^n Exp[- C^2 v^2/1] + s3 a v^n (Exp[-b^2 ((v - c)^2/1)] + Exp[-b^2 ((v + c)^2/1)])}, {n, OrderList}]\[Transpose];
+
+  Return[{DeleteCases[Flatten[param], 0], Total@func}]
+]
+
+GetLossFunc[H_, vars_, ts_, OptionsPattern[{"tol"->10^-6}]] := Module[{loss},
+  loss = Quiet@Expand[Mean[(Chop[H /. Thread[vars -> #[[1 ;; -2]]]] - Last[#])^2 & /@ ts]];
+  Return[Chop[loss, OptionValue["tol"]]]
+]
+
+UpdateADAM[Param_, mParam_, vParam_, grad_, iter_, \[Rho]_, \[Beta]_, \[Epsilon]_] := Module[{\[Beta]1, \[Beta]2, mParamNew, vParamNew, mCorrected, vCorrected, ParamNew, i},
+  {\[Beta]1, \[Beta]2} = \[Beta];
+  mParamNew = \[Beta]1 mParam + (1 - \[Beta]1) grad;
+  vParamNew = \[Beta]2 vParam + (1 - \[Beta]2) grad^2;
+  Quiet[mCorrected = mParamNew/(1 - \[Beta]1^iter)];
+  Quiet[vCorrected = vParamNew/(1 - \[Beta]2^iter)];
+  ParamNew = Table[Param[[i]] - \[Rho] mCorrected[[i]]/(Sqrt[vCorrected[[i]]] + \[Epsilon]), {i, Length@Param}];
+  Return[{ParamNew, mParamNew, vParamNew}]
+  
+]
+
+BoundData[data_, npts_, dist_ : 1] := Module[{i, x, func, FuncMax, FuncMin, f, x0, x1, bound},
+  bound = Table[func = Fit[f[data, First, 2], {1, x}, x];
+                {x1, x0} = Transpose[f[data, First, 2]][[1]]; 
+                Table[{x, func} /. {x -> x1 + i dist (x1 - x0)}, {i, npts}], {f, {MaximalBy, MinimalBy}}];
+  Return[Flatten[bound, 1]]
+]
+
+ChopGaussianPolynomial[expr_, vars_, ts_, IntRange_, tol_ : 10^-6] := Module[{terms, TermsChopped, residue, range, t, plots},
+  range = Flatten[{#1, #2}] & @@@ Thread[vars -> (IntRange MinMax[#] & /@ Transpose[#[[1 ;; -2]] & /@ ts])];
+  terms = Level[Expand@expr, {1}];
+  TermsChopped = Table[residue = Chop[Quiet[NIntegrate @@ Join[{Abs[t]}, range]], tol]; 
+                       If[residue == 0, ## &[], t], {t, terms}];
+  Return[Total[TermsChopped]]
 ]
 
 (*-------------------------- Attributes ------------------------------*)

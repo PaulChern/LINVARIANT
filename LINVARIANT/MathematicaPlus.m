@@ -50,6 +50,7 @@ T6Vars                      ::usage = "T6Vars[t]"
 T5Data                      ::usage = "T5Data[t]"
 T6Data                      ::usage = "T6Data[t]"
 T56Data                     ::usage = "T56Data[t]"
+OpenExtract                 ::usage = "OpenExtract[f, str, i, nline]"
 
 (*--------- Plot and Manipulate Crystal Structures -------------------- ----------------*)
 
@@ -409,7 +410,24 @@ VarBare[var_] := Module[{info},
       If[Length@info > 3, Subscript @@ (info[[1;;2]]), var]]
 ]
 
+OpenExtract[f_, str_, i_, nlines_ : ListQ] := Module[{s, t, num, nskip, nread, out, TotNumLine, StreamPositionList},
+  {nskip, nread} = nlines;
+  s = OpenRead[f];
+  t = ReadString[s];
+  t = StringSplit[t, "\n"];
+  StreamPositionList = StringLength[#] & /@ t;
+  TotNumLine = Length@t;
+  SetStreamPosition[s, 0];
 
+  out = Which[StringQ[str], num = Length[FindList[s, str]]; 
+                            SetStreamPosition[s, 0]; 
+                            Table[Find[s, str]; Do[ReadLine[s], {nskip}]; Table[ReadLine[s], {nread}], {Min[{i, num}]}],
+              IntegerQ[str], SetStreamPosition[s, Total[StreamPositionList[[;; str - 1]]]+i]; Table[ReadLine[s], {nread}], 
+              True, Abort[]];
+
+  Close[s];
+  Return[out]
+]
 (*-------------------------- Attributes ------------------------------*)
 
 (*Attributes[]={Protected, ReadProtected}*)

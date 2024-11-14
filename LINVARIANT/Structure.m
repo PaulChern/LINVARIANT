@@ -8,6 +8,8 @@ SymmetryOpOrigin             ::usage = "SymmetryOpOrigin[file, set]"
 SymmetryOpVectorField        ::usage = "SymmetryOpVectorField[file, set]"
 GetLatticeVectors            ::usage = "GetLatticeVectors[dat]"
 Lattice2Symbolic             ::usage = "Lattice2Symbolic[latt]"
+LatticeRationalize           ::usage = "LatticeRationalize[latt0]"
+LatticeRot2X                 ::usage = "LatticeRot2X[latt]"
 ImportIsodistortCIF          ::usage = "ImportIsodistortCIF[cif]"
 FixCif                       ::usage = "FixCif[str]"
 PosMatchTo                   ::usage = "PosMatchTo[spos, dpos, tol]"
@@ -44,6 +46,7 @@ PlotStruct                   ::usage = "PlotStruct[pos]"
 GetDomains                   ::usage = "GetDomains[latt, pos, xyz]"
 StructureSymmetrization      ::usage = "StructureSymmetrization[pos, spg]"
 StructDist                   ::usage = "StructDist[pos1, pos2]"
+PbcDist                      ::usage = "PbcDist[pos1, pos2]"
 StructInterpolation          ::usage = "interpolation[pos1, pos2, rho]"
 GetBonds                     ::usage = "GetBonds[spg0, tij, pos]"
 ImportXSF                    ::usage = "ShiftXSF[dir, fname, shift : {0, 0, 0}]"
@@ -127,7 +130,7 @@ DistMatrix = Compile[{{latt, _Real, 2}, {pos1, _Real, 2}, {pos2, _Real, 2}, {cel
 ]
 *)
 
-CrystalMatchTo[latt_, spos_, dpos_, OptionsPattern[{"OriginShift" -> False, "SymmetricQ" -> False}]] := Module[{difftable, posmap, i, newpos, oshift, sposbyele, dposbyele, EleList, ele, maps}, 
+CrystalMatchTo[latt_, spos_, dpos_, OptionsPattern[{"JumpQ"->True, "OriginShift" -> False, "SymmetricQ" -> False}]] := Module[{difftable, posmap, i, newpos, oshift, sposbyele, dposbyele, EleList, ele, maps}, 
   sposbyele = GroupBy[{#1, SimplifyElementSymbol[#2]} & @@@ spos, #[[2]] &];
   dposbyele = GroupBy[{#1, SimplifyElementSymbol[#2]} & @@@ dpos, #[[2]] &];
   If[Keys[sposbyele] != Keys[dposbyele], Print["elements not match"]; Abort[]];
@@ -269,6 +272,21 @@ Lattice2Symbolic[latt_] := Module[{G, aa, bb, cc, \[Alpha], \[Beta], \[Gamma], L
   Return[{LatticeVectors, N@{aa,bb,cc}}]
 ]
 
+LatticeRationalize[latt0_, prec_] := Module[{aa, bb, cc, LatticeVectors, G, \[Alpha], \[Beta], \[Gamma]},
+  {aa, bb, cc} = Rationalize[Norm[#], prec] & /@ latt0;
+  G = (latt0 . (latt0\[Transpose]));
+  {\[Alpha], \[Beta], \[Gamma]} = Rationalize[ArcCos[G[[#1, #2]]/(Norm[latt0[[#1]]] Norm[latt0[[#2]]])]/Pi] Pi & @@@ {{2, 3}, {1, 3}, {1, 2}};
+  LatticeVectors = GetLatticeVectors[{aa, bb, cc, \[Alpha], \[Beta], \[Gamma]}];
+  Return[LatticeVectors]
+]
+
+LatticeRot2X[latt_] := Module[{G, aa, bb, cc, \[Alpha], \[Beta], \[Gamma]},
+  G = (latt.(latt\[Transpose]));
+  {aa, bb, cc} = Norm[#] & /@ latt;
+  {\[Alpha], \[Beta], \[Gamma]} = ArcCos[G[[#1, #2]]/(Norm[latt[[#1]]] Norm[latt[[#2]]])] & @@@ {{2, 3}, {1, 3}, {1, 2}};
+  Chop@GetLatticeVectors[{aa, bb, cc, \[Alpha], \[Beta], \[Gamma]}]
+]
+
 FixCif[str_] := Module[{CifData, temp},
   CifData = StringReplace[str, Thread[DeleteDuplicates[StringCases[str, RegularExpression[";"]]] -> "|"]];
   temp = StringCases[CifData, RegularExpression["([[:upper:]][[:lower:]]*\\W*|[[:upper:]]*\\d*[[:lower:]]*)_\\d+"]];
@@ -386,7 +404,7 @@ ImportIsodistortCIF[file_,OptionsPattern[]] := Module[{CifData, CifFlags, xyzNam
 	{{ElemSym, ElemName}, "","", SpgName, SpgNumber, LatticeVectors, Atoms, LatticeScales, FracOutText, Wyckoff, IsoDim, IsoDispModes, {IsoDispModeRow, IsoDispModeCol, IsoDispModeVal}, IsoStrainModes, {IsoStrainModeRow, IsoStrainModeCol, IsoStrainModeVal}, IsoDeltaCoord, IsoCoord}
 ]
 
-GetStrainTensor[parent_, sub_, OptionsPattern["iso"->True]] := Module[{e, strain},
+GetStrainTensor[parent_, sub_, OptionsPattern[{"iso"->True}]] := Module[{e, strain},
   strain= If[OptionValue["iso"],
              e = N[sub[[6]] /. sub[[8]]].Inverse[N[parent[[6]] /. parent[[8]]]] - IdentityMatrix[3];
              1/2 (e + Transpose[e] + Transpose[e].e),
@@ -599,22 +617,42 @@ GetDomains[ref_, pos_, xyz_] := Module[{latt, sites, latt0, sites0, newlatt, new
   Return[{newlatt, newsites}]
 ]
 
-StructDist[pos1_, pos2_] := Module[{latt1, latt2, site1, site2, dist},
+PbcDist[pos1_, pos2_] := Module[{latt1, latt2, site1, site2, dist},
   {latt1, site1} = pos1;
-  site2 = PosMatchTo[latt1, site1\[Transpose][[1]], pos2[[2]]\[Transpose][[1]]][[2]];
+  site2 = CrystalMatchTo[latt1, site1, pos2[[2]]];
   latt2 = pos2[[1]];
-  dist = Norm[Flatten[(latt1\[Transpose].# &/@ (site1\[Transpose][[1]])) - (latt2\[Transpose].# &/@ site2)]];
+  dist = Norm[Flatten[latt1\[Transpose].PbcDiff[#] &/@ (site1\[Transpose][[1]] - site2\[Transpose][[1]])]];
   Return[dist]
 ]
 
-StructInterpolation[pos1_, pos2_, rho_] := Module[{latt, sites, dist, NPT},
-  dist = StructDist[pos1, pos2];
-  NPT = Ceiling[dist/rho];
-  If[EvenQ[NPT], NPT = NPT + 1];
-  If[dist==0,##&[],
-     Table[latt = pos1[[1]] + i/(NPT + 1) (pos2[[1]] - pos1[[1]]);
-           sites = pos1[[2]]\[Transpose][[1]]+i/(NPT+1)(pos2[[2]]\[Transpose][[1]]-pos1[[2]]\[Transpose][[1]]); 
-           {latt, {sites, pos1[[2]]\[Transpose][[2]]}\[Transpose]}, {i, NPT}]]
+StructDist[pos1_, pos2_] := Module[{latt1, latt2, site1, site2, dist},
+  {latt1, site1} = pos1;
+  site2 = CrystalMatchTo[latt1, site1, pos2[[2]]];
+  latt2 = pos2[[1]];
+  dist = Norm[Flatten[(latt1\[Transpose] . # & /@ (site1\[Transpose][[1]])) - (latt2\[Transpose] . # & /@ (site2\[Transpose][[1]]))]];
+  Return[dist]
+]
+
+StructInterpolation[pos_, rho_, OptionsPattern[{"nex"->0}]] := Module[{n, i, npos, latt, sites, latt1, sites1, latt2, sites2, dist, NPT, strain, pos1, pos2, nex1, nex2, out, path},
+  out = Table[pos1=pos[[n]]; 
+              pos2=pos[[n+1]];
+              nex1=0;
+              nex2=0;
+              If[n==1, nex1=-OptionValue["nex"]];
+              If[n==Length[pos]-1, nex2=OptionValue["nex"]];
+
+              dist = StructDist[pos1, pos2];
+              {latt1, sites1} = pos1;
+              {latt2, sites2} = {pos2[[1]], CrystalMatchTo[pos1[[1]], pos1[[2]], pos2[[2]]]};
+              strain = GetStrainTensor[latt1, latt2, "iso" -> False];
+              NPT = Ceiling[dist/rho];
+              If[OddQ[NPT], NPT = NPT + 1];
+              If[dist==0,##&[],
+                 path = Table[latt = latt1.(i/NPT strain + IdentityMatrix[3]);
+                              sites = sites1\[Transpose][[1]] + i/NPT (PbcDiff[#] &/@ (sites2\[Transpose][[1]]-sites1\[Transpose][[1]])); 
+                              {latt, {Mod[sites, 1], sites1\[Transpose][[2]]}\[Transpose]}, {i, nex1, NPT+nex2}];
+                 If[Length[pos]==2||n==Length[pos]-1, path, path[[1;;-2]]]], {n, Length[pos]-1}];
+  Return[Flatten[out,1]]
 ]
 
 GetBonds[spg0_, tij_, pos_] := Module[{latt, AllSites, c1, c2, c3, sol, site, AllBonds, ReducedBonds},

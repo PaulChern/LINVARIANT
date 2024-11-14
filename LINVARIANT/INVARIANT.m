@@ -19,6 +19,7 @@ MonomialTransform            ::usage = "MonomialTransform[monomials, rules]"
 GetIsoVars                   ::usage = "GetIsoVars[IsoDispModes]"
 GetIsoTransformRules         ::usage = "GetIsoDispTransformRules[OpMatrix, IsoDispModes, TranType]"
 GetIsoStrainTransformRules   ::usage = "GetIsoStrainTransformRules[GridSymFile]"
+GetStrainTransformRules      ::usage = "GetStrainTransformRules[latt, spg]"
 Epsilon2Field                ::usage = "Epsilon2Field[strain]"
 Field2Epsilon                ::usage = "Field2Epsilon[field]"
 GetEpsilonijRule             ::usage = "GetEpsilonijRule[symfile]"
@@ -188,7 +189,7 @@ Field2Epsilon[field_] := Module[{},
   Sum[Normalize[field[[2]][[1]]][[j]] Normalize[field[[1]][[2]]][[i]] Subscript[Epsilon, i, j], {j, 3}, {i, 3}] /. {Subscript[Epsilon, 2, 1] -> Subscript[Epsilon, 1, 2], Subscript[Epsilon, 3, 1] -> Subscript[Epsilon, 1, 3], Subscript[Epsilon, 3, 2] -> Subscript[Epsilon, 2, 3]}
 ]*)
 
-GetEpsilonijRule[spg0_] := Module[{tij, i},
+GetEpsilonijRule[spg0_] := Module[{tij, i, j},
   strains = DeleteDuplicates@Flatten[SparseArray[{{i_, j_} /; i == j -> Subscript[Epsilon, i, j], {i_, j_} /; i < j -> Subscript[Epsilon, i, j], {i_, j_} /; i > j -> Subscript[Epsilon, j, i]}, {3, 3}] // Normal];
   Thread[strains -> #] & /@ (Table[Field2Epsilon[#] & /@ GetSiteEpsilon[spg0, Epsilon2Field[ep]], {ep, strains}]\[Transpose])
 ]
@@ -413,23 +414,29 @@ GetIsoTransformRules[OpMatrix_, TranType_] := Module[{IsoDim, IsoVars, VarRules,
    GetIsoTransformRules[#, TranType] &/@ OpMatrix]
 ]
 
-GetIsoStrainTransformRulesOld[latt_, spg0_] := Module[{StrainRules},
-  Which[AssociationQ[spg0],
-        GetEpsilonijRule[spg0],
-        ListQ[spg0],
-        GetEpsilonijRule[xyz2Grp[latt, Flatten[GTimes[latt, spg0]], "fast"->True]]
+GetStrainTransformRules[latt_, spg_] := Module[{StrainRules},
+  Which[AssociationQ[spg],
+        GetEpsilonijRule[spg],
+        ListQ[spg],
+        GetEpsilonijRule[xyz2Grp[latt, Flatten[GTimes[latt, spg]], "fast"->True]]
   ]
 ]
 
-GetIsoStrainTransformRules[latt_, spg0_] := Module[{slatt, i, j, ig, g, strain0, strain, q, rot, tran, v1, v2},
+GetIsoStrainTransformRules[latt0_, spg0_] := Module[{slatt, latt, i, j, ig, G, g, strain0, strain, q, rot, tran, v1, v2, a, b, c, sub},
   g= Length[spg0];
-  slatt = Lattice2Symbolic[latt][[1]];
+  latt = LatticeRationalize[latt0, 10^-9];
+  G = latt.(latt\[Transpose]);
+  sub = Thread[{a, b, c} -> (Norm[#] & /@ latt)];
+  slatt = {{a, 0, 0}, {0, b, 0}, {0, 0, c}} /. sub;
+  slatt = IdentityMatrix[3];
+
   strain0 = Normal@SparseArray[{{i_, j_} /; i == j -> Subscript[Epsilon, i, j], {i_, j_} /; i < j -> Subscript[Epsilon, i, j], {i_, j_} /; i > j -> Subscript[Epsilon, j, i]}, {3, 3}];
+
   Table[{rot, tran}=xyz2RotT[Keys[spg0][[ig]]];
-        q = Table[v1 = (rot.slatt)[[i]]; 
-                  v2 = slatt[[j]];
-                  ComplexExpand[v1.v2/(Norm[v1] Norm[v2])], {i, 3}, {j, 3}];
-        strain = q\[Transpose].strain0.q;
+        q = Table[v1 = rot.(slatt[[;;,i]]); 
+                  v2 = slatt[[;;,j]];
+                  ComplexExpand[v1.v2], {i, 3}, {j, 3}];
+        strain = Expand[Inverse[q].strain0.q];
         Thread[{strain0[[1,1]], strain0[[2,2]], strain0[[3,3]], strain0[[2,3]], strain0[[1,3]], strain0[[1,2]]}
              ->{strain[[1,1]], strain[[2,2]], strain[[3,3]], strain[[2,3]], strain[[1,3]], strain[[1,2]]}], {ig, g}]
 ]
@@ -481,19 +488,24 @@ InvariantCharacter[inv_, vars_] := Module[{v0, v1, sub, s, seeds},
                                      If[MemberQ[VarBare[v1], #], 1, 0] &/@ VarBare[Flatten@vars], {s, seeds}]]
 ]
 
-GetInvariants[TRules_, seeds_, order_, OptionsPattern[{"check" -> True, "MustInclude"->{{{},{}}}, "Simplify"->True, "eventerms"->False, "round"->10^-6}]] := Module[{fixlist, monomials, invariant, m, n, i, j, ss, factor, out, factorLCM, factorGCD, OpDispMatrix, OpSpinMatrix, OpOrbitalMatrix, ReducedOut, SortedOut, mm, fixseeds, eventerms, prec},
+GetInvariants[TRules_, seeds_, order_, OptionsPattern[{"check" -> True, "MustInclude"->{{{},{}}}, "Simplify"->True, "eventerms"->False, "round"->10^-6}]] := Module[{fixlist, monomials, invariant0, invariant, m, n, i, j, ss, factor, out, factorLCM, factorGCD, OpDispMatrix, OpSpinMatrix, OpOrbitalMatrix, ReducedOut, SortedOut, mm, fixseeds, eventerms, prec},
   prec = OptionValue["round"];
   out = Table[
-  monomials = If[
-    OptionValue["MustInclude"]=={{{},{}}}, 
-    GenMonomialList[seeds,n],
-    fixlist = Flatten[Table[fixseeds=MonomialList[Total[#1]^i];
-                            fixseeds=Flatten[GenMonomialList[#1,i]];
-                            If[i<n,{ConstantArray[i,Length@fixseeds],fixseeds}\[Transpose],{}], {i, #2}] &@@@ OptionValue["MustInclude"],2];
-    Flatten[#]&/@(Table[Expand[# ss[[2]]] & /@ GenMonomialList[seeds,n-ss[[1]]], {ss, fixlist}]\[Transpose])];
-    invariant = DeleteDuplicates[DeleteCases[Table[Chop[Expand[Total[MonomialTransform[m, TRules]]], OptionValue["round"]], {m, Flatten@monomials}], i_/;i==0], (Chop[SimplifyCommonFactor[#1, prec] - SimplifyCommonFactor[#2, prec]]*Chop[SimplifyCommonFactor[#1, prec] + SimplifyCommonFactor[#2, prec]] == 0) &];
-  invariant = If[OptionValue["Simplify"], SimplifyCommonFactor[#,prec] &/@ invariant, invariant];
-    If[OptionValue["eventerms"], If[AllTrue[PolynomialOrder[#, {}, "tot"->False], EvenQ], #, ##&[]] &/@ invariant, invariant], {n, order}];
+        monomials = If[
+          OptionValue["MustInclude"]=={{{},{}}}, 
+          GenMonomialList[seeds,n],
+          fixlist = Flatten[Table[fixseeds=MonomialList[Total[#1]^i];
+                                  fixseeds=Flatten[GenMonomialList[#1,i]];
+                                  If[i<n,{ConstantArray[i,Length@fixseeds],fixseeds}\[Transpose],{}], {i, #2}] &@@@ OptionValue["MustInclude"],2];
+          Flatten[#]&/@(Table[Expand[# ss[[2]]] & /@ GenMonomialList[seeds,n-ss[[1]]], {ss, fixlist}]\[Transpose])];
+
+        invariant0 = DeleteCases[Table[Chop[Expand[Total[MonomialTransform[m, TRules]]], prec], {m, Flatten@monomials}], i_/;i==0];
+
+        invariant = DeleteDuplicates[invariant0, (Chop[SimplifyCommonFactor[#1, prec] - SimplifyCommonFactor[#2, prec]]*Chop[SimplifyCommonFactor[#1, prec] + SimplifyCommonFactor[#2, prec]] == 0) &];
+
+        invariant = If[OptionValue["Simplify"], SimplifyCommonFactor[#,prec] &/@ invariant, invariant];
+
+        If[OptionValue["eventerms"], If[AllTrue[PolynomialOrder[#, {}, "tot"->False], EvenQ], #, ##&[]] &/@ invariant, invariant], {n, order}];
 
      (*ReducedOut = Table[DeleteDuplicates[#, (#1 - #2 == 0 || #1 + #2 == 0 || Expand[#1 + I #2] == 0 || Expand[#1 - I #2] == 0) &] &/@ invariant, {invariant,out}];
   SortedOut = Table[SortInvByNumVar[#] &/@ invariant, {invariant, ReducedOut}];*)
@@ -518,27 +530,29 @@ GetInvariantTensor[T0_, latt_, spg0_, symmetric_ : False] := Module[{TT, U, rank
   Return[SimplifyTensor[T0, out]]
 ]
 
-ImposeDW[pos0_, IsoMatrix_, modeset_, {Nx_, Ny_, Nz_}] := Module[{mode, id, Amp, latt0, sites0, latt, sites, s, ix, iy, iz, Superpos},
+ImposeDW[pos0_, IsoMatrix_, modeset_, {Nx_, Ny_, Nz_}] := Module[{mode, id, Amp, latt0, sites0, latt, sites, s, ix, iy, iz, Superpos, sortfunc},
   {latt0, sites0} = pos0;
+  sortfunc := First@First@Position[DeleteDuplicates[SimplifyElementSymbol[#2] & @@@ sites0], #] &;
   Superpos = Table[{Mod[(#1 + {ix, iy, iz})/{Nx, Ny, Nz},1], #2} & @@@ sites0, {ix, 0, Nx - 1}, {iy, 0, Ny - 1}, {iz, 0, Nz - 1}];
   Do[sites = Superpos[[ix]][[iy]][[iz]];
      s = Cos[2 Pi {1/Nx, 1/Ny, 1/Nz}.{ix, iy, iz}];
      Do[id = mode[[1]]; Amp = s mode[[3]] mode[[4]];
-        sites = Transpose[{#[[1]] & /@ sites + Amp If[IntegerQ[id], # & /@ Partition[IsoMatrix[[;; , id]] // Normal, 3], Print["mode not exist!"]], First@StringCases[#, RegularExpression["[[:upper:]][[:lower:]]*"]] & /@ Transpose[sites0][[2]]}], {mode, modeset}
+        sites = Transpose[{#[[1]] & /@ sites + Amp If[IntegerQ[id], # & /@ Partition[IsoMatrix[[;; , id]] // Normal, 3], Print["mode not exist!"]], SimplifyElementSymbol[Transpose[sites0][[2]]]}], {mode, modeset}
         ];
      Superpos[[ix]][[iy]][[iz]] = sites, {ix, Nx}, {iy, Ny}, {iz, Nz}
      ];
   latt = {Nx latt0[[1]], Ny latt0[[2]], Nz latt0[[3]]};
-  Return[{latt, SortBy[Flatten[Superpos, 3], #[[2]]&]}]
+  Return[{latt, SortBy[Flatten[Superpos, 3], sortfunc[#[[2]]]&]}]
 ]
 
-ImposeDomains[pos0_, Basis_, eij_, mode_, grid_] := Module[{block, k, ngx, ngy, ngz, ix, iy, iz, pos, site, sites, latt},
+ImposeDomains[pos0_, Basis_, eij_, mode_, grid_] := Module[{block, k, ngx, ngy, ngz, ix, iy, iz, pos, site, sites, latt, sortfunc},
+  sortfunc := First@First@Position[DeleteDuplicates[SimplifyElementSymbol[#2] & @@@ (pos0[[2]])], #] &;
   {ngx, ngy, ngz} = grid;
   block = Association@Flatten[Table[site = {ix, iy, iz};
                                     pos = ImposeDW[pos0, Basis, mode[site], {1, 1, 1}];
                                     site -> pos[[2]], {iz, ngz}, {iy, ngy}, {ix, ngx}]];
   
-  sites = SortBy[Flatten[Table[{(#1 + k - 1)/grid, #2} & @@@ (block[k]), {k, Keys@block}], 1], #[[2]] &];
+  sites = SortBy[Flatten[Table[{(#1 + k - 1)/grid, #2} & @@@ (block[k]), {k, Keys@block}], 1], sortfunc[#[[2]]] &];
   latt = (IdentityMatrix[3] + eij).(pos0[[1]]) grid;
   
   Return[{latt, sites}]
