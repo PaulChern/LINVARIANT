@@ -112,7 +112,7 @@ GetPhononBasis[pos0_, Fij_, OptionsPattern[{"table" -> True, "fontsize" -> 12, "
   PhononRotated = Table[{ind, frequency, IR} = PhononByIR[[i]]\[Transpose];
                         eigenvectors = DeleteCases[Orthogonalize[Flatten[Table[rot = PseudoInverse[IR\[Transpose][[3 (j - 1) + 1 ;; 3 (j - 1) + 3]]\[Transpose]]; Normalize[#] & /@ (rot . IR), {j, NumAtom}], 1], Tolerance -> 10.^-9], v_ /; Norm[v] == 0]; 
                         Table[{ind[[iv]], isolabels[[i,iv]], frequency[[iv]], 
-                               Flatten[Chop[alatt.#, OptionValue["roundup"]] &/@ Partition[eigenvectors[[iv]], 3]]}, {iv, Length[ind]}], {i, Length[PhononByIR]}];
+                               Chop@Flatten[alatt.Round[#, OptionValue["roundup"]] &/@ Partition[eigenvectors[[iv]], 3]]}, {iv, Length[ind]}], {i, Length[PhononByIR]}];
   
   tab = Grid[Join[{Join[{"#","IR","frequency (THz)"}, Flatten[Table[Subscript[#, \[Alpha]], {\[Alpha], {"x", "y", "z"}}] & /@ (sites\[Transpose][[2]])]]}, Flatten[{#[[1;;3]], #[[4]]/.simplifytab}] & /@ Flatten[PhononRotated, 1]], 
              Alignment -> Center, 
@@ -747,7 +747,7 @@ SamplePhaseSpace[dir0_, s0_, spgmat_, Basis_, vars_, opotim_, spotim_, OptionsPa
 
   Print["Number of seeds: " <> ToString[Length[seeds]]<>" (potim="<>seedname<>")"];
   Do[eij=Chop@eta2eij[Flatten[ConstantArray[#, 3]&/@spotim]*seeds[[i]][[-6;;]]];
-     strainlatt=(eij+IdentityMatrix[3]).Transpose[pos0[[1]]];
+     strainlatt=(eij+IdentityMatrix[3]).(pos0[[1]]);
      modes = Table[{m, "modes", 1, potim[[m]] seeds[[i, m]]}, {m, NumBasis}]; 
      pos = {strainlatt, ImposeMode[pos0[[1]], pos0[[2]], Basis, modes, 1.0]}; 
      ExportPOSCAR[dir0<>"/seeds"<>"-"<>seedname, "seed." <> ToString[i] <> ".vasp", pos];
@@ -2718,7 +2718,7 @@ LMesh[dir_, grid_, mfunc_, OptionsPattern[{"write"->True, "plot"->True}]] := Mod
   Return[pltdata]
 ]
 
-TrainLINVARIANT[Plan_, vars_, ts_, OptionsPattern[{"InitRange" -> {-1, 1}, "NonlinearSteps" -> 10000, "MaxIterationSteps" -> 10^4, "BoundDist" -> 1, "TapeRate" -> 100, "BatchSize" -> 100, "Beta" -> {0.9, 0.999}, "Epsilon" -> 10.^-8, "XCut" -> 1.5, "tol" -> 10^-6, "FuncPatch"->0}]] := Module[{H, param, order, basis, bound, TrainSet, LossHistory, coeff, func, FuncPatch, mcoeff, vcoeff, GradLoss, batch, nsteps, grad, loss, batchsize, \[Rho], \[Beta], \[Epsilon], i, monitor, LossPlot, snapshot, FittingPlot, Iteration, TrainLoss, ValLoss, sol, path, plotticks, t, v, time0, time1, tmp, tol, XCut},
+TrainLINVARIANT[Plan_, invariants_, vars_, ts_, OptionsPattern[{"InitRange" -> {-1, 1}, "NonlinearSteps" -> 10000, "MaxIterationSteps" -> 10^4, "BoundDist" -> 1, "TapeRate" -> 100, "BatchSize" -> 100, "Beta" -> {0.9, 0.999}, "Epsilon" -> 10.^-8, "XCut" -> 1.5, "tol" -> 10^-6, "FuncPatch"->0}]] := Module[{H, param, order, basis, bound, TrainSet, LossHistory, coeff, func, FuncPatch, mcoeff, vcoeff, GradLoss, batch, nsteps, grad, loss, batchsize, \[Rho], \[Beta], \[Epsilon], i, monitor, LossPlot, snapshot, FittingPlot, Iteration, TrainLoss, ValLoss, sol, path, plotticks, t, v, time0, time1, tmp, tol, XCut},
   
   FuncPatch  = OptionValue["FuncPatch"];
   batchsize  = OptionValue["BatchSize"];
@@ -2727,7 +2727,7 @@ TrainLINVARIANT[Plan_, vars_, ts_, OptionsPattern[{"InitRange" -> {-1, 1}, "Nonl
   \[Beta]    = OptionValue["Beta"];
   \[Epsilon] = OptionValue["Epsilon"];
  
-  path = Subsequences[Prepend[Accumulate[Plan\[Transpose][[4]]], 0], {2}];
+  path = Subsequences[Prepend[Accumulate[Last[Plan\[Transpose]]], 0], {2}];
   func        = FuncPatch;
   TrainSet    = ts;
   LossHistory = {};
@@ -2759,9 +2759,8 @@ TrainLINVARIANT[Plan_, vars_, ts_, OptionsPattern[{"InitRange" -> {-1, 1}, "Nonl
                                  Filling -> {1 -> {{2}, {LightBlue, LightRed}}}]];
 
   monitor = DynamicModule[{iteration = 0, trainLoss = 0, valLoss = 0},
-      Monitor[Do[{order, basis, bound, nsteps, \[Rho]} = Plan[[i]];
-                 {param, H} = GaussianPolynomial[order, "x", "basis" -> basis];
-                 TrainSet = Join[ts, BoundData[ts, bound, 2]];
+      Monitor[Do[{order, \[Rho], nsteps} = Plan[[i]];
+                 {param, H} = CXB[invariants, order];
                  mcoeff = ConstantArray[0, Length@param];
                  vcoeff = ConstantArray[0, Length@param];
                  coeff = RandomReal[OptionValue["InitRange"], Length@param];

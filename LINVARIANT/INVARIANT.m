@@ -32,6 +32,7 @@ SortInvByNumVar              ::usage = "SortInvByNumVar[list]"
 SortInvariants               ::usage = "SortInvariants[list, vars]"
 InvariantCharacter           ::usage = "InvariantCharacter[inv, vars]"
 GetInvariants                ::usage = "GetInvariants[seeds, order, AllModes, OpMatrix, GridSymFile]"
+CXB                          ::usage = "CXB[invariant, vars]"
 GenMonomialList              ::usage = "GenMonomialList[seeds, n]"
 ImposeDW                     ::usage = "ImposeDW[Wyckoff0, IsoMatrix, modeset, {Nx, Ny, Nz}]"
 ImposeDomains                ::usage = "ImposeDomains[pos0, Basis, mode, grid]"
@@ -422,7 +423,7 @@ GetStrainTransformRules[latt_, spg_] := Module[{StrainRules},
   ]
 ]
 
-GetIsoStrainTransformRules[latt0_, spg0_] := Module[{slatt, latt, i, j, ig, G, g, strain0, strain, q, rot, tran, v1, v2, a, b, c, sub},
+GetIsoStrainTransformRulesOld[latt0_, spg0_] := Module[{slatt, latt, i, j, ig, G, g, strain0, strain, q, rot, tran, v1, v2, a, b, c, sub},
   g= Length[spg0];
   latt = LatticeRationalize[latt0, 10^-9];
   G = latt.(latt\[Transpose]);
@@ -437,6 +438,23 @@ GetIsoStrainTransformRules[latt0_, spg0_] := Module[{slatt, latt, i, j, ig, G, g
                   v2 = slatt[[;;,j]];
                   ComplexExpand[v1.v2], {i, 3}, {j, 3}];
         strain = Expand[Inverse[q].strain0.q];
+        Thread[{strain0[[1,1]], strain0[[2,2]], strain0[[3,3]], strain0[[2,3]], strain0[[1,3]], strain0[[1,2]]}
+             ->{strain[[1,1]], strain[[2,2]], strain[[3,3]], strain[[2,3]], strain[[1,3]], strain[[1,2]]}], {ig, g}]
+]
+
+GetIsoStrainTransformRules[latt0_, spg0_] := Module[{slatt, latt, i, j, ig, G, g, strain0, strain, q, rot, tran, v1, v2, a, b, c, sub},
+  g= Length[spg0];
+  latt = LatticeRationalize[latt0, 10^-9];
+  G = latt.(latt\[Transpose]);
+  sub = Thread[{a, b, c} -> (Norm[#] & /@ latt)];
+  slatt = {{a, 0, 0}, {0, b, 0}, {0, 0, c}} /. sub;
+  slatt = IdentityMatrix[3];
+
+  strain0 = Normal@SparseArray[{{i_, j_} /; i == j -> Subscript[Epsilon, i, j], {i_, j_} /; i < j -> Subscript[Epsilon, i, j], {i_, j_} /; i > j ->           Subscript[Epsilon, j, i]}, {3, 3}];
+
+  Table[{rot, tran}=xyz2RotT[Keys[spg0][[ig]]];
+        RSR = Expand[Transpose[rot].strain0.Inverse[Transpose[rot]]];
+        strain = Expand[1/2 (RSR + Transpose[RSR])];
         Thread[{strain0[[1,1]], strain0[[2,2]], strain0[[3,3]], strain0[[2,3]], strain0[[1,3]], strain0[[1,2]]}
              ->{strain[[1,1]], strain[[2,2]], strain[[3,3]], strain[[2,3]], strain[[1,3]], strain[[1,2]]}], {ig, g}]
 ]
@@ -517,6 +535,27 @@ GetInvariants[TRules_, seeds_, order_, OptionsPattern[{"check" -> True, "MustInc
         If[! (DiagonalMatrixQ[Quiet[mm\[Transpose][[1]]]] || (Flatten@m === {})), 
         Print["Warnning! ", "polynomial may not be independent: ", MatrixForm[mm]]], {m, SortedOut}]];
   Return[SortedOut]
+]
+
+CXBold[invariant_, vars_] := Module[{terms, t, op, gaussian, out, character, s, cxb},
+  If[ListQ[invariant], CXB[#, vars] & /@ invariant,
+     terms = If[Head[invariant] === Plus, Level[invariant, 1], {invariant}];
+     character = StringRiffle[PolynomialOrder[First@terms, vars, "tot" -> False], ""];
+     s = ToExpression["\[CapitalSigma]" <> StringRiffle[VarHead[Variables[First@terms]], ""] <> character];
+     cxb = Table[op = DeleteCases[Variables[t],  ToExpression["\!\(\*SubscriptBox[\(\[Epsilon]\), \(__\)]\)"]];
+                 gaussian = Apply[Times, Exp[-ToExpression["\[Sigma]" <> ToString[VarHead@#] <> character]^2 #^2] & /@ op];
+                 gaussian s t, {t, terms}];
+   Return[Total@cxb]]
+]
+
+CXB[invariants_, n_] := Module[{ninv, i, t, g, out, s1, s2},
+  ninv = Length[Flatten@invariants];
+  out = Table[t = Flatten[invariants][[i]];
+             s1 = ToExpression["\[CapitalSigma]" <> ToString[i]];
+             s2 = ToExpression["\[Sigma]" <> ToString[i]];
+              g = If[n==0, 1, Exp[-s2^2 t^(2 n)]];
+              {If[n==0, {s1}, {s1, s2}], s1 g t}, {i, ninv}];
+  Return[{Flatten[out\[Transpose][[1]]], Total[out\[Transpose][[2]]]}]
 ]
 
 GetInvariantTensor[T0_, latt_, spg0_, symmetric_ : False] := Module[{TT, U, rank, i, s, contraction, out},

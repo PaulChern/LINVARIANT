@@ -12,6 +12,7 @@ Var2Var                     ::usage "Var2Var[var1, var2, dir]"
 ParseFortranNumber          ::usage "ParseFortranNumber[stream]"
 MakeMatrixBlock             ::usage "MakeMatrixBlock[mat, dim]"
 SimpsonIntegrate            ::usage "SimpsonIntegrate[f, x]"
+Irrationalize               ::usage "Irrationalize[x, prec]"
 RectangleIntPath            ::usage "ComplexIntegratePath[spt, ept, npt, ratio]"
 partitionBy                 ::usage "partitionBy[l, p]"
 CloneReshape2D              ::usage "CloneReshape2D[array0, array1]"
@@ -36,9 +37,11 @@ MyTime                      ::usage "MyTime[inp, NewProjQ]"
 ColorPots                   ::usage "ColorPots[v, n, tol]"
 SimplifyTensorCommonFactor  ::usage "SimplifyTensorCommonFactor[mat]"
 SimplifyTensor              ::usage "SimpifyTensor[T0, TT]"
+DecomposeExpr               ::usage "DecomposeExpr[x]"
 NumberCommonDivisor         ::usage "NumberCommonDivisor[NumList, prec_:10^-12]"
 GetConstantFactor           ::usage "GetConstantFactor[expr]"
 SimplifyCommonFactor        ::usage "SimplifyCommonFactor[expr, prec]"
+SimplifyIrrationalNumber    ::usage "SimplifyIrrationalNumber[x, prec]"
 Sub2List                    ::usage "Sub2List[sub]"
 StrainInvQ                  ::usage = "StrainInvQ[x, e]"
 XInvQ                       ::usage = "XInvQ[x, e]"
@@ -317,6 +320,14 @@ ColorPots[v_, n_, tol_ : 10^-6] := Module[{c, test, vc},
    Return[c[vc]]
 ];
 
+Irrationalize[x_, prec_, OptionsPattern[{"NCUT" -> 1000}]] := Module[{pool, eps, n},
+  If[ListQ[x], Irrationalize[#, prec, "NCUT" -> OptionValue["NCUT"]] & /@ x,
+     If[Head[x] === Real, 
+        pool = Flatten@Table[Power[Range[OptionValue["NCUT"]], 1/2]/n, {n,1,10}];
+        eps = First@MinimalBy[{Sign[x] #, Abs@N[# - Abs@x]} & /@ pool, #[[2]] &];
+        If[eps[[2]] < prec, eps[[1]], False], x]]
+]
+
 NumberCommonDivisor[NumList_,prec_:10^-12] := Module[{TempList, DenominatorLCM},
  TempList = Which[Head[#] === Real, Round[#,prec], Head[#] === Integer, #, Head[#] === Times, First@Level[#, {1}], Head[#] === Power, 1, Head[#] === Rational, #, (Head[#] === Complex)&&(Re[#]!=0), Abs[#], (Head[#] === Complex)&&(Re[#]==0), #] &/@ NumList;
  DenominatorLCM = If[MemberQ[TempList, _Rational], LCM @@ (Denominator[#] & /@ Extract[TempList, Position[TempList, _Rational]]), 1];
@@ -326,6 +337,21 @@ NumberCommonDivisor[NumList_,prec_:10^-12] := Module[{TempList, DenominatorLCM},
 
 GetConstantFactor[expr_] := Module[{},
   If[ListQ[expr],  GetConstantFactor[#] & /@ expr, Return[(If[MatchQ[Expand@expr, Plus[_, __]], Level[Expand@expr, {1}], Level[Expand@expr, {0}]] /. Thread[Variables[Expand@expr] -> ConstantArray[1, Length[Variables[Expand@expr]]]])]]
+]
+
+SimplifyIrrationalNumber[x_, prec_, OptionsPattern["NCUT" -> 1000]] := Module[{coeff, expr, f, flist},
+  If[ListQ[x], SimplifyIrrationalNumber[#, prec, "NCUT" -> OptionValue["NCUT"]] & /@ x, 
+     flist = {#, GetConstantFactor[x]/#} &/@ (GetConstantFactor[x]);
+     f = First[If[AllTrue[#2, Rationalize[Abs@#] >= 1 &], #1, ## &[]] & @@@ flist];
+     {coeff, expr} = DecomposeExpr[Expand[x/f]];
+     Total[Irrationalize[If[Head[#]===Rational,1.0 #, #] &/@ coeff, prec, "NCUT" -> OptionValue["NCUT"]] expr]]
+]
+
+DecomposeExpr[x_] := Module[{sub, expr, coeff},
+  sub = Thread[Variables[x] -> ConstantArray[1, Length[Variables[x]]]];
+  expr = If[Head[x] === Plus, Level[x, {1}], {x}];
+  coeff = If[Head[x] === Plus, Level[x, {1}], {x}] /. sub;
+  Return[{coeff, Expand[expr/coeff]}]
 ]
 
 SimplifyCommonFactor[expr_, prec_] := Module[{factorLCM, factorGCD},
